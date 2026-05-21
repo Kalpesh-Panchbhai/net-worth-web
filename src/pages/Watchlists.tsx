@@ -147,14 +147,16 @@ function Watchlists() {
                       size="small"
                     />
                   </Box>
-                  <Stack direction="row" spacing={0.5} onClick={e => e.stopPropagation()}>
-                    <IconButton size="small" onClick={() => { setEditWl(w); setEditName(w.name); }} aria-label={`Edit ${w.name}`}>
-                      <EditOutlinedIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton size="small" onClick={() => setDeleteConfirm(w)} aria-label={`Delete ${w.name}`}>
-                      <DeleteOutlineIcon fontSize="small" />
-                    </IconButton>
-                  </Stack>
+                  {w.name !== "All" && (
+                    <Stack direction="row" spacing={0.5} onClick={e => e.stopPropagation()}>
+                      <IconButton size="small" onClick={() => { setEditWl(w); setEditName(w.name); }} aria-label={`Edit ${w.name}`}>
+                        <EditOutlinedIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton size="small" onClick={() => setDeleteConfirm(w)} aria-label={`Delete ${w.name}`}>
+                        <DeleteOutlineIcon fontSize="small" />
+                      </IconButton>
+                    </Stack>
+                  )}
                   <ChevronRightIcon fontSize="small" color="action" />
                 </Box>
               );
