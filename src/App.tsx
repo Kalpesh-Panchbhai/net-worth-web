@@ -4,6 +4,7 @@ import Accounts from "./pages/Accounts";
 import AccountDetail from "./pages/AccountDetail";
 import HoldingDetail from "./pages/HoldingDetail";
 import Watchlists from "./pages/Watchlists";
+import WatchlistDetail from "./pages/WatchlistDetail";
 import Incomes from "./pages/Incomes";
 import IncomeSources from "./pages/IncomeSources";
 import IncomeTags from "./pages/IncomeTags";
@@ -20,6 +21,7 @@ function App() {
           <Route path="/accounts/:accountId" element={<AccountDetail />} />
           <Route path="/accounts/:accountId/holdings/:holdingId" element={<HoldingDetail />} />
           <Route path="/watchlists" element={<Watchlists />} />
+          <Route path="/watchlists/:watchlistId" element={<WatchlistDetail />} />
           <Route path="/incomes" element={<Incomes />} />
           <Route path="/income-sources" element={<IncomeSources />} />
           <Route path="/income-tags" element={<IncomeTags />} />

@@ -1,25 +1,25 @@
 import { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Box, Paper, Typography, TextField, Button,
   Alert, Dialog, DialogTitle, DialogContent, DialogActions,
-  Stack, IconButton, Fab, Checkbox, List, ListItem, ListItemButton, ListItemText, ListItemIcon,
+  Stack, IconButton, Fab,
   useMediaQuery, useTheme,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
-import LinkIcon from "@mui/icons-material/Link";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import { useUser } from "../context/UserContext";
 import {
   getWatchlists, createWatchlist, updateWatchlist, deleteWatchlist,
-  getWatchlistAccounts, getAccounts, linkWatchlistAccount, unlinkWatchlistAccount,
   invalidateCache,
 } from "../api/client";
 import { PageHeader, EmptyState, ErrorState, ListSkeleton, MetricCard, MetricSkeleton, TintedChip, FadeIn } from "../components/shared";
 import { tokens } from "../theme";
-import type { WatchlistSummary, AccountSummary } from "../api/types";
+import type { WatchlistSummary } from "../api/types";
 
 const { colors } = tokens;
 
@@ -29,6 +29,7 @@ function fmt(v: number, currency = "INR"): string {
 
 function Watchlists() {
   const { userId } = useUser();
+  const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [watchlists, setWatchlists] = useState<WatchlistSummary[]>([]);
@@ -46,12 +47,6 @@ function Watchlists() {
 
   // Delete
   const [deleteConfirm, setDeleteConfirm] = useState<WatchlistSummary | null>(null);
-
-  // Link/Unlink accounts
-  const [linkWl, setLinkWl] = useState<WatchlistSummary | null>(null);
-  const [allAccounts, setAllAccounts] = useState<AccountSummary[]>([]);
-  const [linkedAccountIds, setLinkedAccountIds] = useState<Set<number>>(new Set());
-  const [linkLoading, setLinkLoading] = useState(false);
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -91,32 +86,6 @@ function Watchlists() {
     if (!deleteConfirm) return;
     try { await deleteWatchlist(deleteConfirm.id); setDeleteConfirm(null); invalidateCache("watchlists"); await load(); }
     catch (err) { setError(err instanceof Error ? err.message : "Failed to delete"); }
-  };
-
-  const openLink = async (wl: WatchlistSummary) => {
-    if (!userId) return;
-    setLinkWl(wl); setLinkLoading(true);
-    try {
-      const [accs, linked] = await Promise.all([getAccounts(userId), getWatchlistAccounts(wl.id)]);
-      setAllAccounts(accs);
-      setLinkedAccountIds(new Set(linked.map(a => a.id)));
-    } catch (err) { setError(err instanceof Error ? err.message : "Failed to load accounts"); }
-    finally { setLinkLoading(false); }
-  };
-
-  const toggleAccount = async (accountId: number) => {
-    if (!linkWl) return;
-    const isLinked = linkedAccountIds.has(accountId);
-    try {
-      if (isLinked) {
-        await unlinkWatchlistAccount(linkWl.id, accountId);
-        setLinkedAccountIds(prev => { const n = new Set(prev); n.delete(accountId); return n; });
-      } else {
-        await linkWatchlistAccount(linkWl.id, accountId);
-        setLinkedAccountIds(prev => new Set(prev).add(accountId));
-      }
-      invalidateCache("watchlist"); invalidateCache("account-watchlist");
-    } catch (err) { setError(err instanceof Error ? err.message : "Failed to update link"); }
   };
 
   if (error && watchlists.length === 0 && !loading) return <ErrorState message={error} onRetry={load} />;
@@ -161,9 +130,12 @@ function Watchlists() {
                   display: "flex", alignItems: "center", gap: 2,
                   px: { xs: 2, sm: 3 }, py: 1.5,
                   borderTop: i > 0 ? `1px solid ${theme.palette.divider}` : "none",
+                  cursor: "pointer",
                   transition: "background .15s", "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.04) },
                   flexWrap: "wrap",
-                }}>
+                }}
+                  onClick={() => navigate(`/watchlists/${w.id}`)}
+                >
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography variant="subtitle2" noWrap>{w.name}</Typography>
                   </Box>
@@ -175,10 +147,7 @@ function Watchlists() {
                       size="small"
                     />
                   </Box>
-                  <Stack direction="row" spacing={0.5}>
-                    <IconButton size="small" onClick={() => openLink(w)} aria-label={`Link accounts to ${w.name}`}>
-                      <LinkIcon fontSize="small" />
-                    </IconButton>
+                  <Stack direction="row" spacing={0.5} onClick={e => e.stopPropagation()}>
                     <IconButton size="small" onClick={() => { setEditWl(w); setEditName(w.name); }} aria-label={`Edit ${w.name}`}>
                       <EditOutlinedIcon fontSize="small" />
                     </IconButton>
@@ -186,6 +155,7 @@ function Watchlists() {
                       <DeleteOutlineIcon fontSize="small" />
                     </IconButton>
                   </Stack>
+                  <ChevronRightIcon fontSize="small" color="action" />
                 </Box>
               );
             })}
@@ -226,32 +196,6 @@ function Watchlists() {
         <DialogActions>
           <Button onClick={() => setDeleteConfirm(null)}>Cancel</Button>
           <Button color="error" variant="contained" onClick={handleDelete}>Delete</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Link Accounts Dialog */}
-      <Dialog open={!!linkWl} onClose={() => { setLinkWl(null); invalidateCache("watchlists"); load(); }} fullScreen={isMobile} fullWidth maxWidth="sm">
-        <DialogTitle>Link Accounts to {linkWl?.name}</DialogTitle>
-        <DialogContent>
-          {linkLoading ? <ListSkeleton rows={3} /> : allAccounts.length === 0 ? (
-            <Typography color="text.secondary" sx={{ py: 2 }}>No accounts available. Create an account first.</Typography>
-          ) : (
-            <List dense>
-              {allAccounts.map(a => (
-                <ListItem key={a.id} disablePadding>
-                  <ListItemButton onClick={() => toggleAccount(a.id)}>
-                    <ListItemIcon sx={{ minWidth: 36 }}>
-                      <Checkbox edge="start" checked={linkedAccountIds.has(a.id)} tabIndex={-1} disableRipple />
-                    </ListItemIcon>
-                    <ListItemText primary={a.name} secondary={`${a.type} · ${a.currency}`} />
-                  </ListItemButton>
-                </ListItem>
-              ))}
-            </List>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button variant="contained" onClick={() => { setLinkWl(null); invalidateCache("watchlists"); load(); }}>Done</Button>
         </DialogActions>
       </Dialog>
 
