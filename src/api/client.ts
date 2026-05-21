@@ -15,8 +15,7 @@ import type {
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://kfgx37r84g.execute-api.ap-south-1.amazonaws.com/prod";
 
 // --- In-memory GET cache ---
-const cache = new Map<string, { data: unknown; ts: number }>();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const cache = new Map<string, unknown>();
 
 export function invalidateCache(pattern?: string) {
   if (!pattern) { cache.clear(); return; }
@@ -30,10 +29,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const isWrite = method !== "GET";
 
   // Return cached data for GET requests
-  if (!isWrite) {
-    const hit = cache.get(url);
-    if (hit && Date.now() - hit.ts < CACHE_TTL) return hit.data as T;
-  }
+  if (!isWrite && cache.has(url)) return cache.get(url) as T;
 
   const response = await fetch(`${BASE_URL}${url}`, {
     ...options,
@@ -50,7 +46,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const data = (json.data ?? json) as T;
 
   // Cache GET responses
-  if (!isWrite) cache.set(url, { data, ts: Date.now() });
+  if (!isWrite) cache.set(url, data);
 
   return data;
 }
