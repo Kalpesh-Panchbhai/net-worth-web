@@ -1,0 +1,19 @@
+# Dependencies
+node_modules
+
+# Build
+dist
+
+# IDE
+.idea
+*.iml
+.vscode
+
+# OS
+.DS_Store
+
+# Environment
+.env
+.env.local
+.env.*.local
+.idea/
