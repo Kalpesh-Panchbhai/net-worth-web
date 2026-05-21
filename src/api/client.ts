@@ -21,7 +21,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${BASE_URL}${url}`, {
     ...options,
     headers: {
-      ...(isWrite ? { "Content-Type": "text/plain" } : {}),
+      ...(isWrite ? { "Content-Type": "application/json" } : {}),
       ...options?.headers as Record<string, string>,
     },
   });
