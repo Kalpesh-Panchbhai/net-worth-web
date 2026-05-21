@@ -12,8 +12,7 @@ import type {
   IncomeTag,
 } from "./types";
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL
-  || (import.meta.env.DEV ? "/api" : "https://kfgx37r84g.execute-api.ap-south-1.amazonaws.com/prod");
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://kfgx37r84g.execute-api.ap-south-1.amazonaws.com/prod";
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const method = options?.method ?? "GET";
