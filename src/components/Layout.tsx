@@ -13,6 +13,8 @@ import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
 import ReceiptLongRoundedIcon from "@mui/icons-material/ReceiptLongRounded";
 import AccountBalanceRoundedIcon from "@mui/icons-material/AccountBalanceRounded";
 import LocalOfferRoundedIcon from "@mui/icons-material/LocalOfferRounded";
+import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
+import { useUser } from "../context/UserContext";
 import { tokens } from "../theme";
 
 const SIDEBAR_W = 252;
@@ -36,6 +38,7 @@ function Layout({ children }: { children: ReactNode }) {
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up("md"));
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const { firebaseUser, logout } = useUser();
 
   const isActive = (path: string) =>
     path === "/" ? location.pathname === "/" : location.pathname.startsWith(path);
@@ -114,6 +117,39 @@ function Layout({ children }: { children: ReactNode }) {
           </ListItem>
         ))}
       </List>
+
+      {/* Spacer */}
+      <Box sx={{ flex: 1 }} />
+
+      {/* User + Sign out */}
+      {firebaseUser && (
+        <Box sx={{ px: 1, pb: 1 }}>
+          <Divider sx={{ mb: 2, mx: 0.5 }} />
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, px: 0.5, mb: 1 }}>
+            <Avatar
+              src={firebaseUser.photoURL || undefined}
+              sx={{ width: 32, height: 32, fontSize: "0.7rem", fontWeight: 700 }}
+            >
+              {firebaseUser.displayName?.charAt(0) || "U"}
+            </Avatar>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography sx={{ fontSize: "0.8rem", fontWeight: 600, color: colors.gray800, lineHeight: 1.2 }} noWrap>
+                {firebaseUser.displayName || "User"}
+              </Typography>
+              <Typography sx={{ fontSize: "0.68rem", color: colors.gray400, lineHeight: 1.2 }} noWrap>
+                {firebaseUser.email}
+              </Typography>
+            </Box>
+          </Box>
+          <ListItemButton
+            onClick={async () => { setDrawerOpen(false); await logout(); }}
+            sx={{ borderRadius: 2.5, py: 0.75, px: 1.5, color: colors.gray500, "&:hover": { bgcolor: colors.errorBg, color: colors.error } }}
+          >
+            <ListItemIcon sx={{ minWidth: 34, color: "inherit" }}><LogoutRoundedIcon sx={{ fontSize: 20 }} /></ListItemIcon>
+            <ListItemText primary="Sign out" primaryTypographyProps={{ fontSize: "0.85rem", fontWeight: 500 }} />
+          </ListItemButton>
+        </Box>
+      )}
     </Box>
   );
 
