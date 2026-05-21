@@ -55,6 +55,30 @@ export interface ChartDataPoint {
 
 export type EntityType = "holding" | "account" | "watchlist";
 export type TimePeriod = "1M" | "3M" | "6M" | "1Y" | "2Y" | "5Y" | "ALL";
+export type AccountType = "BROKER" | "SAVINGS" | "CREDIT_CARD" | "LOAN" | "OTHER";
+
+export interface Watchlist {
+  id: number;
+  userId: number;
+  name: string;
+}
+
+export interface Account {
+  id: number;
+  userId: number;
+  name: string;
+  type: AccountType;
+  isActive: boolean;
+  needsDailyData: boolean;
+  currency: string;
+}
+
+export interface Holding {
+  id: number;
+  accountId: number;
+  name: string;
+  symbol: string;
+}
 
 export interface Transaction {
   id: number;
@@ -63,6 +87,11 @@ export interface Transaction {
   txnDate: string;
   invested: number;
   value: number;
+}
+
+export interface WatchlistAccountLink {
+  watchlistId: number;
+  accountId: number;
 }
 
 export interface Income {

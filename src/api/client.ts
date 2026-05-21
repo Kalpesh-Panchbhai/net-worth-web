@@ -1,15 +1,20 @@
 import type {
-  ApiResponse,
   User,
+  Watchlist,
   WatchlistSummary,
+  Account,
   AccountSummary,
+  AccountType,
+  Holding,
   HoldingSummary,
   ChartDataPoint,
   EntityType,
   TimePeriod,
+  Transaction,
   Income,
   IncomeSource,
   IncomeTag,
+  WatchlistAccountLink,
 } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://kfgx37r84g.execute-api.ap-south-1.amazonaws.com/prod";
@@ -59,9 +64,62 @@ export function ensureUser(externalUserId: string) {
   });
 }
 
+export function deleteUser(id: number) {
+  return request<void>(`/users/${id}`, { method: "DELETE" });
+}
+
+// Refresh
+export function refreshData() {
+  return request<{ message: string; durationMs: number }>("/refresh", {
+    method: "POST",
+  });
+}
+
 // Watchlists
 export function getWatchlists(userId: number) {
   return request<WatchlistSummary[]>(`/watchlists/${userId}`);
+}
+
+export function createWatchlist(userId: number, name: string) {
+  return request<Watchlist>("/watchlists", {
+    method: "POST",
+    body: JSON.stringify({ userId, name }),
+  });
+}
+
+export function updateWatchlist(id: number, name: string) {
+  return request<Watchlist>(`/watchlists/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function deleteWatchlist(id: number) {
+  return request<void>(`/watchlists/${id}`, { method: "DELETE" });
+}
+
+// Watchlist-Accounts (link/unlink)
+export function getWatchlistAccounts(watchlistId: number) {
+  return request<AccountSummary[]>(`/watchlist-accounts/${watchlistId}`);
+}
+
+export function linkWatchlistAccount(watchlistId: number, accountId: number) {
+  return request<WatchlistAccountLink>("/watchlist-accounts", {
+    method: "POST",
+    body: JSON.stringify({ watchlistId, accountId }),
+  });
+}
+
+export function unlinkWatchlistAccount(watchlistId: number, accountId: number) {
+  return request<void>("/watchlist-accounts", {
+    method: "DELETE",
+    body: JSON.stringify({ watchlistId, accountId }),
+  });
+}
+
+// Account-Watchlists
+export function getAccountWatchlists(accountId: number) {
+  return request<WatchlistSummary[]>(`/account-watchlists/${accountId}`);
 }
 
 // Accounts
@@ -69,9 +127,75 @@ export function getAccounts(userId: number) {
   return request<AccountSummary[]>(`/accounts/${userId}`);
 }
 
+export function createAccount(data: {
+  userId: number;
+  name: string;
+  type: AccountType;
+  currency: string;
+  isActive?: boolean;
+  needsDailyData?: boolean;
+}) {
+  return request<Account>("/accounts", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateAccount(id: number, data: { name?: string; isActive?: boolean }) {
+  return request<Account>(`/accounts/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteAccount(id: number) {
+  return request<void>(`/accounts/${id}`, { method: "DELETE" });
+}
+
 // Holdings
 export function getHoldings(accountId: number) {
   return request<HoldingSummary[]>(`/holdings/${accountId}`);
+}
+
+export function createHolding(data: {
+  accountId: number;
+  name: string;
+  symbol: string;
+}) {
+  return request<Holding>("/holdings", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteHolding(id: number) {
+  return request<void>(`/holdings/${id}`, { method: "DELETE" });
+}
+
+// Transactions
+export function getTransactions(query: { accountId?: number; holdingId?: number }) {
+  const params = new URLSearchParams();
+  if (query.accountId != null) params.set("accountId", String(query.accountId));
+  if (query.holdingId != null) params.set("holdingId", String(query.holdingId));
+  return request<Transaction[]>(`/transactions?${params}`);
+}
+
+export function createTransaction(data: {
+  accountId: number;
+  holdingId: number;
+  txnDate: string;
+  invested: number;
+  value: number;
+  mode?: string;
+}) {
+  return request<Transaction>("/transactions", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteTransaction(id: number) {
+  return request<void>(`/transactions/${id}`, { method: "DELETE" });
 }
 
 // Chart Data
@@ -79,13 +203,6 @@ export function getChartData(entityType: EntityType, entityId: number, timePerio
   return request<ChartDataPoint[]>(
     `/chart-data?entityType=${entityType}&entityId=${entityId}&timePeriod=${timePeriod}`
   );
-}
-
-// Refresh
-export function refreshData() {
-  return request<ApiResponse<{ message: string; durationMs: number }>>("/refresh", {
-    method: "POST",
-  });
 }
 
 // Income Sources
