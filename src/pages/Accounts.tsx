@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Box, Paper, Typography, TextField, Button, MenuItem,
   Alert, Dialog, DialogTitle, DialogContent, DialogActions,
@@ -10,6 +11,7 @@ import AddIcon from "@mui/icons-material/Add";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import AccountBalanceWalletOutlinedIcon from "@mui/icons-material/AccountBalanceWalletOutlined";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import { useUser } from "../context/UserContext";
 import {
   getAccounts, createAccount, updateAccount, deleteAccount, invalidateCache,
@@ -30,6 +32,7 @@ function fmt(v: number, currency = "INR"): string {
 
 function Accounts() {
   const { userId } = useUser();
+  const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [accounts, setAccounts] = useState<AccountSummary[]>([]);
@@ -138,9 +141,12 @@ function Accounts() {
                   display: "flex", alignItems: "center", gap: 2,
                   px: { xs: 2, sm: 3 }, py: 1.5,
                   borderTop: i > 0 ? `1px solid ${theme.palette.divider}` : "none",
+                  cursor: "pointer",
                   transition: "background .15s", "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.04) },
                   flexWrap: "wrap",
-                }}>
+                }}
+                  onClick={() => navigate(`/accounts/${a.id}`)}
+                >
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography variant="subtitle2" noWrap>{a.name}</Typography>
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
@@ -157,7 +163,7 @@ function Accounts() {
                       size="small"
                     />
                   </Box>
-                  <Stack direction="row" spacing={0.5}>
+                  <Stack direction="row" spacing={0.5} onClick={e => e.stopPropagation()}>
                     <IconButton size="small" onClick={() => openEdit(a)} aria-label={`Edit ${a.name}`}>
                       <EditOutlinedIcon fontSize="small" />
                     </IconButton>
@@ -165,6 +171,7 @@ function Accounts() {
                       <DeleteOutlineIcon fontSize="small" />
                     </IconButton>
                   </Stack>
+                  <ChevronRightIcon fontSize="small" color="action" />
                 </Box>
               );
             })}

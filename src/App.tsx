@@ -1,8 +1,8 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import Accounts from "./pages/Accounts";
-import Holdings from "./pages/Holdings";
-import Transactions from "./pages/Transactions";
+import AccountDetail from "./pages/AccountDetail";
+import HoldingDetail from "./pages/HoldingDetail";
 import Watchlists from "./pages/Watchlists";
 import Incomes from "./pages/Incomes";
 import IncomeSources from "./pages/IncomeSources";
@@ -17,8 +17,8 @@ function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/accounts" element={<Accounts />} />
-          <Route path="/holdings" element={<Holdings />} />
-          <Route path="/transactions" element={<Transactions />} />
+          <Route path="/accounts/:accountId" element={<AccountDetail />} />
+          <Route path="/accounts/:accountId/holdings/:holdingId" element={<HoldingDetail />} />
           <Route path="/watchlists" element={<Watchlists />} />
           <Route path="/incomes" element={<Incomes />} />
           <Route path="/income-sources" element={<IncomeSources />} />

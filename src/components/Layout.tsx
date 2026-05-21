@@ -24,8 +24,6 @@ import {
 import MenuIcon from "@mui/icons-material/Menu";
 import DashboardOutlinedIcon from "@mui/icons-material/DashboardOutlined";
 import AccountBalanceWalletOutlinedIcon from "@mui/icons-material/AccountBalanceWalletOutlined";
-import ShowChartIcon from "@mui/icons-material/ShowChart";
-import ReceiptOutlinedIcon from "@mui/icons-material/ReceiptOutlined";
 import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
 import AccountBalanceOutlinedIcon from "@mui/icons-material/AccountBalanceOutlined";
@@ -38,8 +36,6 @@ interface LayoutProps {
 const NAV_ITEMS = [
   { label: "Dashboard", path: "/", icon: <DashboardOutlinedIcon /> },
   { label: "Accounts", path: "/accounts", icon: <AccountBalanceWalletOutlinedIcon /> },
-  { label: "Holdings", path: "/holdings", icon: <ShowChartIcon /> },
-  { label: "Transactions", path: "/transactions", icon: <ReceiptOutlinedIcon /> },
   { label: "Watchlists", path: "/watchlists", icon: <VisibilityOutlinedIcon /> },
   { label: "Incomes", path: "/incomes", icon: <ReceiptLongOutlinedIcon /> },
   { label: "Sources", path: "/income-sources", icon: <AccountBalanceOutlinedIcon /> },
@@ -49,8 +45,8 @@ const NAV_ITEMS = [
 const MOBILE_NAV = [
   NAV_ITEMS[0],
   NAV_ITEMS[1],
-  NAV_ITEMS[4],
-  NAV_ITEMS[5],
+  NAV_ITEMS[2],
+  NAV_ITEMS[3],
 ];
 
 function Layout({ children }: LayoutProps) {
@@ -59,9 +55,13 @@ function Layout({ children }: LayoutProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const currentTab = NAV_ITEMS.findIndex((item) => item.path === location.pathname);
-  const activeIdx = currentTab === -1 ? 0 : currentTab;
-  const mobileIdx = MOBILE_NAV.findIndex((item) => item.path === location.pathname);
+  const currentTab = NAV_ITEMS.findIndex((item) =>
+    item.path === "/" ? location.pathname === "/" : location.pathname.startsWith(item.path)
+  );
+  const activeIdx = currentTab === -1 ? false : currentTab;
+  const mobileIdx = MOBILE_NAV.findIndex((item) =>
+    item.path === "/" ? location.pathname === "/" : location.pathname.startsWith(item.path)
+  );
   const activeMobileIdx = mobileIdx === -1 ? false : mobileIdx;
 
   return (
