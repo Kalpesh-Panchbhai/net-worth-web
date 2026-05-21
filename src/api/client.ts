@@ -16,9 +16,14 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL
   || (import.meta.env.DEV ? "/api" : "https://kfgx37r84g.execute-api.ap-south-1.amazonaws.com/prod");
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
+  const method = options?.method ?? "GET";
+  const isWrite = method !== "GET";
   const response = await fetch(`${BASE_URL}${url}`, {
     ...options,
-    ...(options?.body ? { headers: { "Content-Type": "text/plain", ...options?.headers as Record<string, string> } } : {}),
+    headers: {
+      ...(isWrite ? { "Content-Type": "text/plain" } : {}),
+      ...options?.headers as Record<string, string>,
+    },
   });
   if (response.status === 204) return undefined as T;
   const json = await response.json();
