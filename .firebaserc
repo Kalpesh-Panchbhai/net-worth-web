@@ -1,5 +1,12 @@
 {
   "projects": {
     "default": "net-worth-ab46e"
+  },
+  "targets": {
+    "net-worth-ab46e": {
+      "hosting": {
+        "app": ["net-worth-ui"]
+      }
+    }
   }
 }
