@@ -1,142 +1,189 @@
 import { type ReactNode, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
-  AppBar,
-  Toolbar,
-  Typography,
-  Box,
-  Container,
-  Tab,
-  Tabs,
-  BottomNavigation,
-  BottomNavigationAction,
-  Drawer,
-  List,
-  ListItem,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
-  IconButton,
-  Divider,
-  useMediaQuery,
-  useTheme,
+  Box, Typography, Avatar,
+  BottomNavigation, BottomNavigationAction,
+  Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText,
+  IconButton, Divider,
+  useMediaQuery, useTheme,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
-import DashboardOutlinedIcon from "@mui/icons-material/DashboardOutlined";
-import AccountBalanceWalletOutlinedIcon from "@mui/icons-material/AccountBalanceWalletOutlined";
-import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
-import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
-import AccountBalanceOutlinedIcon from "@mui/icons-material/AccountBalanceOutlined";
-import LocalOfferOutlinedIcon from "@mui/icons-material/LocalOfferOutlined";
+import DashboardRoundedIcon from "@mui/icons-material/DashboardRounded";
+import AccountBalanceWalletRoundedIcon from "@mui/icons-material/AccountBalanceWalletRounded";
+import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
+import ReceiptLongRoundedIcon from "@mui/icons-material/ReceiptLongRounded";
+import AccountBalanceRoundedIcon from "@mui/icons-material/AccountBalanceRounded";
+import LocalOfferRoundedIcon from "@mui/icons-material/LocalOfferRounded";
+import { tokens } from "../theme";
 
-interface LayoutProps {
-  children: ReactNode;
-}
+const SIDEBAR_W = 252;
+const { colors } = tokens;
 
-const NAV_ITEMS = [
-  { label: "Dashboard", path: "/", icon: <DashboardOutlinedIcon /> },
-  { label: "Accounts", path: "/accounts", icon: <AccountBalanceWalletOutlinedIcon /> },
-  { label: "Watchlists", path: "/watchlists", icon: <VisibilityOutlinedIcon /> },
-  { label: "Incomes", path: "/incomes", icon: <ReceiptLongOutlinedIcon /> },
-  { label: "Sources", path: "/income-sources", icon: <AccountBalanceOutlinedIcon /> },
-  { label: "Tags", path: "/income-tags", icon: <LocalOfferOutlinedIcon /> },
+const PRIMARY_NAV = [
+  { label: "Dashboard", path: "/", icon: <DashboardRoundedIcon /> },
+  { label: "Accounts", path: "/accounts", icon: <AccountBalanceWalletRoundedIcon /> },
+  { label: "Watchlists", path: "/watchlists", icon: <VisibilityRoundedIcon /> },
+  { label: "Incomes", path: "/incomes", icon: <ReceiptLongRoundedIcon /> },
 ];
 
-const MOBILE_NAV = [
-  NAV_ITEMS[0],
-  NAV_ITEMS[1],
-  NAV_ITEMS[2],
-  NAV_ITEMS[3],
+const SECONDARY_NAV = [
+  { label: "Sources", path: "/income-sources", icon: <AccountBalanceRoundedIcon /> },
+  { label: "Tags", path: "/income-tags", icon: <LocalOfferRoundedIcon /> },
 ];
 
-function Layout({ children }: LayoutProps) {
+function Layout({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const isDesktop = useMediaQuery(theme.breakpoints.up("md"));
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const currentTab = NAV_ITEMS.findIndex((item) =>
-    item.path === "/" ? location.pathname === "/" : location.pathname.startsWith(item.path)
+
+  const isActive = (path: string) =>
+    path === "/" ? location.pathname === "/" : location.pathname.startsWith(path);
+
+  const mobileIdx = PRIMARY_NAV.findIndex(item => isActive(item.path));
+
+  const navItemSx = (path: string) => ({
+    borderRadius: 2.5, py: 1, px: 1.5, mb: 0.25,
+    color: colors.gray600,
+    transition: "all 0.15s ease",
+    ...(isActive(path) ? {
+      bgcolor: colors.brandLight,
+      color: colors.brand,
+      "& .MuiListItemIcon-root": { color: colors.brand },
+      "&:hover": { bgcolor: colors.brandLight },
+    } : {
+      "&:hover": { bgcolor: colors.gray100 },
+    }),
+  });
+
+  const sidebarContent = (
+    <Box sx={{ display: "flex", flexDirection: "column", height: "100%", py: 2.5, px: 2 }}>
+      {/* Logo */}
+      <Box
+        sx={{ px: 1, mb: 3, display: "flex", alignItems: "center", gap: 1.5, cursor: "pointer" }}
+        onClick={() => { navigate("/"); setDrawerOpen(false); }}
+      >
+        <Avatar sx={{
+          width: 34, height: 34, background: tokens.gradients.hero,
+          fontSize: "0.75rem", fontWeight: 800, letterSpacing: "-0.02em",
+        }}>
+          NW
+        </Avatar>
+        <Typography sx={{ fontWeight: 800, fontSize: "1.05rem", letterSpacing: "-0.03em", color: colors.gray900 }}>
+          Net Worth
+        </Typography>
+      </Box>
+
+      {/* Primary nav */}
+      <Typography variant="overline" sx={{ px: 1.5, mb: 0.5, fontSize: "0.625rem", color: colors.gray400 }}>
+        Main
+      </Typography>
+      <List disablePadding>
+        {PRIMARY_NAV.map(item => (
+          <ListItem key={item.path} disablePadding>
+            <ListItemButton
+              onClick={() => { navigate(item.path); setDrawerOpen(false); }}
+              sx={navItemSx(item.path)}
+            >
+              <ListItemIcon sx={{ minWidth: 34, color: "inherit" }}>{item.icon}</ListItemIcon>
+              <ListItemText
+                primary={item.label}
+                primaryTypographyProps={{ fontSize: "0.85rem", fontWeight: isActive(item.path) ? 650 : 500 }}
+              />
+            </ListItemButton>
+          </ListItem>
+        ))}
+      </List>
+
+      <Divider sx={{ my: 2, mx: 1 }} />
+
+      <Typography variant="overline" sx={{ px: 1.5, mb: 0.5, fontSize: "0.625rem", color: colors.gray400 }}>
+        Settings
+      </Typography>
+      <List disablePadding>
+        {SECONDARY_NAV.map(item => (
+          <ListItem key={item.path} disablePadding>
+            <ListItemButton
+              onClick={() => { navigate(item.path); setDrawerOpen(false); }}
+              sx={navItemSx(item.path)}
+            >
+              <ListItemIcon sx={{ minWidth: 34, color: "inherit" }}>{item.icon}</ListItemIcon>
+              <ListItemText
+                primary={item.label}
+                primaryTypographyProps={{ fontSize: "0.85rem", fontWeight: isActive(item.path) ? 650 : 500 }}
+              />
+            </ListItemButton>
+          </ListItem>
+        ))}
+      </List>
+    </Box>
   );
-  const activeIdx = currentTab === -1 ? false : currentTab;
-  const mobileIdx = MOBILE_NAV.findIndex((item) =>
-    item.path === "/" ? location.pathname === "/" : location.pathname.startsWith(item.path)
-  );
-  const activeMobileIdx = mobileIdx === -1 ? false : mobileIdx;
 
   return (
-    <Box sx={{ minHeight: "100vh", bgcolor: "background.default", pb: isMobile ? "80px" : 0 }}>
-      {/* Top bar */}
-      <AppBar position="sticky">
-        <Toolbar sx={{ minHeight: { xs: 56, sm: 64 }, px: { xs: 2, sm: 3 } }}>
-          {isMobile && (
-            <IconButton edge="start" color="inherit" onClick={() => setDrawerOpen(true)} sx={{ mr: 1 }}>
-              <MenuIcon />
-            </IconButton>
-          )}
-          <Typography variant="h6" sx={{ flexGrow: 1 }}>
-            Net Worth
-          </Typography>
-        </Toolbar>
-
-        {/* Desktop tabs — hidden on mobile */}
-        {!isMobile && (
-          <Tabs
-            value={activeIdx}
-            onChange={(_e, idx) => navigate(NAV_ITEMS[idx].path)}
-            variant="scrollable"
-            scrollButtons="auto"
-            indicatorColor="primary"
-            textColor="primary"
-            sx={{ minHeight: 44, px: 2, "& .MuiTab-root": { minHeight: 44 } }}
-          >
-            {NAV_ITEMS.map((item) => (
-              <Tab key={item.path} label={item.label} icon={item.icon} iconPosition="start"
-                sx={{ "& .MuiSvgIcon-root": { fontSize: 18, mr: 0.5 } }} />
-            ))}
-          </Tabs>
-        )}
-      </AppBar>
-
-      {/* Mobile drawer for all nav items */}
-      <Drawer anchor="left" open={drawerOpen} onClose={() => setDrawerOpen(false)}>
-        <Box sx={{ width: 260, pt: 2 }}>
-          <Typography variant="h6" sx={{ px: 2, pb: 1 }}>Net Worth</Typography>
-          <Divider />
-          <List>
-            {NAV_ITEMS.map((item) => (
-              <ListItem key={item.path} disablePadding>
-                <ListItemButton
-                  selected={item.path === location.pathname}
-                  onClick={() => { navigate(item.path); setDrawerOpen(false); }}
-                >
-                  <ListItemIcon sx={{ minWidth: 40 }}>{item.icon}</ListItemIcon>
-                  <ListItemText primary={item.label} />
-                </ListItemButton>
-              </ListItem>
-            ))}
-          </List>
+    <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "background.default" }}>
+      {/* Desktop sidebar */}
+      {isDesktop && (
+        <Box sx={{
+          width: SIDEBAR_W, flexShrink: 0,
+          borderRight: `1px solid ${colors.gray200}`,
+          bgcolor: colors.white,
+          position: "fixed", top: 0, left: 0, bottom: 0,
+          overflowY: "auto", zIndex: 1200,
+        }}>
+          {sidebarContent}
         </Box>
+      )}
+
+      {/* Mobile drawer */}
+      <Drawer open={drawerOpen} onClose={() => setDrawerOpen(false)}>
+        <Box sx={{ width: SIDEBAR_W }}>{sidebarContent}</Box>
       </Drawer>
 
       {/* Main content */}
-      <Container
-        maxWidth="lg"
-        component="main"
-        sx={{ py: { xs: 2, sm: 3 }, px: { xs: 2, sm: 3 } }}
-      >
-        {children}
-      </Container>
+      <Box component="main" sx={{
+        flex: 1,
+        ml: isDesktop ? `${SIDEBAR_W}px` : 0,
+        pb: !isDesktop ? "80px" : 0,
+        minHeight: "100vh",
+      }}>
+        {/* Mobile top bar */}
+        {!isDesktop && (
+          <Box sx={{
+            display: "flex", alignItems: "center",
+            px: 2, py: 1.5,
+            borderBottom: `1px solid ${colors.gray200}`,
+            bgcolor: colors.white,
+            position: "sticky", top: 0, zIndex: 1100,
+            backdropFilter: "blur(12px)",
+          }}>
+            <IconButton onClick={() => setDrawerOpen(true)} sx={{ mr: 1 }}>
+              <MenuIcon />
+            </IconButton>
+            <Avatar sx={{
+              width: 28, height: 28, background: tokens.gradients.hero,
+              fontSize: "0.6rem", fontWeight: 800, mr: 1,
+            }}>NW</Avatar>
+            <Typography sx={{ fontWeight: 700, fontSize: "1rem", letterSpacing: "-0.02em" }}>
+              Net Worth
+            </Typography>
+          </Box>
+        )}
 
-      {/* Mobile bottom navigation — shows 4 key items */}
-      {isMobile && (
+        <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 960, mx: "auto" }}>
+          {children}
+        </Box>
+      </Box>
+
+      {/* Mobile bottom navigation */}
+      {!isDesktop && (
         <BottomNavigation
-          value={activeMobileIdx}
-          onChange={(_e, idx) => navigate(MOBILE_NAV[idx].path)}
+          value={mobileIdx === -1 ? false : mobileIdx}
+          onChange={(_, idx) => navigate(PRIMARY_NAV[idx].path)}
           showLabels
           sx={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 1200 }}
         >
-          {MOBILE_NAV.map((item) => (
+          {PRIMARY_NAV.map(item => (
             <BottomNavigationAction key={item.path} label={item.label} icon={item.icon} />
           ))}
         </BottomNavigation>

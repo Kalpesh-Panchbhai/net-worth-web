@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Box, Paper, Typography, TextField, Button, MenuItem,
   Alert, Dialog, DialogTitle, DialogContent, DialogActions,
-  FormControlLabel, Switch, Stack, IconButton, Chip, Fab,
+  FormControlLabel, Switch, Stack, IconButton, Fab, Avatar,
   useMediaQuery, useTheme,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
@@ -11,19 +11,33 @@ import AddIcon from "@mui/icons-material/Add";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import AccountBalanceWalletOutlinedIcon from "@mui/icons-material/AccountBalanceWalletOutlined";
-import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import ShowChartRoundedIcon from "@mui/icons-material/ShowChartRounded";
+import SavingsRoundedIcon from "@mui/icons-material/SavingsRounded";
+import CreditCardRoundedIcon from "@mui/icons-material/CreditCardRounded";
+import AccountBalanceRoundedIcon from "@mui/icons-material/AccountBalanceRounded";
+import MoreHorizRoundedIcon from "@mui/icons-material/MoreHorizRounded";
 import { useUser } from "../context/UserContext";
 import {
   getAccounts, createAccount, updateAccount, deleteAccount, invalidateCache,
 } from "../api/client";
-import { PageHeader, EmptyState, ErrorState, ListSkeleton, MetricCard, MetricSkeleton, TintedChip, FadeIn } from "../components/shared";
+import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import TrendingDownIcon from "@mui/icons-material/TrendingDown";
+import AccountBalanceWalletRoundedIcon from "@mui/icons-material/AccountBalanceWalletRounded";
+import { EmptyState, ErrorState, ListSkeleton, TintedChip, FadeIn } from "../components/shared";
 import { tokens } from "../theme";
 import type { AccountSummary, AccountType } from "../api/types";
 
-const { colors } = tokens;
+const { colors, typeColors, shadow } = tokens;
 const ACCOUNT_TYPES: AccountType[] = ["BROKER", "SAVINGS", "CREDIT_CARD", "LOAN", "OTHER"];
 const TYPE_LABELS: Record<AccountType, string> = {
   BROKER: "Broker", SAVINGS: "Savings", CREDIT_CARD: "Credit Card", LOAN: "Loan", OTHER: "Other",
+};
+const TYPE_ICONS: Record<string, React.ReactNode> = {
+  BROKER: <ShowChartRoundedIcon sx={{ fontSize: 20 }} />,
+  SAVINGS: <SavingsRoundedIcon sx={{ fontSize: 20 }} />,
+  CREDIT_CARD: <CreditCardRoundedIcon sx={{ fontSize: 20 }} />,
+  LOAN: <AccountBalanceRoundedIcon sx={{ fontSize: 20 }} />,
+  OTHER: <MoreHorizRoundedIcon sx={{ fontSize: 20 }} />,
 };
 
 function fmt(v: number, currency = "INR"): string {
@@ -39,7 +53,6 @@ function Accounts() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Create dialog
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [newType, setNewType] = useState<AccountType>("BROKER");
@@ -48,12 +61,9 @@ function Accounts() {
   const [newDailyData, setNewDailyData] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Edit dialog
   const [editAccount, setEditAccount] = useState<AccountSummary | null>(null);
   const [editName, setEditName] = useState("");
   const [editActive, setEditActive] = useState(true);
-
-  // Delete confirm
   const [deleteConfirm, setDeleteConfirm] = useState<AccountSummary | null>(null);
 
   const load = useCallback(async () => {
@@ -67,7 +77,8 @@ function Accounts() {
 
   const totalValue = accounts.reduce((s, a) => s + a.currentDayValue, 0);
   const totalInvested = accounts.reduce((s, a) => s + a.invested, 0);
-  const activeCount = accounts.filter(a => a.isActive).length;
+  const totalGain = totalValue - totalInvested;
+  const totalGainPct = totalInvested > 0 ? (totalGain / totalInvested) * 100 : 0;
 
   const handleCreate = async () => {
     if (!userId || !newName.trim()) return;
@@ -85,8 +96,7 @@ function Accounts() {
     try {
       setSaving(true);
       await updateAccount(editAccount.id, { name: editName.trim() || undefined, isActive: editActive });
-      setEditAccount(null);
-      invalidateCache("accounts"); await load();
+      setEditAccount(null); invalidateCache("accounts"); await load();
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to update"); }
     finally { setSaving(false); }
   };
@@ -102,25 +112,49 @@ function Accounts() {
   if (error && accounts.length === 0 && !loading) return <ErrorState message={error} onRetry={load} />;
 
   return (
-    <Stack spacing={{ xs: 2, sm: 3 }}>
-      <PageHeader
-        title="Accounts"
-        action={<Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>Add Account</Button>}
-      />
-
+    <Stack spacing={{ xs: 2.5, sm: 3 }}>
       {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
 
-      {/* Summary metrics */}
-      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr 1fr", sm: "1fr 1fr 1fr" }, gap: 2 }}>
-        {loading ? <><MetricSkeleton /><MetricSkeleton /><MetricSkeleton /></> : (
-          <FadeIn>
-            <MetricCard label="Total Value" value={fmt(totalValue)} />
-            <MetricCard label="Invested" value={fmt(totalInvested)} />
-            <MetricCard label="Active" value={`${activeCount} / ${accounts.length}`} />
-          </FadeIn>
-        )}
-      </Box>
+      {/* ── Hero Card ── */}
+      {!loading && (
+        <FadeIn>
+          <Paper sx={{
+            p: { xs: 3, sm: 4 }, borderRadius: 4, border: "none",
+            background: "linear-gradient(135deg, #2563EB 0%, #7C3AED 100%)",
+            color: colors.white, position: "relative", overflow: "hidden",
+            boxShadow: `0 8px 32px ${alpha(colors.brand, 0.3)}`,
+          }}>
+            <Box sx={{ position: "absolute", top: -50, right: -50, width: 180, height: 180, borderRadius: "50%", bgcolor: alpha(colors.white, 0.06) }} />
+            <Box sx={{ position: "absolute", bottom: -30, right: 80, width: 100, height: 100, borderRadius: "50%", bgcolor: alpha(colors.white, 0.04) }} />
 
+            <Box sx={{ position: "relative", zIndex: 1 }}>
+              <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1 }}>
+                <Avatar sx={{ width: 36, height: 36, bgcolor: alpha(colors.white, 0.2), color: colors.white, borderRadius: 2 }}>
+                  <AccountBalanceWalletRoundedIcon sx={{ fontSize: 20 }} />
+                </Avatar>
+                <Typography sx={{ fontSize: "0.7rem", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.75 }}>
+                  Accounts · {accounts.length} total
+                </Typography>
+              </Stack>
+              <Typography sx={{ fontSize: { xs: "1.75rem", sm: "2.25rem" }, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.1 }}>
+                {fmt(totalValue)}
+              </Typography>
+            </Box>
+
+            <Stack direction="row" spacing={1.5} sx={{ mt: 2, position: "relative", zIndex: 1 }} flexWrap="wrap" useFlexGap>
+              <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, px: 1.5, py: 0.5, borderRadius: 2, bgcolor: alpha(colors.white, 0.12), fontSize: "0.78rem", fontWeight: 600 }}>
+                Invested: {fmt(totalInvested)}
+              </Box>
+              <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, px: 1.5, py: 0.5, borderRadius: 2, bgcolor: alpha(colors.white, totalGain >= 0 ? 0.15 : 0.12), fontSize: "0.78rem", fontWeight: 600 }}>
+                {totalGain >= 0 ? <TrendingUpIcon sx={{ fontSize: 14 }} /> : <TrendingDownIcon sx={{ fontSize: 14 }} />}
+                {totalGain >= 0 ? "+" : ""}{fmt(totalGain)} ({totalGainPct >= 0 ? "+" : ""}{totalGainPct.toFixed(1)}%)
+              </Box>
+            </Stack>
+          </Paper>
+        </FadeIn>
+      )}
+
+      {/* Account cards grid */}
       {loading ? <ListSkeleton rows={4} /> : accounts.length === 0 ? (
         <Paper>
           <EmptyState
@@ -132,50 +166,61 @@ function Accounts() {
         </Paper>
       ) : (
         <FadeIn delay={100}>
-          <Paper variant="outlined" sx={{ borderRadius: 3, overflow: "hidden" }}>
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2 }}>
             {accounts.map((a, i) => {
               const gain = a.currentDayValue - a.invested;
               const gainPct = a.invested > 0 ? (gain / a.invested) * 100 : 0;
+              const tc = typeColors[a.type] || colors.gray500;
               return (
-                <Box key={a.id} sx={{
-                  display: "flex", alignItems: "center", gap: 2,
-                  px: { xs: 2, sm: 3 }, py: 1.5,
-                  borderTop: i > 0 ? `1px solid ${theme.palette.divider}` : "none",
-                  cursor: "pointer",
-                  transition: "background .15s", "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.04) },
-                  flexWrap: "wrap",
-                }}
-                  onClick={() => navigate(`/accounts/${a.id}`)}
-                >
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography variant="subtitle2" noWrap>{a.name}</Typography>
-                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
-                      <Chip label={TYPE_LABELS[a.type as AccountType] || a.type} size="small" variant="outlined" />
-                      <Chip label={a.currency} size="small" variant="outlined" />
-                      {!a.isActive && <Chip label="Inactive" size="small" color="warning" variant="outlined" />}
-                    </Stack>
-                  </Box>
-                  <Box sx={{ textAlign: "right", minWidth: 120 }}>
-                    <Typography variant="subtitle2">{fmt(a.currentDayValue, a.currency)}</Typography>
+                <FadeIn key={a.id} delay={i * 40}>
+                  <Paper
+                    onClick={() => navigate(`/accounts/${a.id}`)}
+                    sx={{
+                      p: 2.5, cursor: "pointer",
+                      borderRadius: 3,
+                      borderLeft: `4px solid ${tc}`,
+                      transition: "all 0.2s ease",
+                      "&:hover": { boxShadow: shadow.hover, transform: "translateY(-2px)" },
+                      opacity: a.isActive ? 1 : 0.6,
+                      position: "relative",
+                    }}
+                  >
+                    {/* Header */}
+                    <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5, mb: 2 }}>
+                      <Avatar sx={{ width: 36, height: 36, bgcolor: alpha(tc, 0.1), color: tc }}>
+                        {TYPE_ICONS[a.type] || TYPE_ICONS.OTHER}
+                      </Avatar>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography sx={{ fontWeight: 650, fontSize: "0.9rem", lineHeight: 1.3 }} noWrap>{a.name}</Typography>
+                        <Typography variant="caption" sx={{ color: colors.gray400 }}>
+                          {TYPE_LABELS[a.type as AccountType] || a.type} · {a.currency}
+                          {!a.isActive && " · Inactive"}
+                        </Typography>
+                      </Box>
+                      <Stack direction="row" spacing={0} onClick={e => e.stopPropagation()}>
+                        <IconButton size="small" onClick={() => openEdit(a)} sx={{ color: colors.gray400 }}>
+                          <EditOutlinedIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                        <IconButton size="small" onClick={() => setDeleteConfirm(a)} sx={{ color: colors.gray400 }}>
+                          <DeleteOutlineIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Stack>
+                    </Box>
+
+                    {/* Value */}
+                    <Typography sx={{ fontSize: "1.35rem", fontWeight: 750, letterSpacing: "-0.02em", mb: 0.5 }}>
+                      {fmt(a.currentDayValue, a.currency)}
+                    </Typography>
                     <TintedChip
-                      label={`${gain >= 0 ? "+" : ""}${gainPct.toFixed(1)}%`}
+                      label={`${gain >= 0 ? "+" : ""}${gainPct.toFixed(1)}% · ${gain >= 0 ? "+" : ""}${fmt(gain, a.currency)}`}
                       color={gain >= 0 ? colors.success : colors.error}
                       size="small"
                     />
-                  </Box>
-                  <Stack direction="row" spacing={0.5} onClick={e => e.stopPropagation()}>
-                    <IconButton size="small" onClick={() => openEdit(a)} aria-label={`Edit ${a.name}`}>
-                      <EditOutlinedIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton size="small" onClick={() => setDeleteConfirm(a)} aria-label={`Delete ${a.name}`}>
-                      <DeleteOutlineIcon fontSize="small" />
-                    </IconButton>
-                  </Stack>
-                  <ChevronRightIcon fontSize="small" color="action" />
-                </Box>
+                  </Paper>
+                </FadeIn>
               );
             })}
-          </Paper>
+          </Box>
         </FadeIn>
       )}
 
@@ -226,11 +271,20 @@ function Accounts() {
         </DialogActions>
       </Dialog>
 
-      {isMobile && (
-        <Fab color="primary" onClick={() => setCreateOpen(true)} sx={{ position: "fixed", bottom: 80, right: 20 }} aria-label="Add account">
-          <AddIcon />
-        </Fab>
-      )}
+      <Fab onClick={() => setCreateOpen(true)}
+        variant={isMobile ? "circular" : "extended"}
+        sx={{
+          position: "fixed",
+          bottom: { xs: 80, sm: 24 },
+          right: { xs: 16, sm: 24 },
+          background: "linear-gradient(135deg, #2563EB 0%, #7C3AED 100%)",
+          color: colors.white,
+          boxShadow: `0 4px 20px ${alpha(colors.brand, 0.4)}`,
+          "&:hover": { background: "linear-gradient(135deg, #1D4ED8 0%, #6D28D9 100%)", boxShadow: `0 6px 28px ${alpha(colors.brand, 0.5)}` },
+        }}>
+        <AddIcon sx={isMobile ? {} : { mr: 0.5 }} />
+        {!isMobile && "Add Account"}
+      </Fab>
     </Stack>
   );
 }
