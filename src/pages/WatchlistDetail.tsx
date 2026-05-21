@@ -244,7 +244,7 @@ function WatchlistDetail() {
           variant={isMobile ? "circular" : "extended"}
           sx={{
             position: "fixed",
-            bottom: { xs: 80, sm: 24 },
+            bottom: 24,
             right: { xs: 16, sm: 24 },
             background: heroGradient,
             color: colors.white,

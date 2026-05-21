@@ -2,7 +2,6 @@ import { type ReactNode, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Box, Typography, Avatar,
-  BottomNavigation, BottomNavigationAction,
   Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText,
   IconButton, Divider,
   useMediaQuery, useTheme,
@@ -40,8 +39,6 @@ function Layout({ children }: { children: ReactNode }) {
 
   const isActive = (path: string) =>
     path === "/" ? location.pathname === "/" : location.pathname.startsWith(path);
-
-  const mobileIdx = PRIMARY_NAV.findIndex(item => isActive(item.path));
 
   const navItemSx = (path: string) => ({
     borderRadius: 2.5, py: 1, px: 1.5, mb: 0.25,
@@ -144,7 +141,7 @@ function Layout({ children }: { children: ReactNode }) {
       <Box component="main" sx={{
         flex: 1,
         ml: isDesktop ? `${SIDEBAR_W}px` : 0,
-        pb: !isDesktop ? "80px" : 0,
+        pb: 0,
         minHeight: "100vh",
       }}>
         {/* Mobile top bar */}
@@ -175,19 +172,6 @@ function Layout({ children }: { children: ReactNode }) {
         </Box>
       </Box>
 
-      {/* Mobile bottom navigation */}
-      {!isDesktop && (
-        <BottomNavigation
-          value={mobileIdx === -1 ? false : mobileIdx}
-          onChange={(_, idx) => navigate(PRIMARY_NAV[idx].path)}
-          showLabels
-          sx={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 1200 }}
-        >
-          {PRIMARY_NAV.map(item => (
-            <BottomNavigationAction key={item.path} label={item.label} icon={item.icon} />
-          ))}
-        </BottomNavigation>
-      )}
     </Box>
   );
 }

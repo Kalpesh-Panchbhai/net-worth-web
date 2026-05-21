@@ -197,7 +197,7 @@ function Watchlists() {
         variant={isMobile ? "circular" : "extended"}
         sx={{
           position: "fixed",
-          bottom: { xs: 80, sm: 24 },
+          bottom: 24,
           right: { xs: 16, sm: 24 },
           background: "linear-gradient(135deg, #7C3AED 0%, #A855F7 100%)",
           color: colors.white,

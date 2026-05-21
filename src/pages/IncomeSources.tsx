@@ -144,7 +144,7 @@ function IncomeSources() {
         variant={isMobile ? "circular" : "extended"}
         sx={{
           position: "fixed",
-          bottom: { xs: 80, sm: 24 },
+          bottom: 24,
           right: { xs: 16, sm: 24 },
           background: "linear-gradient(135deg, #2563EB 0%, #7C3AED 100%)",
           color: colors.white,
