@@ -11,7 +11,7 @@ import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
 import AddIcon from "@mui/icons-material/Add";
 import AccountBalanceOutlinedIcon from "@mui/icons-material/AccountBalanceOutlined";
 import { useUser } from "../context/UserContext";
-import { getIncomeSources, createIncomeSource, setDefaultIncomeSource } from "../api/client";
+import { getIncomeSources, createIncomeSource, setDefaultIncomeSource, invalidateCache } from "../api/client";
 import { PageHeader, EmptyState, ErrorState, ListSkeleton, TintedChip, FadeIn } from "../components/shared";
 import { tokens } from "../theme";
 import type { IncomeSource } from "../api/types";
@@ -45,13 +45,13 @@ function IncomeSources() {
       setSaving(true);
       await createIncomeSource(userId, newName.trim(), newDefault);
       setDialogOpen(false); setNewName(""); setNewDefault(false);
-      await load();
+      invalidateCache("income-sources"); await load();
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to create"); }
     finally { setSaving(false); }
   };
 
   const handleSetDefault = async (id: number) => {
-    try { await setDefaultIncomeSource(id); await load(); }
+    try { await setDefaultIncomeSource(id); invalidateCache("income-sources"); await load(); }
     catch (err) { setError(err instanceof Error ? err.message : "Failed to set default"); }
   };
 

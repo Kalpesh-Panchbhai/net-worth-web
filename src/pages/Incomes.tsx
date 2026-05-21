@@ -13,7 +13,7 @@ import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
 import { useUser } from "../context/UserContext";
 import {
   getIncomes, getIncomeSources, getIncomeTags,
-  createIncome, updateIncome, deleteIncome,
+  createIncome, updateIncome, deleteIncome, invalidateCache,
 } from "../api/client";
 import { MetricCard, MetricSkeleton, ListSkeleton, EmptyState, ErrorState, TintedChip, FadeIn } from "../components/shared";
 import { tokens } from "../theme";
@@ -121,14 +121,14 @@ function Incomes() {
       };
       if (editIncome) await updateIncome(editIncome.id, payload);
       else await createIncome({ userId, ...payload });
-      setDialogOpen(false); await load();
+      setDialogOpen(false); invalidateCache("incomes"); await load();
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to save"); }
     finally { setSaving(false); }
   };
 
   const handleDelete = async () => {
     if (!deleteConfirm) return;
-    try { await deleteIncome(deleteConfirm.id); setDeleteConfirm(null); await load(); }
+    try { await deleteIncome(deleteConfirm.id); setDeleteConfirm(null); invalidateCache("incomes"); await load(); }
     catch (err) { setError(err instanceof Error ? err.message : "Failed to delete"); }
   };
 

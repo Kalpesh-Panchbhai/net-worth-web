@@ -11,7 +11,7 @@ import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
 import AddIcon from "@mui/icons-material/Add";
 import LocalOfferOutlinedIcon from "@mui/icons-material/LocalOfferOutlined";
 import { useUser } from "../context/UserContext";
-import { getIncomeTags, createIncomeTag, setDefaultIncomeTag } from "../api/client";
+import { getIncomeTags, createIncomeTag, setDefaultIncomeTag, invalidateCache } from "../api/client";
 import { PageHeader, EmptyState, ErrorState, ListSkeleton, TintedChip, FadeIn } from "../components/shared";
 import { tokens } from "../theme";
 import type { IncomeTag } from "../api/types";
@@ -45,13 +45,13 @@ function IncomeTags() {
       setSaving(true);
       await createIncomeTag(userId, newName.trim(), newDefault);
       setDialogOpen(false); setNewName(""); setNewDefault(false);
-      await load();
+      invalidateCache("income-tags"); await load();
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to create"); }
     finally { setSaving(false); }
   };
 
   const handleSetDefault = async (id: number) => {
-    try { await setDefaultIncomeTag(id); await load(); }
+    try { await setDefaultIncomeTag(id); invalidateCache("income-tags"); await load(); }
     catch (err) { setError(err instanceof Error ? err.message : "Failed to set default"); }
   };
 
