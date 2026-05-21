@@ -4,18 +4,21 @@ import { auth, googleProvider } from "../firebase";
 import { Box, Typography, Button, Paper, Avatar, Alert, CircularProgress } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { tokens } from "../theme";
+import { useToast } from "../context/ToastContext";
 
 const { colors, gradients } = tokens;
 
 function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   const handleGoogleSignIn = async () => {
     try {
       setLoading(true);
       setError(null);
-      await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(auth, googleProvider);
+      showToast(`Welcome, ${result.user.displayName || "there"}! 👋`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-in failed. Please try again.");
     } finally {

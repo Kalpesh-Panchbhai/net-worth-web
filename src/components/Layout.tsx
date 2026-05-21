@@ -17,6 +17,7 @@ import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import PersonRemoveRoundedIcon from "@mui/icons-material/PersonRemoveRounded";
 import { useUser } from "../context/UserContext";
 import { deleteUser, invalidateCache } from "../api/client";
+import { useToast } from "../context/ToastContext";
 import { tokens } from "../theme";
 
 const SIDEBAR_W = 252;
@@ -41,6 +42,7 @@ function Layout({ children }: { children: ReactNode }) {
   const isDesktop = useMediaQuery(theme.breakpoints.up("md"));
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { firebaseUser, userId, logout } = useUser();
+  const { showToast } = useToast();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -52,8 +54,10 @@ function Layout({ children }: { children: ReactNode }) {
       invalidateCache();
       setDeleteDialogOpen(false);
       setDrawerOpen(false);
+      showToast("Account deleted. All your data has been removed.", "info");
       await logout();
     } catch {
+      showToast("Failed to delete account. Please try again.", "error");
       setDeleting(false);
     }
   };
@@ -160,7 +164,7 @@ function Layout({ children }: { children: ReactNode }) {
             </Box>
           </Box>
           <ListItemButton
-            onClick={async () => { setDrawerOpen(false); await logout(); }}
+            onClick={async () => { setDrawerOpen(false); showToast("Signed out successfully", "info"); await logout(); }}
             sx={{ borderRadius: 2.5, py: 0.75, px: 1.5, color: colors.gray500, "&:hover": { bgcolor: colors.errorBg, color: colors.error } }}
           >
             <ListItemIcon sx={{ minWidth: 34, color: "inherit" }}><LogoutRoundedIcon sx={{ fontSize: 20 }} /></ListItemIcon>
