@@ -120,9 +120,11 @@ function WatchlistDetail() {
           <PageHeader
             title={watchlist.name}
             action={
-              <Button variant="contained" startIcon={<LinkIcon />} onClick={openLinkDialog}>
-                Link Accounts
-              </Button>
+              watchlist.name !== "All" ? (
+                <Button variant="contained" startIcon={<LinkIcon />} onClick={openLinkDialog}>
+                  Link Accounts
+                </Button>
+              ) : undefined
             }
           />
 
