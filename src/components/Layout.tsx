@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   Box, Typography, Avatar,
   Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText,
-  IconButton, Divider,
+  IconButton, Divider, Dialog, DialogTitle, DialogContent, DialogActions, Button,
   useMediaQuery, useTheme,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
@@ -14,7 +14,9 @@ import ReceiptLongRoundedIcon from "@mui/icons-material/ReceiptLongRounded";
 import AccountBalanceRoundedIcon from "@mui/icons-material/AccountBalanceRounded";
 import LocalOfferRoundedIcon from "@mui/icons-material/LocalOfferRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
+import PersonRemoveRoundedIcon from "@mui/icons-material/PersonRemoveRounded";
 import { useUser } from "../context/UserContext";
+import { deleteUser, invalidateCache } from "../api/client";
 import { tokens } from "../theme";
 
 const SIDEBAR_W = 252;
@@ -38,7 +40,23 @@ function Layout({ children }: { children: ReactNode }) {
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up("md"));
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const { firebaseUser, logout } = useUser();
+  const { firebaseUser, userId, logout } = useUser();
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteAccount = async () => {
+    if (!userId) return;
+    try {
+      setDeleting(true);
+      await deleteUser(userId);
+      invalidateCache();
+      setDeleteDialogOpen(false);
+      setDrawerOpen(false);
+      await logout();
+    } catch {
+      setDeleting(false);
+    }
+  };
 
   const isActive = (path: string) =>
     path === "/" ? location.pathname === "/" : location.pathname.startsWith(path);
@@ -148,6 +166,13 @@ function Layout({ children }: { children: ReactNode }) {
             <ListItemIcon sx={{ minWidth: 34, color: "inherit" }}><LogoutRoundedIcon sx={{ fontSize: 20 }} /></ListItemIcon>
             <ListItemText primary="Sign out" primaryTypographyProps={{ fontSize: "0.85rem", fontWeight: 500 }} />
           </ListItemButton>
+          <ListItemButton
+            onClick={() => setDeleteDialogOpen(true)}
+            sx={{ borderRadius: 2.5, py: 0.75, px: 1.5, mt: 0.25, color: colors.gray400, "&:hover": { bgcolor: colors.errorBg, color: colors.error } }}
+          >
+            <ListItemIcon sx={{ minWidth: 34, color: "inherit" }}><PersonRemoveRoundedIcon sx={{ fontSize: 20 }} /></ListItemIcon>
+            <ListItemText primary="Delete account" primaryTypographyProps={{ fontSize: "0.8rem", fontWeight: 500 }} />
+          </ListItemButton>
         </Box>
       )}
     </Box>
@@ -208,6 +233,21 @@ function Layout({ children }: { children: ReactNode }) {
         </Box>
       </Box>
 
+      {/* Delete Account Confirmation */}
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+        <DialogTitle sx={{ fontWeight: 700 }}>Delete your account?</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ color: colors.gray600 }}>
+            This will permanently delete all your data — accounts, holdings, transactions, watchlists, and incomes. This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={handleDeleteAccount} disabled={deleting}>
+            {deleting ? "Deleting…" : "Delete everything"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
