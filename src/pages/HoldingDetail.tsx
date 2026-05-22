@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   Box, Paper, Typography, TextField, Button, MenuItem, Avatar,
-  Alert, Dialog, DialogTitle, DialogContent, DialogActions,
+  Dialog, DialogTitle, DialogContent, DialogActions,
   Stack, IconButton, Fab, Breadcrumbs, Link as MuiLink,
   useMediaQuery, useTheme,
 } from "@mui/material";
@@ -13,19 +13,25 @@ import ReceiptOutlinedIcon from "@mui/icons-material/ReceiptOutlined";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import TrendingDownIcon from "@mui/icons-material/TrendingDown";
+import PauseCircleOutlineIcon from "@mui/icons-material/PauseCircleOutline";
 import { useUser } from "../context/UserContext";
 import {
   getAccounts, getHoldings, getTransactions, createTransaction, deleteTransaction,
   invalidateCache,
 } from "../api/client";
-import { EmptyState, ErrorState, ListSkeleton, TintedChip, FadeIn } from "../components/shared";
-import { tokens } from "../theme";
+import { EmptyState, ErrorState, ListSkeleton, FadeIn } from "../components/shared";
+import EntityChart from "../components/EntityChart";
+import { useTokens } from "../context/ColorModeContext";
+import { useToast } from "../context/ToastContext";
 import type { AccountSummary, HoldingSummary, Transaction } from "../api/types";
 
-const { colors, shadow } = tokens;
-
 function fmt(v: number, currency = "INR"): string {
-  return new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 0 }).format(v);
+  const hasDecimals = v % 1 !== 0;
+  return new Intl.NumberFormat("en-IN", { style: "currency", currency, minimumFractionDigits: hasDecimals ? 2 : 0, maximumFractionDigits: hasDecimals ? 2 : 0 }).format(v);
+}
+
+function fmtUnits(v: number): string {
+  return v.toFixed(3);
 }
 
 function parseTxnDate(dateStr: string) {
@@ -44,6 +50,8 @@ function HoldingDetail() {
   const { userId } = useUser();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const { colors, shadow, gradients } = useTokens();
+  const { showToast } = useToast();
 
   const [account, setAccount] = useState<AccountSummary | null>(null);
   const [holding, setHolding] = useState<HoldingSummary | null>(null);
@@ -58,8 +66,6 @@ function HoldingDetail() {
   const [txnInvested, setTxnInvested] = useState("");
   const [txnValue, setTxnValue] = useState("");
   const [txnMode, setTxnMode] = useState("add");
-  const [saving, setSaving] = useState(false);
-
   // Delete confirm
   const [deleteConfirm, setDeleteConfirm] = useState<Transaction | null>(null);
 
@@ -82,7 +88,7 @@ function HoldingDetail() {
   const loadTransactions = useCallback(async () => {
     if (!numHoldingId) return;
     try { setTxnLoading(true); setTransactions(await getTransactions({ holdingId: numHoldingId })); }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to load transactions"); }
+    catch (err) { showToast(err instanceof Error ? err.message : "Failed to load transactions", "error"); }
     finally { setTxnLoading(false); }
   }, [numHoldingId]);
 
@@ -91,27 +97,62 @@ function HoldingDetail() {
 
   const currency = account?.currency || "INR";
 
+  // Last transaction date (newest first) — used to restrict date input
+  const lastTxnDate = transactions.length > 0 ? transactions[0].txnDate : "";
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const minDate = lastTxnDate ? (() => { const d = new Date(lastTxnDate + "T00:00:00"); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })() : "";
+  const canAddTxn = !minDate || minDate <= today;
+
   const handleCreate = async () => {
     if (!txnDate || !txnInvested || !txnValue) return;
+    let invested = parseFloat(parseFloat(txnInvested).toFixed(2));
+    let value = parseFloat(parseFloat(txnValue).toFixed(3));
+    // Add mode: add to last transaction's cumulative values
+    if (txnMode === "add" && transactions.length > 0) {
+      const last = transactions[0];
+      invested = parseFloat((last.invested + invested).toFixed(2));
+      value = parseFloat((last.value + value).toFixed(3));
+    }
+    const date = txnDate;
+    const prev = transactions;
+    const tempId = -Date.now();
+    const optimistic: Transaction = { id: tempId, accountId: numAccountId, holdingId: numHoldingId, txnDate: date, invested, value };
+    setTransactions(t => [optimistic, ...t]);
+    setCreateOpen(false); setTxnDate(""); setTxnInvested(""); setTxnValue(""); setTxnMode("add");
     try {
-      setSaving(true);
-      await createTransaction({ accountId: numAccountId, holdingId: numHoldingId, txnDate, invested: parseFloat(txnInvested), value: parseFloat(txnValue), mode: txnMode });
-      setCreateOpen(false); setTxnDate(""); setTxnInvested(""); setTxnValue(""); setTxnMode("add");
-      invalidateCache("transactions"); await loadTransactions();
-    } catch (err) { setError(err instanceof Error ? err.message : "Failed to create"); }
-    finally { setSaving(false); }
+      const created = await createTransaction({ accountId: numAccountId, holdingId: numHoldingId, txnDate: date, invested, value, mode: "update" });
+      setTransactions(t => t.map(txn => txn.id === tempId ? created : txn));
+      invalidateCache("transactions");
+      showToast(`Transaction on ${date} created`);
+    } catch (err) {
+      setTransactions(prev);
+      showToast(err instanceof Error ? err.message : "Failed to create transaction", "error");
+    }
   };
 
   const handleDelete = async () => {
     if (!deleteConfirm) return;
-    try { await deleteTransaction(deleteConfirm.id); setDeleteConfirm(null); invalidateCache("transactions"); await loadTransactions(); }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to delete"); }
+    const { id, txnDate: date } = deleteConfirm;
+    const prev = transactions;
+    setTransactions(t => t.filter(txn => txn.id !== id));
+    setDeleteConfirm(null);
+    try {
+      await deleteTransaction(id);
+      invalidateCache("transactions");
+      showToast(`Transaction on ${date} deleted`);
+    } catch (err) {
+      setTransactions(prev);
+      showToast(err instanceof Error ? err.message : "Failed to delete transaction", "error");
+    }
   };
 
   if (error && !account && !loading) return <ErrorState message={error} onRetry={loadContext} />;
 
   const holdingGain = holding ? holding.currentDayValue - holding.invested : 0;
   const holdingGainPct = holding && holding.invested > 0 ? (holdingGain / holding.invested) * 100 : 0;
+  const holdingDayChg = holding ? holding.currentDayValue - holding.previousDayValue : 0;
+  const holdingDayPct = holding && holding.previousDayValue > 0 ? (holdingDayChg / holding.previousDayValue) * 100 : 0;
 
   return (
     <Stack spacing={{ xs: 2.5, sm: 3 }}>
@@ -132,25 +173,33 @@ function HoldingDetail() {
           <FadeIn>
             <Paper sx={{
               p: { xs: 3, sm: 4 }, borderRadius: 4, border: "none",
-              background: "linear-gradient(135deg, #2563EB 0%, #7C3AED 100%)",
-              color: colors.white, position: "relative", overflow: "hidden",
+              background: gradients.hero,
+              color: colors.pureWhite, position: "relative", overflow: "hidden",
               boxShadow: `0 8px 32px ${alpha(colors.brand, 0.3)}`,
+              ...(account && !account.isActive && { opacity: 0.75, filter: "saturate(0.5)" }),
             }}>
-              <Box sx={{ position: "absolute", top: -50, right: -50, width: 180, height: 180, borderRadius: "50%", bgcolor: alpha(colors.white, 0.06) }} />
-              <Box sx={{ position: "absolute", bottom: -30, right: 80, width: 100, height: 100, borderRadius: "50%", bgcolor: alpha(colors.white, 0.04) }} />
+              <Box sx={{ position: "absolute", top: -50, right: -50, width: 180, height: 180, borderRadius: "50%", bgcolor: alpha(colors.pureWhite, 0.06) }} />
+              <Box sx={{ position: "absolute", bottom: -30, right: 80, width: 100, height: 100, borderRadius: "50%", bgcolor: alpha(colors.pureWhite, 0.04) }} />
 
               <Box sx={{ position: "relative", zIndex: 1 }}>
                 <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1 }}>
-                  <Avatar sx={{ width: 36, height: 36, bgcolor: alpha(colors.white, 0.2), color: colors.white, fontSize: "0.65rem", fontWeight: 800, borderRadius: 2 }}>
+                  <Avatar sx={{ width: 36, height: 36, bgcolor: alpha(colors.pureWhite, 0.2), color: colors.pureWhite, fontSize: "0.65rem", fontWeight: 800, borderRadius: 2 }}>
                     {holding.symbol.slice(0, 3)}
                   </Avatar>
                   <Box>
                     <Typography sx={{ fontSize: { xs: "1rem", sm: "1.15rem" }, fontWeight: 700, opacity: 0.95, lineHeight: 1.2 }}>
                       {holding.name}
                     </Typography>
-                    <Typography sx={{ fontSize: "0.7rem", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", opacity: 0.65 }}>
-                      {holding.symbol} · {holding.units} units
-                    </Typography>
+                    <Stack direction="row" spacing={0.75} alignItems="center">
+                      <Typography sx={{ fontSize: "0.7rem", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", opacity: 0.65 }}>
+                        {holding.symbol} · {fmtUnits(holding.units)} units
+                      </Typography>
+                      {account && !account.isActive && (
+                        <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.4, px: 1, py: 0.2, borderRadius: 1.5, bgcolor: alpha(colors.pureWhite, 0.18), fontSize: "0.6rem", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                          <PauseCircleOutlineIcon sx={{ fontSize: 11 }} /> Inactive
+                        </Box>
+                      )}
+                    </Stack>
                   </Box>
                 </Stack>
                 <Typography sx={{ fontSize: { xs: "1.75rem", sm: "2.25rem" }, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.1, mt: 1 }}>
@@ -159,18 +208,25 @@ function HoldingDetail() {
               </Box>
 
               <Stack direction="row" spacing={1.5} sx={{ mt: 2, position: "relative", zIndex: 1 }} flexWrap="wrap">
-                <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, px: 1.5, py: 0.5, borderRadius: 2, bgcolor: alpha(colors.white, 0.12), fontSize: "0.78rem", fontWeight: 600 }}>
+                <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, px: 1.5, py: 0.5, borderRadius: 2, bgcolor: alpha(colors.pureWhite, 0.12), fontSize: "0.78rem", fontWeight: 600 }}>
                   Invested: {fmt(holding.invested, currency)}
                 </Box>
-                <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, px: 1.5, py: 0.5, borderRadius: 2, bgcolor: alpha(colors.white, holdingGain >= 0 ? 0.15 : 0.12), fontSize: "0.78rem", fontWeight: 600 }}>
+                <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, px: 1.5, py: 0.5, borderRadius: 2, bgcolor: alpha(colors.pureWhite, holdingGain >= 0 ? 0.15 : 0.12), fontSize: "0.78rem", fontWeight: 600 }}>
                   {holdingGain >= 0 ? <TrendingUpIcon sx={{ fontSize: 14 }} /> : <TrendingDownIcon sx={{ fontSize: 14 }} />}
                   {holdingGain >= 0 ? "+" : ""}{fmt(holdingGain, currency)} ({holdingGainPct >= 0 ? "+" : ""}{holdingGainPct.toFixed(1)}%)
+                </Box>
+                <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, px: 1.5, py: 0.5, borderRadius: 2, bgcolor: alpha(colors.pureWhite, 0.12), fontSize: "0.78rem", fontWeight: 600 }}>
+                  1D {holdingDayChg >= 0 ? "+" : ""}{fmt(holdingDayChg, currency)} ({holdingDayPct >= 0 ? "+" : ""}{holdingDayPct.toFixed(1)}%)
                 </Box>
               </Stack>
             </Paper>
           </FadeIn>
 
-          {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
+
+          {/* ── Chart ── */}
+          <FadeIn delay={80}>
+            <EntityChart entityType="holding" entityId={numHoldingId} accentColor={colors.brand} currency={currency} showInvested={true} />
+          </FadeIn>
 
           {/* ── Transaction timeline ── */}
           {txnLoading ? <ListSkeleton rows={4} /> : transactions.length === 0 ? (
@@ -179,7 +235,7 @@ function HoldingDetail() {
                 icon={<ReceiptOutlinedIcon />}
                 title="No transactions"
                 description="Add your first transaction for this holding."
-                action={{ label: "Add Transaction", onClick: () => setCreateOpen(true) }}
+                action={{ label: "Add Transaction", onClick: () => { if (!canAddTxn) { showToast("A transaction already exists for today. Try again tomorrow.", "warning"); return; } setCreateOpen(true); } }}
               />
             </Paper>
           ) : (
@@ -189,81 +245,87 @@ function HoldingDetail() {
               </Typography>
               <Stack spacing={0}>
                 {transactions.map((t, i) => {
-                  const gain = t.value - t.invested;
-                  const gainPct = t.invested > 0 ? (gain / t.invested) * 100 : 0;
-                  const dt = parseTxnDate(t.txnDate);
-                  return (
-                    <FadeIn key={t.id} delay={i * 30}>
-                      <Box sx={{ display: "flex", gap: { xs: 1.5, sm: 2.5 }, alignItems: "flex-start", position: "relative" }}>
-                        {/* Timeline connector */}
-                        {i < transactions.length - 1 && (
+                    const dt = parseTxnDate(t.txnDate);
+                    const prevValue = i < transactions.length - 1 ? transactions[i + 1].value : 0;
+                    const prevInvested = i < transactions.length - 1 ? transactions[i + 1].invested : 0;
+                    const delta = t.value - prevValue;
+                    const investedDelta = t.invested - prevInvested;
+                    const isAdd = delta >= 0;
+                    const unitColor = isAdd ? colors.success : colors.error;
+                    return (
+                      <FadeIn key={t.id} delay={i * 30}>
+                        <Box sx={{ display: "flex", gap: { xs: 1.5, sm: 2.5 }, alignItems: "flex-start", position: "relative" }}>
+                          {/* Timeline connector */}
+                          {i < transactions.length - 1 && (
+                            <Box sx={{
+                              position: "absolute", left: 23, top: 52,
+                              width: 2, bottom: -4,
+                              bgcolor: colors.gray200,
+                            }} />
+                          )}
+                          {/* Date bubble */}
                           <Box sx={{
-                            position: "absolute", left: 23, top: 52,
-                            width: 2, bottom: -4,
-                            bgcolor: colors.gray200,
-                          }} />
-                        )}
-                        {/* Date bubble */}
-                        <Box sx={{
-                          width: 48, minWidth: 48, pt: 1.5,
-                          display: "flex", flexDirection: "column", alignItems: "center",
-                          position: "relative", zIndex: 1,
-                        }}>
-                          <Box sx={{
-                            width: 48, height: 48, borderRadius: 3,
-                            bgcolor: gain >= 0 ? alpha(colors.success, 0.08) : alpha(colors.error, 0.08),
-                            display: "flex", flexDirection: "column",
-                            alignItems: "center", justifyContent: "center",
+                            width: 48, minWidth: 48, pt: 1.5,
+                            display: "flex", flexDirection: "column", alignItems: "center",
+                            position: "relative", zIndex: 1,
                           }}>
-                            <Typography sx={{ fontSize: "1rem", fontWeight: 750, lineHeight: 1, color: gain >= 0 ? colors.success : colors.error }}>
-                              {dt.day}
-                            </Typography>
-                            <Typography sx={{ fontSize: "0.6rem", fontWeight: 600, textTransform: "uppercase", color: colors.gray500, lineHeight: 1, mt: 0.25 }}>
-                              {dt.month}
-                            </Typography>
-                          </Box>
-                        </Box>
-                        {/* Transaction card */}
-                        <Paper sx={{
-                          flex: 1, p: 2, my: 0.75, borderRadius: 3,
-                          transition: "all 0.2s ease",
-                          "&:hover": { boxShadow: shadow.md },
-                        }}>
-                          <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-                            <Box sx={{ minWidth: 0, flex: 1 }}>
-                              <Typography sx={{ fontSize: "0.8rem", fontWeight: 600, color: colors.gray500 }}>
-                                {dt.full}
+                            <Box sx={{
+                              width: 48, height: 48, borderRadius: 3,
+                              bgcolor: alpha(unitColor, 0.08),
+                              display: "flex", flexDirection: "column",
+                              alignItems: "center", justifyContent: "center",
+                            }}>
+                              <Typography sx={{ fontSize: "1rem", fontWeight: 750, lineHeight: 1, color: unitColor }}>
+                                {dt.day}
                               </Typography>
-                              <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
-                                <Box>
-                                  <Typography variant="caption" sx={{ color: colors.gray400, display: "block", lineHeight: 1 }}>Invested</Typography>
-                                  <Typography sx={{ fontSize: "0.95rem", fontWeight: 650, mt: 0.25 }}>{fmt(t.invested, currency)}</Typography>
-                                </Box>
-                                <Box sx={{ color: colors.gray300, display: "flex", alignItems: "center" }}>→</Box>
-                                <Box>
-                                  <Typography variant="caption" sx={{ color: colors.gray400, display: "block", lineHeight: 1 }}>Units</Typography>
-                                  <Typography sx={{ fontSize: "0.95rem", fontWeight: 650, mt: 0.25 }}>{fmt(t.value, currency)}</Typography>
-                                </Box>
-                              </Stack>
+                              <Typography sx={{ fontSize: "0.6rem", fontWeight: 600, textTransform: "uppercase", color: colors.gray500, lineHeight: 1, mt: 0.25 }}>
+                                {dt.month}
+                              </Typography>
                             </Box>
-                            <Stack alignItems="flex-end" spacing={0.5}>
-                              <IconButton size="small" onClick={() => setDeleteConfirm(t)} sx={{ color: colors.gray400, mt: -0.5 }}>
+                          </Box>
+                          {/* Transaction card */}
+                          <Paper sx={{
+                            flex: 1, p: 2, my: 0.75, borderRadius: 3,
+                            transition: "all 0.2s ease",
+                            "&:hover": { boxShadow: shadow.md },
+                          }}>
+                            <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                              <Box sx={{ minWidth: 0, flex: 1 }}>
+                                <Stack direction="row" alignItems="center" spacing={1}>
+                                  <Typography sx={{ fontSize: "0.8rem", fontWeight: 600, color: colors.gray500 }}>
+                                    {dt.full}
+                                  </Typography>
+                                </Stack>
+
+                                {/* Invested: delta + total */}
+                                <Stack direction="row" spacing={1} alignItems="baseline" sx={{ mt: 0.75 }}>
+                                  <Typography sx={{ fontSize: "1.05rem", fontWeight: 700 }}>
+                                    {investedDelta >= 0 ? "+" : ""}{fmt(investedDelta, currency)}
+                                  </Typography>
+                                  <Typography sx={{ fontSize: "0.78rem", color: colors.gray400 }}>
+                                    → Total: {fmt(t.invested, currency)}
+                                  </Typography>
+                                </Stack>
+
+                                {/* Units: delta + total */}
+                                <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+                                  <Typography sx={{ fontSize: "0.8rem", fontWeight: 650, color: unitColor }}>
+                                    {isAdd ? "+" : ""}{fmtUnits(delta)} units
+                                  </Typography>
+                                  <Typography sx={{ fontSize: "0.7rem", color: colors.gray400 }}>→</Typography>
+                                  <Typography sx={{ fontSize: "0.8rem", fontWeight: 600, color: colors.gray500 }}>
+                                    Total: {fmtUnits(t.value)} units
+                                  </Typography>
+                                </Stack>
+                              </Box>
+                              {account?.isActive && (<IconButton size="small" onClick={() => setDeleteConfirm(t)} sx={{ color: colors.error, opacity: 0.6, "&:hover": { opacity: 1, bgcolor: alpha(colors.error, 0.08) }, mt: -0.5 }}>
                                 <DeleteOutlineIcon sx={{ fontSize: 16 }} />
-                              </IconButton>
-                              <TintedChip
-                                label={`${gain >= 0 ? "+" : ""}${fmt(gain, currency)}`}
-                                color={gain >= 0 ? colors.success : colors.error}
-                                size="small"
-                              />
-                              <Typography variant="caption" sx={{ fontWeight: 600, color: gain >= 0 ? colors.success : colors.error }}>
-                                {gainPct >= 0 ? "+" : ""}{gainPct.toFixed(1)}%
-                              </Typography>
+                              </IconButton>)}
                             </Stack>
-                          </Stack>
-                        </Paper>
-                      </Box>
-                    </FadeIn>
-                  );
+                          </Paper>
+                        </Box>
+                      </FadeIn>
+                    );
                 })}
               </Stack>
             </>
@@ -276,18 +338,18 @@ function HoldingDetail() {
         <DialogTitle>New Transaction</DialogTitle>
         <DialogContent sx={{ pt: "16px !important" }}>
           <Stack spacing={2}>
-            <TextField label="Date" type="date" value={txnDate} onChange={e => setTxnDate(e.target.value)} InputLabelProps={{ shrink: true }} fullWidth />
-            <TextField label="Invested" type="number" inputMode="decimal" value={txnInvested} onChange={e => setTxnInvested(e.target.value)} fullWidth />
-            <TextField label="Value" type="number" inputMode="decimal" value={txnValue} onChange={e => setTxnValue(e.target.value)} fullWidth />
             <TextField label="Mode" value={txnMode} onChange={e => setTxnMode(e.target.value)} select fullWidth>
               <MenuItem value="add">Add</MenuItem>
-              <MenuItem value="subtract">Subtract</MenuItem>
+              <MenuItem value="update">Update</MenuItem>
             </TextField>
+            <TextField label="Units" type="number" inputMode="decimal" value={txnValue} onChange={e => setTxnValue(e.target.value)} inputProps={{ step: "0.001" }} helperText={txnMode === "add" ? "Units to add" : "Total units (overwrites)"} fullWidth />
+            <TextField label="Invested" type="number" inputMode="decimal" value={txnInvested} onChange={e => setTxnInvested(e.target.value)} inputProps={{ step: "0.01" }} helperText={txnMode === "add" ? "Amount to add" : "Total invested (overwrites)"} fullWidth />
+            <TextField label="Date" type="date" value={txnDate} onChange={e => { const v = e.target.value; if (v && ((minDate && v < minDate) || v > today)) return; setTxnDate(v); }} error={!!txnDate && ((!!minDate && txnDate < minDate) || txnDate > today)} helperText={minDate ? `Select between ${minDate} and ${today}` : `Up to ${today}`} InputLabelProps={{ shrink: true }} inputProps={{ min: minDate || undefined, max: today }} fullWidth />
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleCreate} disabled={saving || !txnDate || !txnInvested || !txnValue}>Create</Button>
+          <Button variant="contained" onClick={handleCreate} disabled={!txnDate || !txnInvested || !txnValue || (!!minDate && txnDate < minDate) || txnDate > today}>Create</Button>
         </DialogActions>
       </Dialog>
 
@@ -305,16 +367,16 @@ function HoldingDetail() {
 
       {/* FAB — hidden for inactive accounts */}
       {holding && account?.isActive && (
-        <Fab onClick={() => setCreateOpen(true)}
+        <Fab onClick={() => { if (!canAddTxn) { showToast("A transaction already exists for today. Try again tomorrow.", "warning"); return; } setCreateOpen(true); }}
           variant={isMobile ? "circular" : "extended"}
           sx={{
             position: "fixed",
             bottom: 24,
             right: { xs: 16, sm: 24 },
-            background: "linear-gradient(135deg, #2563EB 0%, #7C3AED 100%)",
-            color: colors.white,
+            bgcolor: colors.brand,
+            color: colors.pureWhite,
             boxShadow: `0 4px 20px ${alpha(colors.brand, 0.4)}`,
-            "&:hover": { filter: "brightness(0.9)", boxShadow: `0 6px 28px ${alpha(colors.brand, 0.5)}` },
+            "&:hover": { bgcolor: colors.brandDark, boxShadow: `0 6px 28px ${alpha(colors.brand, 0.5)}` },
           }}>
           <AddIcon sx={isMobile ? {} : { mr: 0.5 }} />
           {!isMobile && "Add Transaction"}

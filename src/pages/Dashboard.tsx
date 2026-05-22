@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import {
-  Box, Paper, Typography, Alert, Skeleton,
+  Box, Paper, Typography, Skeleton,
   ToggleButtonGroup, ToggleButton, Stack,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
@@ -9,41 +9,63 @@ import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 import ShowChartOutlinedIcon from "@mui/icons-material/ShowChartOutlined";
 import NetWorthChart from "../components/NetWorthChart";
 import { ChartSkeleton, TintedChip, ErrorState, EmptyState, FadeIn } from "../components/shared";
-import { tokens } from "../theme";
-import { getWatchlists, getChartData } from "../api/client";
+import { useTokens } from "../context/ColorModeContext";
+import { useToast } from "../context/ToastContext";
+import { getWatchlists, getChartData, getIncomes } from "../api/client";
 import { useUser } from "../context/UserContext";
-import type { WatchlistSummary, ChartDataPoint, TimePeriod } from "../api/types";
+import type { WatchlistSummary, ChartDataPoint, TimePeriod, Income } from "../api/types";
 
 const TIME_PERIODS: TimePeriod[] = ["1M", "3M", "6M", "1Y", "2Y", "5Y", "ALL"];
-const { colors, gradients } = tokens;
 
 function fmt(v: number): string {
-  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(v);
+  const hasDecimals = v % 1 !== 0;
+  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: hasDecimals ? 2 : 0, maximumFractionDigits: hasDecimals ? 2 : 0 }).format(v);
 }
 
 function Dashboard() {
   const { userId, loading: userLoading } = useUser();
+  const { colors, gradients } = useTokens();
+  const { showToast } = useToast();
   const [watchlist, setWatchlist] = useState<WatchlistSummary | null>(null);
+  const [incomes, setIncomes] = useState<Income[]>([]);
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [timePeriod, setTimePeriod] = useState<TimePeriod>("1Y");
   const [loading, setLoading] = useState(true);
+  const [chartLoading, setChartLoading] = useState(false);
+  const [chartKey, setChartKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
+  // Initial page load — fetch watchlist + incomes + default chart
   const loadDashboard = useCallback(async () => {
     if (!userId) return;
     try {
       setLoading(true); setError(null);
-      const watchlists = await getWatchlists(userId);
+      const [watchlists, inc] = await Promise.all([getWatchlists(userId), getIncomes(userId)]);
       const wl = watchlists.find((w) => w.name === "All") ?? watchlists[0];
-      if (!wl) { setError("No watchlists found."); setLoading(false); return; }
+      if (!wl) { showToast("No watchlists found", "error"); setLoading(false); return; }
       setWatchlist(wl);
+      setIncomes(inc);
       setChartData(await getChartData("watchlist", wl.id, timePeriod));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load dashboard");
     } finally { setLoading(false); }
-  }, [userId, timePeriod]);
+  }, [userId]);
+
+  // Chart-only reload when period changes (skip initial mount)
+  const loadChart = useCallback(async () => {
+    if (!watchlist) return;
+    try {
+      setChartLoading(true);
+      const data = await getChartData("watchlist", watchlist.id, timePeriod);
+      setChartData(data);
+      setChartKey((k) => k + 1);
+    } catch {
+      showToast("Failed to load chart data", "error");
+    } finally { setChartLoading(false); }
+  }, [watchlist, timePeriod]);
 
   useEffect(() => { if (!userLoading) loadDashboard(); }, [loadDashboard, userLoading]);
+  useEffect(() => { if (watchlist) loadChart(); }, [timePeriod]);
 
   if (error && !watchlist) return <ErrorState message={error} onRetry={loadDashboard} />;
 
@@ -52,10 +74,20 @@ function Dashboard() {
   const totalGain = watchlist ? watchlist.currentDayValue - watchlist.invested : 0;
   const gainPct = watchlist && watchlist.invested > 0 ? (totalGain / watchlist.invested) * 100 : 0;
 
+  // Build cumulative income by date for savings rate on chart
+  const enrichedChartData = (() => {
+    if (incomes.length === 0) return chartData;
+    const sorted = [...incomes].sort((a, b) => a.creditedDate.localeCompare(b.creditedDate));
+    return chartData.map((pt) => {
+      const cumIncome = sorted
+        .filter((i) => i.creditedDate <= pt.date)
+        .reduce((s, i) => s + i.netAmount, 0);
+      return { ...pt, savingsRate: cumIncome > 0 ? (pt.value / cumIncome) * 100 : null };
+    });
+  })();
+
   return (
     <Stack spacing={{ xs: 2.5, sm: 3 }}>
-      {error && <Alert severity="warning" onClose={() => setError(null)}>{error}</Alert>}
-
       {/* ── Hero Card ── */}
       {loading ? (
         <Paper sx={{ p: { xs: 3, sm: 4 }, borderRadius: 4 }}>
@@ -68,7 +100,7 @@ function Dashboard() {
           <Paper sx={{
             p: { xs: 3, sm: 4 },
             background: gradients.hero,
-            color: colors.white,
+            color: colors.pureWhite,
             borderRadius: 4,
             border: "none",
             position: "relative",
@@ -79,12 +111,12 @@ function Dashboard() {
             <Box sx={{
               position: "absolute", top: -60, right: -60,
               width: 200, height: 200, borderRadius: "50%",
-              bgcolor: alpha(colors.white, 0.06),
+              bgcolor: alpha(colors.pureWhite, 0.06),
             }} />
             <Box sx={{
               position: "absolute", bottom: -40, right: 60,
               width: 120, height: 120, borderRadius: "50%",
-              bgcolor: alpha(colors.white, 0.04),
+              bgcolor: alpha(colors.pureWhite, 0.04),
             }} />
 
             <Typography sx={{ fontSize: "0.75rem", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.75, mb: 0.5 }}>
@@ -97,7 +129,7 @@ function Dashboard() {
               <Box sx={{
                 display: "inline-flex", alignItems: "center", gap: 0.5,
                 px: 1.5, py: 0.5, borderRadius: 2,
-                bgcolor: alpha(colors.white, dayChange >= 0 ? 0.15 : 0.12),
+                bgcolor: alpha(colors.pureWhite, dayChange >= 0 ? 0.15 : 0.12),
                 fontSize: "0.8rem", fontWeight: 600,
               }}>
                 {dayChange >= 0 ? <TrendingUpIcon sx={{ fontSize: 16 }} /> : <TrendingDownIcon sx={{ fontSize: 16 }} />}
@@ -106,7 +138,7 @@ function Dashboard() {
               <Box sx={{
                 display: "inline-flex", alignItems: "center", gap: 0.5,
                 px: 1.5, py: 0.5, borderRadius: 2,
-                bgcolor: alpha(colors.white, 0.1),
+                bgcolor: alpha(colors.pureWhite, 0.1),
                 fontSize: "0.8rem", fontWeight: 600,
               }}>
                 {gainPct >= 0 ? "+" : ""}{gainPct.toFixed(2)}% all time
@@ -119,17 +151,17 @@ function Dashboard() {
       {/* ── Metrics row ── */}
       {!loading && watchlist && (
         <FadeIn delay={80}>
-          <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
-            <Paper sx={{ p: { xs: 2.5, sm: 3 }, borderRadius: 3 }}>
+          <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2, minWidth: 0 }}>
+            <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3, minWidth: 0, overflow: "hidden" }}>
               <Typography variant="overline" sx={{ color: colors.gray400 }}>Invested</Typography>
-              <Typography sx={{ fontSize: "1.5rem", fontWeight: 700, letterSpacing: "-0.02em", mt: 0.25 }}>
+              <Typography noWrap sx={{ fontSize: { xs: "1rem", sm: "1.5rem" }, fontWeight: 700, letterSpacing: "-0.02em", mt: 0.25 }}>
                 {fmt(watchlist.invested)}
               </Typography>
             </Paper>
-            <Paper sx={{ p: { xs: 2.5, sm: 3 }, borderRadius: 3 }}>
+            <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3, minWidth: 0, overflow: "hidden" }}>
               <Typography variant="overline" sx={{ color: colors.gray400 }}>Total Gain</Typography>
-              <Typography sx={{
-                fontSize: "1.5rem", fontWeight: 700, letterSpacing: "-0.02em", mt: 0.25,
+              <Typography noWrap sx={{
+                fontSize: { xs: "1rem", sm: "1.5rem" }, fontWeight: 700, letterSpacing: "-0.02em", mt: 0.25,
                 color: totalGain >= 0 ? colors.success : colors.error,
               }}>
                 {totalGain >= 0 ? "+" : ""}{fmt(totalGain)}
@@ -157,15 +189,16 @@ function Dashboard() {
                 value={timePeriod} exclusive
                 onChange={(_e, val) => val && setTimePeriod(val)}
                 size="small"
+                sx={{ flexWrap: "wrap", gap: 0.5 }}
               >
                 {TIME_PERIODS.map((tp) => (
-                  <ToggleButton key={tp} value={tp}>{tp}</ToggleButton>
+                  <ToggleButton key={tp} value={tp} sx={{ px: { xs: 1.2, sm: 1.5 }, fontSize: { xs: "0.7rem", sm: "0.8rem" } }}>{tp}</ToggleButton>
                 ))}
               </ToggleButtonGroup>
             </Box>
-            {chartData.length > 0 ? (
-              <Box sx={{ mx: { xs: -1, sm: 0 } }}>
-                <NetWorthChart data={chartData} />
+            {enrichedChartData.length > 0 ? (
+              <Box sx={{ mx: { xs: -1, sm: 0 }, opacity: chartLoading ? 0.4 : 1, transition: "opacity 0.3s ease" }}>
+                <NetWorthChart key={chartKey} data={enrichedChartData} />
               </Box>
             ) : (
               <EmptyState

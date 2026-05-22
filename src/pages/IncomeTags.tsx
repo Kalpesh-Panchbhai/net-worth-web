@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   Box, Paper, Typography, TextField, Button, Fab,
-  Alert, Dialog, DialogTitle, DialogContent, DialogActions,
+  Dialog, DialogTitle, DialogContent, DialogActions,
   FormControlLabel, Switch, Stack, Avatar, IconButton,
   useMediaQuery, useTheme,
 } from "@mui/material";
@@ -14,24 +14,22 @@ import LocalOfferRoundedIcon from "@mui/icons-material/LocalOfferRounded";
 import { useUser } from "../context/UserContext";
 import { getIncomeTags, createIncomeTag, setDefaultIncomeTag, invalidateCache } from "../api/client";
 import { EmptyState, ErrorState, ListSkeleton, TintedChip, FadeIn } from "../components/shared";
-import { tokens } from "../theme";
+import { useTokens } from "../context/ColorModeContext";
+import { useToast } from "../context/ToastContext";
 import type { IncomeTag } from "../api/types";
-
-const { colors, shadow } = tokens;
-
-const ACCENT_PALETTE = ["#7C3AED", "#059669", "#2563EB", "#DC2626", "#D97706", "#0891B2", "#DB2777", "#4F46E5"];
 
 function IncomeTags() {
   const { userId } = useUser();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const { colors, shadow, gradients, accentPalette } = useTokens();
+  const { showToast } = useToast();
   const [tags, setTags] = useState<IncomeTag[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDefault, setNewDefault] = useState(false);
-  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -44,18 +42,35 @@ function IncomeTags() {
 
   const handleCreate = async () => {
     if (!userId || !newName.trim()) return;
+    const trimmed = newName.trim();
+    const isDefault = newDefault;
+    const prev = tags;
+    const tempId = -Date.now();
+    const optimistic = { id: tempId, userId, name: trimmed, isDefault };
+    setTags(t => isDefault ? [...t.map(tag => ({ ...tag, isDefault: false })), optimistic] : [...t, optimistic]);
+    setDialogOpen(false); setNewName(""); setNewDefault(false);
     try {
-      setSaving(true);
-      await createIncomeTag(userId, newName.trim(), newDefault);
-      setDialogOpen(false); setNewName(""); setNewDefault(false);
-      invalidateCache("income-tags"); await load();
-    } catch (err) { setError(err instanceof Error ? err.message : "Failed to create"); }
-    finally { setSaving(false); }
+      const created = await createIncomeTag(userId, trimmed, isDefault);
+      setTags(t => t.map(tag => tag.id === tempId ? created : tag));
+      invalidateCache("income-tags");
+      showToast(`Tag "${trimmed}" created`);
+    } catch (err) {
+      setTags(prev);
+      showToast(err instanceof Error ? err.message : "Failed to create tag", "error");
+    }
   };
 
-  const handleSetDefault = async (id: number) => {
-    try { await setDefaultIncomeTag(id); invalidateCache("income-tags"); await load(); }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to set default"); }
+  const handleSetDefault = async (id: number, name: string) => {
+    const prev = tags;
+    setTags(t => t.map(tag => ({ ...tag, isDefault: tag.id === id })));
+    try {
+      await setDefaultIncomeTag(id);
+      invalidateCache("income-tags");
+      showToast(`"${name}" set as default tag`);
+    } catch (err) {
+      setTags(prev);
+      showToast(err instanceof Error ? err.message : "Failed to set default", "error");
+    }
   };
 
   if (error && tags.length === 0 && !loading) {
@@ -69,15 +84,15 @@ function IncomeTags() {
         <FadeIn>
           <Paper sx={{
             p: { xs: 3, sm: 4 }, borderRadius: 4, border: "none",
-            background: "linear-gradient(135deg, #7C3AED 0%, #A855F7 100%)",
-            color: colors.white, position: "relative", overflow: "hidden",
+            background: gradients.accentCard,
+            color: colors.pureWhite, position: "relative", overflow: "hidden",
             boxShadow: `0 8px 32px ${alpha(colors.accent, 0.3)}`,
           }}>
-            <Box sx={{ position: "absolute", top: -50, right: -50, width: 180, height: 180, borderRadius: "50%", bgcolor: alpha(colors.white, 0.06) }} />
-            <Box sx={{ position: "absolute", bottom: -30, right: 80, width: 100, height: 100, borderRadius: "50%", bgcolor: alpha(colors.white, 0.04) }} />
+            <Box sx={{ position: "absolute", top: -50, right: -50, width: 180, height: 180, borderRadius: "50%", bgcolor: alpha(colors.pureWhite, 0.06) }} />
+            <Box sx={{ position: "absolute", bottom: -30, right: 80, width: 100, height: 100, borderRadius: "50%", bgcolor: alpha(colors.pureWhite, 0.04) }} />
             <Box sx={{ position: "relative", zIndex: 1 }}>
               <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1 }}>
-                <Avatar sx={{ width: 36, height: 36, bgcolor: alpha(colors.white, 0.2), color: colors.white, borderRadius: 2 }}>
+                <Avatar sx={{ width: 36, height: 36, bgcolor: alpha(colors.pureWhite, 0.2), color: colors.pureWhite, borderRadius: 2 }}>
                   <LocalOfferRoundedIcon sx={{ fontSize: 20 }} />
                 </Avatar>
                 <Typography sx={{ fontSize: { xs: "1.1rem", sm: "1.25rem" }, fontWeight: 700, opacity: 0.95 }}>Income Tags</Typography>
@@ -93,8 +108,6 @@ function IncomeTags() {
         </FadeIn>
       )}
 
-      {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
-
       {loading ? <ListSkeleton rows={4} /> : tags.length === 0 ? (
         <Paper>
           <EmptyState
@@ -105,9 +118,9 @@ function IncomeTags() {
           />
         </Paper>
       ) : (
-        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2 }}>
+        <Stack spacing={1.5}>
           {tags.map((tag, i) => {
-            const accent = ACCENT_PALETTE[i % ACCENT_PALETTE.length];
+            const accent = accentPalette[i % accentPalette.length];
             return (
               <FadeIn key={tag.id} delay={i * 40}>
                 <Paper sx={{
@@ -125,7 +138,7 @@ function IncomeTags() {
                       {tag.isDefault ? (
                         <TintedChip label="Default" color={colors.brand} icon={<CheckCircleRoundedIcon />} size="small" />
                       ) : (
-                        <IconButton onClick={() => handleSetDefault(tag.id)} size="small" sx={{ color: colors.gray400, "&:hover": { color: colors.accent }, ml: -0.5 }}>
+                        <IconButton onClick={() => handleSetDefault(tag.id, tag.name)} size="small" sx={{ color: colors.gray400, "&:hover": { color: colors.accent }, ml: -0.5 }}>
                           <RadioButtonUncheckedIcon sx={{ fontSize: 16 }} />
                           <Typography variant="caption" sx={{ ml: 0.5, color: colors.gray400 }}>Set default</Typography>
                         </IconButton>
@@ -136,7 +149,7 @@ function IncomeTags() {
               </FadeIn>
             );
           })}
-        </Box>
+        </Stack>
       )}
 
       {/* FAB */}
@@ -146,10 +159,10 @@ function IncomeTags() {
           position: "fixed",
           bottom: 24,
           right: { xs: 16, sm: 24 },
-          background: "linear-gradient(135deg, #7C3AED 0%, #A855F7 100%)",
-          color: colors.white,
+          bgcolor: colors.accent,
+          color: colors.pureWhite,
           boxShadow: `0 4px 20px ${alpha(colors.accent, 0.4)}`,
-          "&:hover": { background: "linear-gradient(135deg, #6D28D9 0%, #7C3AED 100%)", boxShadow: `0 6px 28px ${alpha(colors.accent, 0.5)}` },
+          "&:hover": { bgcolor: colors.accentDark, boxShadow: `0 6px 28px ${alpha(colors.accent, 0.5)}` },
         }}>
         <AddIcon sx={isMobile ? {} : { mr: 0.5 }} />
         {!isMobile && "Add Tag"}
@@ -168,8 +181,8 @@ function IncomeTags() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleCreate} variant="contained" disabled={saving || !newName.trim()}>
-            {saving ? "Creating…" : "Create"}
+          <Button onClick={handleCreate} variant="contained" disabled={!newName.trim()}>
+            Create
           </Button>
         </DialogActions>
       </Dialog>

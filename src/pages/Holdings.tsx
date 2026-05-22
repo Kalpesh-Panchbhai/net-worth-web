@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   Box, Paper, Typography, TextField, Button,
-  Alert, Dialog, DialogTitle, DialogContent, DialogActions,
+  Dialog, DialogTitle, DialogContent, DialogActions,
   Stack, IconButton, Fab, MenuItem,
   useMediaQuery, useTheme,
 } from "@mui/material";
@@ -14,19 +14,24 @@ import {
   getAccounts, getHoldings, createHolding, deleteHolding, invalidateCache,
 } from "../api/client";
 import { PageHeader, EmptyState, ErrorState, ListSkeleton, MetricCard, MetricSkeleton, TintedChip, FadeIn } from "../components/shared";
-import { tokens } from "../theme";
+import { useTokens } from "../context/ColorModeContext";
+import { useToast } from "../context/ToastContext";
 import type { AccountSummary, HoldingSummary } from "../api/types";
-
-const { colors } = tokens;
 
 function fmt(v: number, currency = "INR"): string {
   return new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 0 }).format(v);
+}
+
+function fmtUnits(v: number): string {
+  return v.toFixed(3);
 }
 
 function Holdings() {
   const { userId } = useUser();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const { colors } = useTokens();
+  const { showToast } = useToast();
   const [accounts, setAccounts] = useState<AccountSummary[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<number | "">("");
   const [holdings, setHoldings] = useState<HoldingSummary[]>([]);
@@ -38,8 +43,6 @@ function Holdings() {
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [newSymbol, setNewSymbol] = useState("");
-  const [saving, setSaving] = useState(false);
-
   // Delete confirm
   const [deleteConfirm, setDeleteConfirm] = useState<HoldingSummary | null>(null);
 
@@ -53,7 +56,7 @@ function Holdings() {
   const loadHoldings = useCallback(async () => {
     if (!selectedAccountId) { setHoldings([]); return; }
     try { setHoldingsLoading(true); setError(null); setHoldings(await getHoldings(selectedAccountId as number)); }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to load holdings"); }
+    catch (err) { showToast(err instanceof Error ? err.message : "Failed to load holdings", "error"); }
     finally { setHoldingsLoading(false); }
   }, [selectedAccountId]);
 
@@ -65,19 +68,39 @@ function Holdings() {
 
   const handleCreate = async () => {
     if (!selectedAccountId || !newName.trim() || !newSymbol.trim()) return;
+    const trimmed = newName.trim();
+    const symbol = newSymbol.trim();
+    const accountId = selectedAccountId as number;
+    const prev = holdings;
+    const tempId = -Date.now();
+    const optimistic: HoldingSummary = { id: tempId, accountId, name: trimmed, symbol, units: 0, currentDayValue: 0, previousDayValue: 0, invested: 0 };
+    setHoldings(h => [...h, optimistic]);
+    setCreateOpen(false); setNewName(""); setNewSymbol("");
     try {
-      setSaving(true);
-      await createHolding({ accountId: selectedAccountId as number, name: newName.trim(), symbol: newSymbol.trim() });
-      setCreateOpen(false); setNewName(""); setNewSymbol("");
-      invalidateCache("holdings"); await loadHoldings();
-    } catch (err) { setError(err instanceof Error ? err.message : "Failed to create"); }
-    finally { setSaving(false); }
+      const created = await createHolding({ accountId, name: trimmed, symbol });
+      setHoldings(h => h.map(hld => hld.id === tempId ? { ...optimistic, ...created } : hld));
+      invalidateCache("holdings");
+      showToast(`Holding "${trimmed}" created`);
+    } catch (err) {
+      setHoldings(prev);
+      showToast(err instanceof Error ? err.message : "Failed to create holding", "error");
+    }
   };
 
   const handleDelete = async () => {
     if (!deleteConfirm) return;
-    try { await deleteHolding(deleteConfirm.id); setDeleteConfirm(null); invalidateCache("holdings"); await loadHoldings(); }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to delete"); }
+    const { id, name } = deleteConfirm;
+    const prev = holdings;
+    setHoldings(h => h.filter(hld => hld.id !== id));
+    setDeleteConfirm(null);
+    try {
+      await deleteHolding(id);
+      invalidateCache("holdings");
+      showToast(`Holding "${name}" deleted`);
+    } catch (err) {
+      setHoldings(prev);
+      showToast(err instanceof Error ? err.message : "Failed to delete holding", "error");
+    }
   };
 
   if (error && accounts.length === 0 && !loading) return <ErrorState message={error} onRetry={loadAccounts} />;
@@ -89,7 +112,6 @@ function Holdings() {
         action={<Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)} disabled={!selectedAccountId}>Add Holding</Button>}
       />
 
-      {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
 
       {/* Account selector */}
       {!loading && accounts.length > 0 && (
@@ -143,7 +165,7 @@ function Holdings() {
                 }}>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography variant="subtitle2" noWrap>{h.name}</Typography>
-                    <Typography variant="caption" color="text.secondary">{h.symbol} · {h.units} units</Typography>
+                    <Typography variant="caption" color="text.secondary">{h.symbol} · {fmtUnits(h.units)} units</Typography>
                   </Box>
                   <Box sx={{ textAlign: "right", minWidth: 110 }}>
                     <Typography variant="subtitle2">{fmt(h.currentDayValue)}</Typography>
@@ -153,7 +175,7 @@ function Holdings() {
                       size="small"
                     />
                   </Box>
-                  <IconButton size="small" onClick={() => setDeleteConfirm(h)} aria-label={`Delete ${h.name}`}>
+                  <IconButton size="small" onClick={() => setDeleteConfirm(h)} aria-label={`Delete ${h.name}`} sx={{ color: colors.error, opacity: 0.6, "&:hover": { opacity: 1, bgcolor: alpha(colors.error, 0.08) } }}>
                     <DeleteOutlineIcon fontSize="small" />
                   </IconButton>
                 </Box>
@@ -174,7 +196,7 @@ function Holdings() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleCreate} disabled={saving || !newName.trim() || !newSymbol.trim()}>Create</Button>
+          <Button variant="contained" onClick={handleCreate} disabled={!newName.trim() || !newSymbol.trim()}>Create</Button>
         </DialogActions>
       </Dialog>
 
@@ -191,7 +213,7 @@ function Holdings() {
       </Dialog>
 
       {isMobile && selectedAccountId && (
-        <Fab color="primary" onClick={() => setCreateOpen(true)} sx={{ position: "fixed", bottom: 80, right: 20 }} aria-label="Add holding">
+        <Fab onClick={() => setCreateOpen(true)} sx={{ position: "fixed", bottom: 80, right: 20, bgcolor: colors.brand, color: colors.pureWhite, boxShadow: `0 4px 20px ${alpha(colors.brand, 0.4)}`, "&:hover": { bgcolor: colors.brandDark, boxShadow: `0 6px 28px ${alpha(colors.brand, 0.5)}` } }} aria-label="Add holding">
           <AddIcon />
         </Fab>
       )}

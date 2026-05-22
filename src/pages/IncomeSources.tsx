@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   Box, Paper, Typography, TextField, Button, Fab,
-  Alert, Dialog, DialogTitle, DialogContent, DialogActions,
+  Dialog, DialogTitle, DialogContent, DialogActions,
   FormControlLabel, Switch, Stack, Avatar, IconButton,
   useMediaQuery, useTheme,
 } from "@mui/material";
@@ -14,24 +14,22 @@ import AccountBalanceRoundedIcon from "@mui/icons-material/AccountBalanceRounded
 import { useUser } from "../context/UserContext";
 import { getIncomeSources, createIncomeSource, setDefaultIncomeSource, invalidateCache } from "../api/client";
 import { EmptyState, ErrorState, ListSkeleton, TintedChip, FadeIn } from "../components/shared";
-import { tokens } from "../theme";
+import { useTokens } from "../context/ColorModeContext";
+import { useToast } from "../context/ToastContext";
 import type { IncomeSource } from "../api/types";
-
-const { colors, shadow } = tokens;
-
-const ACCENT_PALETTE = ["#2563EB", "#7C3AED", "#059669", "#D97706", "#DC2626", "#0891B2", "#DB2777", "#4F46E5"];
 
 function IncomeSources() {
   const { userId } = useUser();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const { colors, shadow, gradients, accentPalette } = useTokens();
+  const { showToast } = useToast();
   const [sources, setSources] = useState<IncomeSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDefault, setNewDefault] = useState(false);
-  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -44,18 +42,35 @@ function IncomeSources() {
 
   const handleCreate = async () => {
     if (!userId || !newName.trim()) return;
+    const trimmed = newName.trim();
+    const isDefault = newDefault;
+    const prev = sources;
+    const tempId = -Date.now();
+    const optimistic = { id: tempId, userId, name: trimmed, isDefault };
+    setSources(s => isDefault ? [...s.map(src => ({ ...src, isDefault: false })), optimistic] : [...s, optimistic]);
+    setDialogOpen(false); setNewName(""); setNewDefault(false);
     try {
-      setSaving(true);
-      await createIncomeSource(userId, newName.trim(), newDefault);
-      setDialogOpen(false); setNewName(""); setNewDefault(false);
-      invalidateCache("income-sources"); await load();
-    } catch (err) { setError(err instanceof Error ? err.message : "Failed to create"); }
-    finally { setSaving(false); }
+      const created = await createIncomeSource(userId, trimmed, isDefault);
+      setSources(s => s.map(src => src.id === tempId ? created : src));
+      invalidateCache("income-sources");
+      showToast(`Source "${trimmed}" created`);
+    } catch (err) {
+      setSources(prev);
+      showToast(err instanceof Error ? err.message : "Failed to create source", "error");
+    }
   };
 
-  const handleSetDefault = async (id: number) => {
-    try { await setDefaultIncomeSource(id); invalidateCache("income-sources"); await load(); }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to set default"); }
+  const handleSetDefault = async (id: number, name: string) => {
+    const prev = sources;
+    setSources(s => s.map(src => ({ ...src, isDefault: src.id === id })));
+    try {
+      await setDefaultIncomeSource(id);
+      invalidateCache("income-sources");
+      showToast(`"${name}" set as default source`);
+    } catch (err) {
+      setSources(prev);
+      showToast(err instanceof Error ? err.message : "Failed to set default", "error");
+    }
   };
 
   if (error && sources.length === 0 && !loading) {
@@ -69,15 +84,15 @@ function IncomeSources() {
         <FadeIn>
           <Paper sx={{
             p: { xs: 3, sm: 4 }, borderRadius: 4, border: "none",
-            background: "linear-gradient(135deg, #2563EB 0%, #7C3AED 100%)",
-            color: colors.white, position: "relative", overflow: "hidden",
+            background: gradients.hero,
+            color: colors.pureWhite, position: "relative", overflow: "hidden",
             boxShadow: `0 8px 32px ${alpha(colors.brand, 0.3)}`,
           }}>
-            <Box sx={{ position: "absolute", top: -50, right: -50, width: 180, height: 180, borderRadius: "50%", bgcolor: alpha(colors.white, 0.06) }} />
-            <Box sx={{ position: "absolute", bottom: -30, right: 80, width: 100, height: 100, borderRadius: "50%", bgcolor: alpha(colors.white, 0.04) }} />
+            <Box sx={{ position: "absolute", top: -50, right: -50, width: 180, height: 180, borderRadius: "50%", bgcolor: alpha(colors.pureWhite, 0.06) }} />
+            <Box sx={{ position: "absolute", bottom: -30, right: 80, width: 100, height: 100, borderRadius: "50%", bgcolor: alpha(colors.pureWhite, 0.04) }} />
             <Box sx={{ position: "relative", zIndex: 1 }}>
               <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1 }}>
-                <Avatar sx={{ width: 36, height: 36, bgcolor: alpha(colors.white, 0.2), color: colors.white, borderRadius: 2 }}>
+                <Avatar sx={{ width: 36, height: 36, bgcolor: alpha(colors.pureWhite, 0.2), color: colors.pureWhite, borderRadius: 2 }}>
                   <AccountBalanceRoundedIcon sx={{ fontSize: 20 }} />
                 </Avatar>
                 <Typography sx={{ fontSize: { xs: "1.1rem", sm: "1.25rem" }, fontWeight: 700, opacity: 0.95 }}>Income Sources</Typography>
@@ -93,8 +108,6 @@ function IncomeSources() {
         </FadeIn>
       )}
 
-      {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
-
       {loading ? <ListSkeleton rows={4} /> : sources.length === 0 ? (
         <Paper>
           <EmptyState
@@ -105,9 +118,9 @@ function IncomeSources() {
           />
         </Paper>
       ) : (
-        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2 }}>
+        <Stack spacing={1.5}>
           {sources.map((source, i) => {
-            const accent = ACCENT_PALETTE[i % ACCENT_PALETTE.length];
+            const accent = accentPalette[i % accentPalette.length];
             return (
               <FadeIn key={source.id} delay={i * 40}>
                 <Paper sx={{
@@ -125,7 +138,7 @@ function IncomeSources() {
                       {source.isDefault ? (
                         <TintedChip label="Default" color={colors.brand} icon={<CheckCircleRoundedIcon />} size="small" />
                       ) : (
-                        <IconButton onClick={() => handleSetDefault(source.id)} size="small" sx={{ color: colors.gray400, "&:hover": { color: colors.brand }, ml: -0.5 }}>
+                        <IconButton onClick={() => handleSetDefault(source.id, source.name)} size="small" sx={{ color: colors.gray400, "&:hover": { color: colors.brand }, ml: -0.5 }}>
                           <RadioButtonUncheckedIcon sx={{ fontSize: 16 }} />
                           <Typography variant="caption" sx={{ ml: 0.5, color: colors.gray400 }}>Set default</Typography>
                         </IconButton>
@@ -136,7 +149,7 @@ function IncomeSources() {
               </FadeIn>
             );
           })}
-        </Box>
+        </Stack>
       )}
 
       {/* FAB */}
@@ -146,10 +159,10 @@ function IncomeSources() {
           position: "fixed",
           bottom: 24,
           right: { xs: 16, sm: 24 },
-          background: "linear-gradient(135deg, #2563EB 0%, #7C3AED 100%)",
-          color: colors.white,
+          bgcolor: colors.brand,
+          color: colors.pureWhite,
           boxShadow: `0 4px 20px ${alpha(colors.brand, 0.4)}`,
-          "&:hover": { background: "linear-gradient(135deg, #1D4ED8 0%, #6D28D9 100%)", boxShadow: `0 6px 28px ${alpha(colors.brand, 0.5)}` },
+          "&:hover": { bgcolor: colors.brandDark, boxShadow: `0 6px 28px ${alpha(colors.brand, 0.5)}` },
         }}>
         <AddIcon sx={isMobile ? {} : { mr: 0.5 }} />
         {!isMobile && "Add Source"}
@@ -168,8 +181,8 @@ function IncomeSources() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleCreate} variant="contained" disabled={saving || !newName.trim()}>
-            {saving ? "Creating…" : "Create"}
+          <Button onClick={handleCreate} variant="contained" disabled={!newName.trim()}>
+            Create
           </Button>
         </DialogActions>
       </Dialog>

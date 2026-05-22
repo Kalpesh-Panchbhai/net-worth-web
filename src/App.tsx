@@ -1,4 +1,5 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { useEffect } from "react";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Box, CircularProgress } from "@mui/material";
 import Dashboard from "./pages/Dashboard";
 import Accounts from "./pages/Accounts";
@@ -12,6 +13,12 @@ import IncomeTags from "./pages/IncomeTags";
 import Login from "./pages/Login";
 import Layout from "./components/Layout";
 import { UserProvider, useUser } from "./context/UserContext";
+
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
+  return null;
+}
 
 function AuthGate() {
   const { firebaseUser, loading } = useUser();
@@ -28,6 +35,7 @@ function AuthGate() {
 
   return (
     <Layout>
+      <ScrollToTop />
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/accounts" element={<Accounts />} />

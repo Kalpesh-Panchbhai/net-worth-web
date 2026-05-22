@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   Box, Paper, Typography, TextField, Button, MenuItem,
-  Alert, Dialog, DialogTitle, DialogContent, DialogActions,
+  Dialog, DialogTitle, DialogContent, DialogActions,
   Stack, IconButton, Fab,
   useMediaQuery, useTheme,
 } from "@mui/material";
@@ -13,20 +13,26 @@ import { useUser } from "../context/UserContext";
 import {
   getAccounts, getHoldings, getTransactions, createTransaction, deleteTransaction, invalidateCache,
 } from "../api/client";
-import { PageHeader, EmptyState, ErrorState, ListSkeleton, MetricCard, MetricSkeleton, TintedChip, FadeIn } from "../components/shared";
-import { tokens } from "../theme";
+import { PageHeader, EmptyState, ErrorState, ListSkeleton, MetricCard, MetricSkeleton, FadeIn } from "../components/shared";
+import { useTokens } from "../context/ColorModeContext";
+import { useToast } from "../context/ToastContext";
 import type { AccountSummary, HoldingSummary, Transaction } from "../api/types";
 
-const { colors } = tokens;
-
 function fmt(v: number, currency = "INR"): string {
-  return new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 0 }).format(v);
+  const hasDecimals = v % 1 !== 0;
+  return new Intl.NumberFormat("en-IN", { style: "currency", currency, minimumFractionDigits: hasDecimals ? 2 : 0, maximumFractionDigits: hasDecimals ? 2 : 0 }).format(v);
+}
+
+function fmtUnits(v: number): string {
+  return v.toFixed(3);
 }
 
 function Transactions() {
   const { userId } = useUser();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const { colors } = useTokens();
+  const { showToast } = useToast();
   const [accounts, setAccounts] = useState<AccountSummary[]>([]);
   const [holdings, setHoldings] = useState<HoldingSummary[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<number | "">("");
@@ -42,8 +48,6 @@ function Transactions() {
   const [formInvested, setFormInvested] = useState("");
   const [formValue, setFormValue] = useState("");
   const [formMode, setFormMode] = useState("add");
-  const [saving, setSaving] = useState(false);
-
   // Delete confirm
   const [deleteConfirm, setDeleteConfirm] = useState<Transaction | null>(null);
 
@@ -60,13 +64,13 @@ function Transactions() {
       const h = await getHoldings(selectedAccountId as number);
       setHoldings(h);
       if (h.length > 0) setSelectedHoldingId(h[0].id); else setSelectedHoldingId("");
-    } catch (err) { setError(err instanceof Error ? err.message : "Failed to load holdings"); }
+    } catch (err) { showToast(err instanceof Error ? err.message : "Failed to load holdings", "error"); }
   }, [selectedAccountId]);
 
   const loadTransactions = useCallback(async () => {
     if (!selectedHoldingId) { setTransactions([]); return; }
     try { setTxnLoading(true); setError(null); setTransactions(await getTransactions({ holdingId: selectedHoldingId as number })); }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to load transactions"); }
+    catch (err) { showToast(err instanceof Error ? err.message : "Failed to load transactions", "error"); }
     finally { setTxnLoading(false); }
   }, [selectedHoldingId]);
 
@@ -74,27 +78,61 @@ function Transactions() {
   useEffect(() => { loadHoldings(); }, [loadHoldings]);
   useEffect(() => { loadTransactions(); }, [loadTransactions]);
 
+  const selAcct = accounts.find(a => a.id === selectedAccountId);
+  const isBroker = selAcct?.type === "BROKER";
+  const showInvested = isBroker || (selAcct?.needsDailyData ?? false);
   const totalInvested = transactions.reduce((s, t) => s + t.invested, 0);
   const totalValue = transactions.reduce((s, t) => s + t.value, 0);
 
+  // Date restrictions
+  const lastTxnDate = transactions.length > 0 ? transactions[0].txnDate : "";
+  const _now = new Date();
+  const todayStr = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, "0")}-${String(_now.getDate()).padStart(2, "0")}`;
+  const minTxnDate = lastTxnDate ? (() => { const d = new Date(lastTxnDate + "T00:00:00"); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })() : "";
+  const canAddTxn = !minTxnDate || minTxnDate <= todayStr;
+
   const handleCreate = async () => {
-    if (!selectedAccountId || !selectedHoldingId || !formDate || !formInvested || !formValue) return;
+    if (!selectedAccountId || !selectedHoldingId || !formDate || !formValue || (showInvested && !formInvested)) return;
+    let invested = showInvested ? parseFloat(parseFloat(formInvested).toFixed(2)) : parseFloat(parseFloat(formValue).toFixed(2));
+    let value = parseFloat(parseFloat(formValue).toFixed(isBroker ? 3 : 2));
+    // Add mode: add to last transaction's cumulative values
+    if (formMode === "add" && transactions.length > 0) {
+      const last = transactions[0];
+      invested = parseFloat((last.invested + invested).toFixed(2));
+      value = parseFloat((last.value + value).toFixed(isBroker ? 3 : 2));
+    }
+    const date = formDate;
+    const accountId = selectedAccountId as number; const holdingId = selectedHoldingId as number;
+    const prev = transactions;
+    const tempId = -Date.now();
+    const optimistic: Transaction = { id: tempId, accountId, holdingId, txnDate: date, invested, value };
+    setTransactions(t => [optimistic, ...t]);
+    setCreateOpen(false); setFormDate(""); setFormInvested(""); setFormValue(""); setFormMode("add");
     try {
-      setSaving(true);
-      await createTransaction({
-        accountId: selectedAccountId as number, holdingId: selectedHoldingId as number,
-        txnDate: formDate, invested: parseFloat(formInvested), value: parseFloat(formValue), mode: formMode,
-      });
-      setCreateOpen(false); setFormDate(""); setFormInvested(""); setFormValue(""); setFormMode("add");
-      invalidateCache("transactions"); await loadTransactions();
-    } catch (err) { setError(err instanceof Error ? err.message : "Failed to create"); }
-    finally { setSaving(false); }
+      const created = await createTransaction({ accountId, holdingId, txnDate: date, invested, value, mode: "update" });
+      setTransactions(t => t.map(txn => txn.id === tempId ? created : txn));
+      invalidateCache("transactions");
+      showToast(`Transaction on ${date} created`);
+    } catch (err) {
+      setTransactions(prev);
+      showToast(err instanceof Error ? err.message : "Failed to create transaction", "error");
+    }
   };
 
   const handleDelete = async () => {
     if (!deleteConfirm) return;
-    try { await deleteTransaction(deleteConfirm.id); setDeleteConfirm(null); invalidateCache("transactions"); await loadTransactions(); }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to delete"); }
+    const { id, txnDate } = deleteConfirm;
+    const prev = transactions;
+    setTransactions(t => t.filter(txn => txn.id !== id));
+    setDeleteConfirm(null);
+    try {
+      await deleteTransaction(id);
+      invalidateCache("transactions");
+      showToast(`Transaction on ${txnDate} deleted`);
+    } catch (err) {
+      setTransactions(prev);
+      showToast(err instanceof Error ? err.message : "Failed to delete transaction", "error");
+    }
   };
 
   if (error && accounts.length === 0 && !loading) return <ErrorState message={error} onRetry={loadAccounts} />;
@@ -103,10 +141,9 @@ function Transactions() {
     <Stack spacing={{ xs: 2, sm: 3 }}>
       <PageHeader
         title="Transactions"
-        action={<Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)} disabled={!selectedHoldingId}>Add Transaction</Button>}
+        action={<Button variant="contained" startIcon={<AddIcon />} onClick={() => { if (!canAddTxn) { showToast("A transaction already exists for today. Try again tomorrow.", "warning"); return; } setCreateOpen(true); }} disabled={!selectedHoldingId}>Add Transaction</Button>}
       />
 
-      {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
 
       {/* Selectors */}
       {!loading && accounts.length > 0 && (
@@ -135,8 +172,8 @@ function Transactions() {
         <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
           {txnLoading ? <><MetricSkeleton /><MetricSkeleton /></> : (
             <FadeIn>
-              <MetricCard label="Total Invested" value={fmt(totalInvested)} />
-              <MetricCard label="Total Value" value={fmt(totalValue)} accent={totalValue >= totalInvested ? colors.success : colors.error} />
+              {showInvested && <MetricCard label="Total Invested" value={fmt(totalInvested)} />}
+              <MetricCard label="Total Value" value={fmt(totalValue)} accent={showInvested ? (totalValue >= totalInvested ? colors.success : colors.error) : undefined} />
             </FadeIn>
           )}
         </Box>
@@ -152,39 +189,53 @@ function Transactions() {
             icon={<ReceiptOutlinedIcon />}
             title="No transactions"
             description="Add your first transaction for this holding."
-            action={{ label: "Add Transaction", onClick: () => setCreateOpen(true) }}
+            action={{ label: "Add Transaction", onClick: () => { if (!canAddTxn) { showToast("A transaction already exists for today. Try again tomorrow.", "warning"); return; } setCreateOpen(true); } }}
           />
         </Paper>
       ) : (
         <FadeIn delay={100}>
           <Paper variant="outlined" sx={{ borderRadius: 3, overflow: "hidden" }}>
             {transactions.map((t, i) => {
-              const gain = t.value - t.invested;
-              return (
-                <Box key={t.id} sx={{
-                  display: "flex", alignItems: "center", gap: 2,
-                  px: { xs: 2, sm: 3 }, py: 1.5,
-                  borderTop: i > 0 ? `1px solid ${theme.palette.divider}` : "none",
-                  transition: "background .15s", "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.04) },
-                  flexWrap: "wrap",
-                }}>
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography variant="subtitle2">{t.txnDate}</Typography>
-                    <Typography variant="caption" color="text.secondary">Invested: {fmt(t.invested)}</Typography>
+                const prevValue = i < transactions.length - 1 ? transactions[i + 1].value : 0;
+                const prevInvested = i < transactions.length - 1 ? transactions[i + 1].invested : 0;
+                const delta = t.value - prevValue;
+                const investedDelta = t.invested - prevInvested;
+                const isAdd = delta >= 0;
+                const unitColor = isAdd ? colors.success : colors.error;
+                return (
+                  <Box key={t.id} sx={{
+                    display: "flex", alignItems: "center", gap: 2,
+                    px: { xs: 2, sm: 3 }, py: 1.5,
+                    borderTop: i > 0 ? `1px solid ${theme.palette.divider}` : "none",
+                    transition: "background .15s", "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.04) },
+                  }}>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography variant="subtitle2">{t.txnDate}</Typography>
+                      {showInvested && (
+                      <Stack direction="row" spacing={0.75} alignItems="baseline" sx={{ mt: 0.25 }}>
+                        <Typography sx={{ fontSize: "0.95rem", fontWeight: 650 }}>
+                          {investedDelta >= 0 ? "+" : ""}{fmt(investedDelta, selAcct?.currency)}
+                        </Typography>
+                        <Typography sx={{ fontSize: "0.72rem", color: colors.gray400 }}>
+                          → {fmt(t.invested, selAcct?.currency)}
+                        </Typography>
+                      </Stack>
+                      )}
+                      <Stack direction="row" spacing={0.75} alignItems={showInvested ? "center" : "baseline"} sx={{ mt: 0.25 }}>
+                        <Typography sx={{ fontSize: showInvested ? "0.78rem" : "0.95rem", fontWeight: showInvested ? 650 : 650, color: showInvested ? unitColor : undefined }}>
+                          {isAdd ? "+" : ""}{showInvested ? `${fmtUnits(delta)} units` : fmt(delta, selAcct?.currency)}
+                        </Typography>
+                        <Typography sx={{ fontSize: showInvested ? "0.65rem" : "0.72rem", color: colors.gray400 }}>→</Typography>
+                        <Typography sx={{ fontSize: showInvested ? "0.78rem" : "0.72rem", fontWeight: 600, color: colors.gray500 }}>
+                          {showInvested ? `Total: ${fmtUnits(t.value)}` : fmt(t.value, selAcct?.currency)}
+                        </Typography>
+                      </Stack>
+                    </Box>
+                    <IconButton size="small" onClick={() => setDeleteConfirm(t)} aria-label="Delete transaction" sx={{ color: colors.error, opacity: 0.6, "&:hover": { opacity: 1, bgcolor: alpha(colors.error, 0.08) } }}>
+                      <DeleteOutlineIcon fontSize="small" />
+                    </IconButton>
                   </Box>
-                  <Box sx={{ textAlign: "right", minWidth: 100 }}>
-                    <Typography variant="subtitle2">{fmt(t.value)}</Typography>
-                    <TintedChip
-                      label={`${gain >= 0 ? "+" : ""}${fmt(gain)}`}
-                      color={gain >= 0 ? colors.success : colors.error}
-                      size="small"
-                    />
-                  </Box>
-                  <IconButton size="small" onClick={() => setDeleteConfirm(t)} aria-label="Delete transaction">
-                    <DeleteOutlineIcon fontSize="small" />
-                  </IconButton>
-                </Box>
-              );
+                );
             })}
           </Paper>
         </FadeIn>
@@ -195,18 +246,18 @@ function Transactions() {
         <DialogTitle>New Transaction</DialogTitle>
         <DialogContent sx={{ pt: "16px !important" }}>
           <Stack spacing={2}>
-            <TextField label="Date" type="date" value={formDate} onChange={e => setFormDate(e.target.value)} InputLabelProps={{ shrink: true }} fullWidth />
-            <TextField label="Invested" type="number" inputMode="decimal" value={formInvested} onChange={e => setFormInvested(e.target.value)} fullWidth />
-            <TextField label="Value" type="number" inputMode="decimal" value={formValue} onChange={e => setFormValue(e.target.value)} fullWidth />
             <TextField label="Mode" value={formMode} onChange={e => setFormMode(e.target.value)} select fullWidth>
               <MenuItem value="add">Add</MenuItem>
-              <MenuItem value="subtract">Subtract</MenuItem>
+              <MenuItem value="update">Update</MenuItem>
             </TextField>
+            <TextField label={isBroker ? "Units" : "Amount"} type="number" inputMode="decimal" value={formValue} onChange={e => setFormValue(e.target.value)} inputProps={{ step: isBroker ? "0.001" : "0.01" }} helperText={formMode === "add" ? (isBroker ? "Units to add" : "Amount to add") : (isBroker ? "Total units (overwrites)" : "Total amount (overwrites)")} fullWidth />
+            {showInvested && <TextField label="Invested" type="number" inputMode="decimal" value={formInvested} onChange={e => setFormInvested(e.target.value)} inputProps={{ step: "0.01" }} helperText={formMode === "add" ? "Investment to add" : "Total invested (overwrites)"} fullWidth />}
+            <TextField label="Date" type="date" value={formDate} onChange={e => { const v = e.target.value; if (v && ((minTxnDate && v < minTxnDate) || v > todayStr)) return; setFormDate(v); }} error={!!formDate && ((!!minTxnDate && formDate < minTxnDate) || formDate > todayStr)} helperText={minTxnDate ? `Select between ${minTxnDate} and ${todayStr}` : `Up to ${todayStr}`} InputLabelProps={{ shrink: true }} inputProps={{ min: minTxnDate || undefined, max: todayStr }} fullWidth />
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleCreate} disabled={saving || !formDate || !formInvested || !formValue}>Create</Button>
+          <Button variant="contained" onClick={handleCreate} disabled={!formDate || !formValue || (showInvested && !formInvested) || (!!minTxnDate && formDate < minTxnDate) || formDate > todayStr}>Create</Button>
         </DialogActions>
       </Dialog>
 
@@ -223,7 +274,7 @@ function Transactions() {
       </Dialog>
 
       {isMobile && selectedHoldingId && (
-        <Fab color="primary" onClick={() => setCreateOpen(true)} sx={{ position: "fixed", bottom: 80, right: 20 }} aria-label="Add transaction">
+        <Fab onClick={() => { if (!canAddTxn) { showToast("A transaction already exists for today. Try again tomorrow.", "warning"); return; } setCreateOpen(true); }} sx={{ position: "fixed", bottom: 80, right: 20, bgcolor: colors.brand, color: colors.pureWhite, boxShadow: `0 4px 20px ${alpha(colors.brand, 0.4)}`, "&:hover": { bgcolor: colors.brandDark, boxShadow: `0 6px 28px ${alpha(colors.brand, 0.5)}` } }} aria-label="Add transaction">
           <AddIcon />
         </Fab>
       )}

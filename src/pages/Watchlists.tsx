@@ -2,12 +2,14 @@ import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Box, Paper, Typography, TextField, Button,
-  Alert, Dialog, DialogTitle, DialogContent, DialogActions,
+  Dialog, DialogTitle, DialogContent, DialogActions,
   Stack, IconButton, Fab, Avatar,
   useMediaQuery, useTheme,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
+import InputAdornment from "@mui/material/InputAdornment";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
@@ -18,14 +20,14 @@ import {
   getWatchlists, createWatchlist, updateWatchlist, deleteWatchlist,
   invalidateCache,
 } from "../api/client";
-import { EmptyState, ErrorState, ListSkeleton, TintedChip, FadeIn } from "../components/shared";
-import { tokens } from "../theme";
+import { EmptyState, ErrorState, ListSkeleton, FadeIn } from "../components/shared";
+import { useTokens } from "../context/ColorModeContext";
+import { useToast } from "../context/ToastContext";
 import type { WatchlistSummary } from "../api/types";
 
-const { colors, shadow } = tokens;
-
 function fmt(v: number, currency = "INR"): string {
-  return new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 0 }).format(v);
+  const hasDecimals = v % 1 !== 0;
+  return new Intl.NumberFormat("en-IN", { style: "currency", currency, minimumFractionDigits: hasDecimals ? 2 : 0, maximumFractionDigits: hasDecimals ? 2 : 0 }).format(v);
 }
 
 function Watchlists() {
@@ -33,16 +35,18 @@ function Watchlists() {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const { colors, shadow } = useTokens();
+  const { showToast } = useToast();
   const [watchlists, setWatchlists] = useState<WatchlistSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
-  const [saving, setSaving] = useState(false);
   const [editWl, setEditWl] = useState<WatchlistSummary | null>(null);
   const [editName, setEditName] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<WatchlistSummary | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -55,36 +59,81 @@ function Watchlists() {
 
   const handleCreate = async () => {
     if (!userId || !newName.trim()) return;
+    const trimmed = newName.trim();
+    const prev = watchlists;
+    const tempId = -Date.now();
+    const optimistic: WatchlistSummary = { id: tempId, userId, name: trimmed, currentDayValue: 0, previousDayValue: 0, invested: 0 };
+    setWatchlists(w => [...w, optimistic]);
+    setCreateOpen(false); setNewName("");
     try {
-      setSaving(true);
-      await createWatchlist(userId, newName.trim());
-      setCreateOpen(false); setNewName("");
-      invalidateCache("watchlists"); await load();
-    } catch (err) { setError(err instanceof Error ? err.message : "Failed to create"); }
-    finally { setSaving(false); }
+      const created = await createWatchlist(userId, trimmed);
+      setWatchlists(w => w.map(wl => wl.id === tempId ? { ...optimistic, ...created } : wl));
+      invalidateCache("watchlists");
+      showToast(`Watchlist "${trimmed}" created`);
+    } catch (err) {
+      setWatchlists(prev);
+      showToast(err instanceof Error ? err.message : "Failed to create watchlist", "error");
+    }
   };
 
   const handleUpdate = async () => {
     if (!editWl || !editName.trim()) return;
+    const name = editName.trim();
+    const prev = watchlists;
+    setWatchlists(w => w.map(wl => wl.id === editWl.id ? { ...wl, name } : wl));
+    setEditWl(null);
     try {
-      setSaving(true);
-      await updateWatchlist(editWl.id, editName.trim());
-      setEditWl(null); invalidateCache("watchlists"); await load();
-    } catch (err) { setError(err instanceof Error ? err.message : "Failed to update"); }
-    finally { setSaving(false); }
+      await updateWatchlist(editWl.id, name);
+      invalidateCache("watchlists");
+      showToast(`Watchlist "${name}" updated`);
+    } catch (err) {
+      setWatchlists(prev);
+      showToast(err instanceof Error ? err.message : "Failed to update watchlist", "error");
+    }
   };
 
   const handleDelete = async () => {
     if (!deleteConfirm) return;
-    try { await deleteWatchlist(deleteConfirm.id); setDeleteConfirm(null); invalidateCache("watchlists"); await load(); }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to delete"); }
+    const { id, name } = deleteConfirm;
+    const prev = watchlists;
+    setWatchlists(w => w.filter(wl => wl.id !== id));
+    setDeleteConfirm(null);
+    try {
+      await deleteWatchlist(id);
+      invalidateCache("watchlists");
+      showToast(`Watchlist "${name}" deleted`);
+    } catch (err) {
+      setWatchlists(prev);
+      showToast(err instanceof Error ? err.message : "Failed to delete watchlist", "error");
+    }
   };
+
+  // Filter and sort
+  const q = searchQuery.toLowerCase().trim();
+  const filtered = (q
+    ? watchlists.filter(w => w.name.toLowerCase().includes(q))
+    : watchlists
+  ).sort((a, b) => {
+    if (a.name === "All") return -1;
+    if (b.name === "All") return 1;
+    return a.name.localeCompare(b.name);
+  });
 
   if (error && watchlists.length === 0 && !loading) return <ErrorState message={error} onRetry={load} />;
 
   return (
     <Stack spacing={{ xs: 2.5, sm: 3 }}>
-      {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
+      {/* Search toolbar */}
+      {!loading && watchlists.length > 0 && (
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
+          <TextField
+            size="small" placeholder="Search by name…" value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            InputProps={{ startAdornment: <InputAdornment position="start"><SearchRoundedIcon sx={{ fontSize: 18, color: colors.gray400 }} /></InputAdornment> }}
+            sx={{ flex: 1, maxWidth: { sm: 320 } }}
+          />
+        </Stack>
+      )}
 
       {loading ? <ListSkeleton rows={3} /> : watchlists.length === 0 ? (
         <Paper>
@@ -95,12 +144,18 @@ function Watchlists() {
             action={{ label: "Add Watchlist", onClick: () => setCreateOpen(true) }}
           />
         </Paper>
+      ) : filtered.length === 0 ? (
+        <Paper sx={{ p: 4, textAlign: "center" }}>
+          <Typography color="text.secondary">No watchlists match "{searchQuery}"</Typography>
+        </Paper>
       ) : (
         <FadeIn delay={100}>
-          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2 }}>
-            {watchlists.map((w, i) => {
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gridAutoRows: "1fr", gap: 2 }}>
+            {filtered.map((w, i) => {
               const gain = w.currentDayValue - w.invested;
               const gainPct = w.invested > 0 ? (gain / w.invested) * 100 : 0;
+              const dayChg = w.currentDayValue - w.previousDayValue;
+              const dayPct = w.previousDayValue > 0 ? (dayChg / w.previousDayValue) * 100 : 0;
               const isAll = w.name === "All";
               return (
                 <FadeIn key={w.id} delay={i * 40}>
@@ -113,6 +168,7 @@ function Watchlists() {
                       transition: "all 0.2s ease",
                       "&:hover": { boxShadow: shadow.hover, transform: "translateY(-2px)" },
                       position: "relative",
+                      height: "100%", display: "flex", flexDirection: "column",
                     }}
                   >
                     <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5, mb: 2 }}>
@@ -125,30 +181,39 @@ function Watchlists() {
                       </Avatar>
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography sx={{ fontWeight: 650, fontSize: "0.9rem", lineHeight: 1.3 }} noWrap>{w.name}</Typography>
-                        <Typography variant="caption" sx={{ color: colors.gray400 }}>
-                          {isAll ? "All accounts" : "Custom watchlist"}
-                        </Typography>
                       </Box>
                       {!isAll && (
                         <Stack direction="row" spacing={0} onClick={e => e.stopPropagation()}>
-                          <IconButton size="small" onClick={() => { setEditWl(w); setEditName(w.name); }} sx={{ color: colors.gray400 }}>
+                          <IconButton size="small" onClick={() => { setEditWl(w); setEditName(w.name); }} sx={{ color: colors.brand, opacity: 0.6, "&:hover": { opacity: 1, bgcolor: alpha(colors.brand, 0.08) } }}>
                             <EditOutlinedIcon sx={{ fontSize: 16 }} />
                           </IconButton>
-                          <IconButton size="small" onClick={() => setDeleteConfirm(w)} sx={{ color: colors.gray400 }}>
+                          <IconButton size="small" onClick={() => setDeleteConfirm(w)} sx={{ color: colors.error, opacity: 0.6, "&:hover": { opacity: 1, bgcolor: alpha(colors.error, 0.08) } }}>
                             <DeleteOutlineIcon sx={{ fontSize: 16 }} />
                           </IconButton>
                         </Stack>
                       )}
                     </Box>
 
-                    <Typography sx={{ fontSize: "1.35rem", fontWeight: 750, letterSpacing: "-0.02em", mb: 0.5 }}>
+                    <Typography sx={{ fontSize: "1.35rem", fontWeight: 750, letterSpacing: "-0.02em", mb: 0.25 }}>
                       {fmt(w.currentDayValue)}
                     </Typography>
-                    <TintedChip
-                      label={`${gain >= 0 ? "+" : ""}${gainPct.toFixed(1)}% · ${gain >= 0 ? "+" : ""}${fmt(gain)}`}
-                      color={gain >= 0 ? colors.success : colors.error}
-                      size="small"
-                    />
+                    {w.invested > 0 && w.invested !== w.currentDayValue && (
+                      <Typography sx={{ fontSize: 11, color: colors.gray400, mb: 0.5 }}>
+                        Invested: {fmt(w.invested)}
+                      </Typography>
+                    )}
+                    <Stack spacing={0.5} sx={{ mt: 0.5, alignSelf: "flex-start" }}>
+                      {w.invested > 0 && (
+                        <Typography sx={{ fontSize: 11, fontWeight: 600, color: gain >= 0 ? colors.success : colors.error, display: "flex", alignItems: "center", gap: 0.5 }}>
+                          <Box component="span" sx={{ fontSize: 9, fontWeight: 700, bgcolor: alpha(gain >= 0 ? colors.success : colors.error, 0.12), px: 0.6, py: 0.1, borderRadius: 0.5 }}>P&L</Box>
+                          {gain >= 0 ? "+" : ""}{gainPct.toFixed(1)}% · {gain >= 0 ? "+" : ""}{fmt(gain)}
+                        </Typography>
+                      )}
+                      <Typography sx={{ fontSize: 11, fontWeight: 600, color: dayChg >= 0 ? colors.success : colors.error, display: "flex", alignItems: "center", gap: 0.5 }}>
+                        <Box component="span" sx={{ fontSize: 9, fontWeight: 700, bgcolor: alpha(dayChg >= 0 ? colors.success : colors.error, 0.12), px: 0.6, py: 0.1, borderRadius: 0.5 }}>1D</Box>
+                        {dayChg >= 0 ? "+" : ""}{dayPct.toFixed(2)}% · {dayChg >= 0 ? "+" : ""}{fmt(dayChg)}
+                      </Typography>
+                    </Stack>
                   </Paper>
                 </FadeIn>
               );
@@ -165,7 +230,7 @@ function Watchlists() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleCreate} disabled={saving || !newName.trim()}>Create</Button>
+          <Button variant="contained" onClick={handleCreate} disabled={!newName.trim()}>Create</Button>
         </DialogActions>
       </Dialog>
 
@@ -177,7 +242,7 @@ function Watchlists() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEditWl(null)}>Cancel</Button>
-          <Button variant="contained" onClick={handleUpdate} disabled={saving || !editName.trim()}>Save</Button>
+          <Button variant="contained" onClick={handleUpdate} disabled={!editName.trim()}>Save</Button>
         </DialogActions>
       </Dialog>
 
@@ -199,10 +264,10 @@ function Watchlists() {
           position: "fixed",
           bottom: 24,
           right: { xs: 16, sm: 24 },
-          background: "linear-gradient(135deg, #7C3AED 0%, #A855F7 100%)",
-          color: colors.white,
+          bgcolor: colors.accent,
+          color: colors.pureWhite,
           boxShadow: `0 4px 20px ${alpha(colors.accent, 0.4)}`,
-          "&:hover": { background: "linear-gradient(135deg, #6D28D9 0%, #7C3AED 100%)", boxShadow: `0 6px 28px ${alpha(colors.accent, 0.5)}` },
+          "&:hover": { bgcolor: colors.accentDark, boxShadow: `0 6px 28px ${alpha(colors.accent, 0.5)}` },
         }}>
         <AddIcon sx={isMobile ? {} : { mr: 0.5 }} />
         {!isMobile && "Add Watchlist"}

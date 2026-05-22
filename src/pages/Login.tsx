@@ -1,26 +1,23 @@
 import { useState } from "react";
 import { signInWithPopup } from "firebase/auth";
 import { auth, googleProvider } from "../firebase";
-import { Box, Typography, Button, Paper, Avatar, Alert, CircularProgress } from "@mui/material";
+import { Box, Typography, Button, Paper, Avatar, CircularProgress } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import { tokens } from "../theme";
 import { useToast } from "../context/ToastContext";
-
-const { colors, gradients } = tokens;
+import { useTokens } from "../context/ColorModeContext";
 
 function Login() {
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const { showToast } = useToast();
+  const { colors, gradients } = useTokens();
 
   const handleGoogleSignIn = async () => {
     try {
       setLoading(true);
-      setError(null);
       const result = await signInWithPopup(auth, googleProvider);
       showToast(`Welcome, ${result.user.displayName || "there"}! 👋`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-in failed. Please try again.");
+      showToast(err instanceof Error ? err.message : "Sign-in failed. Please try again.", "error");
     } finally {
       setLoading(false);
     }
@@ -87,16 +84,6 @@ function Login() {
         >
           Track your finances, investments, and income — all in one place.
         </Typography>
-
-        {error && (
-          <Alert
-            severity="error"
-            onClose={() => setError(null)}
-            sx={{ mb: 3, textAlign: "left" }}
-          >
-            {error}
-          </Alert>
-        )}
 
         {/* Google Sign-In Button */}
         <Button

@@ -1,11 +1,12 @@
 import { type ReactNode, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
-  Box, Typography, Avatar,
+  Box, Typography, Avatar, ToggleButtonGroup, ToggleButton,
   Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText,
   IconButton, Divider, Dialog, DialogTitle, DialogContent, DialogActions, Button,
   useMediaQuery, useTheme,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import MenuIcon from "@mui/icons-material/Menu";
 import DashboardRoundedIcon from "@mui/icons-material/DashboardRounded";
 import AccountBalanceWalletRoundedIcon from "@mui/icons-material/AccountBalanceWalletRounded";
@@ -15,13 +16,16 @@ import AccountBalanceRoundedIcon from "@mui/icons-material/AccountBalanceRounded
 import LocalOfferRoundedIcon from "@mui/icons-material/LocalOfferRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import PersonRemoveRoundedIcon from "@mui/icons-material/PersonRemoveRounded";
+import DarkModeRoundedIcon from "@mui/icons-material/DarkModeRounded";
+import LightModeRoundedIcon from "@mui/icons-material/LightModeRounded";
+import SettingsBrightnessRoundedIcon from "@mui/icons-material/SettingsBrightnessRounded";
 import { useUser } from "../context/UserContext";
 import { deleteUser, invalidateCache } from "../api/client";
 import { useToast } from "../context/ToastContext";
-import { tokens } from "../theme";
+import { useColorMode, useTokens } from "../context/ColorModeContext";
+import type { ColorModePref } from "../context/ColorModeContext";
 
 const SIDEBAR_W = 252;
-const { colors } = tokens;
 
 const PRIMARY_NAV = [
   { label: "Dashboard", path: "/", icon: <DashboardRoundedIcon /> },
@@ -43,6 +47,8 @@ function Layout({ children }: { children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { firebaseUser, userId, logout } = useUser();
   const { showToast } = useToast();
+  const { preference, setPreference } = useColorMode();
+  const { colors, gradients } = useTokens();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -87,7 +93,7 @@ function Layout({ children }: { children: ReactNode }) {
         onClick={() => { navigate("/"); setDrawerOpen(false); }}
       >
         <Avatar sx={{
-          width: 34, height: 34, background: tokens.gradients.hero,
+          width: 34, height: 34, background: gradients.hero,
           fontSize: "0.75rem", fontWeight: 800, letterSpacing: "-0.02em",
         }}>
           NW
@@ -143,11 +149,43 @@ function Layout({ children }: { children: ReactNode }) {
       {/* Spacer */}
       <Box sx={{ flex: 1 }} />
 
+      {/* Appearance */}
+      <Box sx={{ px: 1, mb: 1.5 }}>
+        <Typography variant="overline" sx={{ px: 1, mb: 0.75, display: "block", fontSize: "0.6rem", color: colors.gray400 }}>
+          Appearance
+        </Typography>
+        <ToggleButtonGroup
+          value={preference}
+          exclusive
+          onChange={(_, val) => { if (val) setPreference(val as ColorModePref); }}
+          size="small"
+          fullWidth
+          sx={{
+            bgcolor: colors.gray100, borderRadius: 2.5, p: "3px", gap: "2px",
+            "& .MuiToggleButtonGroup-grouped": { border: "none !important", m: 0 },
+          }}
+        >
+          {([
+            { value: "light" as const, label: "Light", icon: <LightModeRoundedIcon sx={{ fontSize: 13 }} /> },
+            { value: "system" as const, label: "Auto", icon: <SettingsBrightnessRoundedIcon sx={{ fontSize: 13 }} /> },
+            { value: "dark" as const, label: "Dark", icon: <DarkModeRoundedIcon sx={{ fontSize: 13 }} /> },
+          ]).map(opt => (
+            <ToggleButton key={opt.value} value={opt.value} sx={{
+              borderRadius: "10px !important", py: 0.5, px: 1, minWidth: 0, textTransform: "none",
+              fontSize: "0.7rem", fontWeight: 500, gap: 0.4, lineHeight: 1,
+              "&.Mui-selected": { bgcolor: `${colors.brand} !important`, color: "#fff !important", fontWeight: 600, boxShadow: `0 1px 4px ${alpha(colors.brand, 0.3)}` },
+            }}>
+              {opt.icon} {opt.label}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+      </Box>
+
       {/* User + Sign out */}
       {firebaseUser && (
         <Box sx={{ px: 1, pb: 1 }}>
           <Divider sx={{ mb: 2, mx: 0.5 }} />
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, px: 0.5, mb: 1 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, px: 0.5, mb: 1 }}>
             <Avatar
               src={firebaseUser.photoURL || undefined}
               sx={{ width: 32, height: 32, fontSize: "0.7rem", fontWeight: 700 }}
@@ -183,7 +221,7 @@ function Layout({ children }: { children: ReactNode }) {
   );
 
   return (
-    <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "background.default" }}>
+    <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "background.default", overflowX: "hidden", maxWidth: "100vw" }}>
       {/* Desktop sidebar */}
       {isDesktop && (
         <Box sx={{
@@ -208,6 +246,8 @@ function Layout({ children }: { children: ReactNode }) {
         ml: isDesktop ? `${SIDEBAR_W}px` : 0,
         pb: 0,
         minHeight: "100vh",
+        overflowX: "hidden",
+        maxWidth: isDesktop ? `calc(100vw - ${SIDEBAR_W}px)` : "100vw",
       }}>
         {/* Mobile top bar */}
         {!isDesktop && (
@@ -223,7 +263,7 @@ function Layout({ children }: { children: ReactNode }) {
               <MenuIcon />
             </IconButton>
             <Avatar sx={{
-              width: 28, height: 28, background: tokens.gradients.hero,
+              width: 28, height: 28, background: gradients.hero,
               fontSize: "0.6rem", fontWeight: 800, mr: 1,
             }}>NW</Avatar>
             <Typography sx={{ fontWeight: 700, fontSize: "1rem", letterSpacing: "-0.02em" }}>
