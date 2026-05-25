@@ -157,6 +157,13 @@ function Watchlists() {
               const dayChg = w.currentDayValue - w.previousDayValue;
               const dayPct = w.previousDayValue > 0 ? (dayChg / w.previousDayValue) * 100 : 0;
               const isAll = w.name === "All";
+              const isDark = theme.palette.mode === "dark";
+              const cardMuted = isDark ? alpha(colors.pureWhite, 0.5) : colors.gray400;
+              const cardSubtle = isDark ? alpha(colors.pureWhite, 0.08) : colors.gray100;
+              const accentColor = isAll ? colors.brand : colors.accent;
+              const cardInvested = isDark ? "#60A5FA" : colors.brand;
+              const cardSuccess = isDark ? "#34D399" : colors.success;
+              const cardError = isDark ? "#F87171" : colors.error;
               return (
                 <FadeIn key={w.id} delay={i * 40}>
                   <Paper
@@ -164,18 +171,17 @@ function Watchlists() {
                     sx={{
                       p: 2.5, cursor: "pointer",
                       borderRadius: 3,
-                      borderLeft: `4px solid ${isAll ? colors.brand : colors.accent}`,
+                      borderLeft: `4px solid ${accentColor}`,
                       transition: "all 0.2s ease",
                       "&:hover": { boxShadow: shadow.hover, transform: "translateY(-2px)" },
-                      position: "relative",
                       height: "100%", display: "flex", flexDirection: "column",
                     }}
                   >
-                    <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5, mb: 2 }}>
+                    <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5, mb: 1.5 }}>
                       <Avatar sx={{
-                        width: 36, height: 36,
-                        bgcolor: alpha(isAll ? colors.brand : colors.accent, 0.1),
-                        color: isAll ? colors.brand : colors.accent,
+                        width: 36, height: 36, borderRadius: 2,
+                        bgcolor: alpha(accentColor, 0.1),
+                        color: accentColor,
                       }}>
                         {isAll ? <AllInclusiveRoundedIcon sx={{ fontSize: 20 }} /> : <VisibilityRoundedIcon sx={{ fontSize: 20 }} />}
                       </Avatar>
@@ -194,25 +200,50 @@ function Watchlists() {
                       )}
                     </Box>
 
-                    <Typography sx={{ fontSize: "1.35rem", fontWeight: 750, letterSpacing: "-0.02em", mb: 0.25 }}>
-                      {fmt(w.currentDayValue)}
-                    </Typography>
-                    {w.invested > 0 && w.invested !== w.currentDayValue && (
-                      <Typography sx={{ fontSize: 11, color: colors.gray400, mb: 0.5 }}>
-                        Invested: {fmt(w.invested)}
+                    <Box sx={{ px: 1.5, py: 1, borderRadius: 1.5, bgcolor: cardSubtle, display: "inline-block", mb: 1.5, alignSelf: "flex-start" }}>
+                      <Typography sx={{ fontSize: "0.6rem", fontWeight: 500, color: cardMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.15 }}>
+                        Value
                       </Typography>
-                    )}
-                    <Stack spacing={0.5} sx={{ mt: 0.5, alignSelf: "flex-start" }}>
+                      <Typography sx={{ fontSize: "1.25rem", fontWeight: 750, letterSpacing: "-0.02em" }}>
+                        {fmt(w.currentDayValue)}
+                      </Typography>
+                    </Box>
+
+                    <Stack direction="row" sx={{ gap: 1, flexWrap: "wrap", mt: "auto" }}>
                       {w.invested > 0 && (
-                        <Typography sx={{ fontSize: 11, fontWeight: 600, color: gain >= 0 ? colors.success : colors.error, display: "flex", alignItems: "center", gap: 0.5 }}>
-                          <Box component="span" sx={{ fontSize: 9, fontWeight: 700, bgcolor: alpha(gain >= 0 ? colors.success : colors.error, 0.12), px: 0.6, py: 0.1, borderRadius: 0.5 }}>P&L</Box>
-                          {gain >= 0 ? "+" : ""}{gainPct.toFixed(1)}% · {gain >= 0 ? "+" : ""}{fmt(gain)}
-                        </Typography>
+                        <Box sx={{ flex: 1, minWidth: 80, p: 1, borderRadius: 1.5, bgcolor: alpha(cardInvested, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
+                          <Typography sx={{ fontSize: "0.6rem", fontWeight: 500, color: cardMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
+                            Invested
+                          </Typography>
+                          <Typography noWrap sx={{ fontSize: "0.8rem", fontWeight: 700, color: cardInvested }}>
+                            {fmt(w.invested)}
+                          </Typography>
+                        </Box>
                       )}
-                      <Typography sx={{ fontSize: 11, fontWeight: 600, color: dayChg >= 0 ? colors.success : colors.error, display: "flex", alignItems: "center", gap: 0.5 }}>
-                        <Box component="span" sx={{ fontSize: 9, fontWeight: 700, bgcolor: alpha(dayChg >= 0 ? colors.success : colors.error, 0.12), px: 0.6, py: 0.1, borderRadius: 0.5 }}>1D</Box>
-                        {dayChg >= 0 ? "+" : ""}{dayPct.toFixed(2)}% · {dayChg >= 0 ? "+" : ""}{fmt(dayChg)}
-                      </Typography>
+                      {w.invested > 0 && (
+                        <Box sx={{ flex: 1, minWidth: 80, p: 1, borderRadius: 1.5, bgcolor: alpha(gain >= 0 ? cardSuccess : cardError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
+                          <Typography sx={{ fontSize: "0.6rem", fontWeight: 500, color: cardMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
+                            P&L
+                          </Typography>
+                          <Typography noWrap sx={{ fontSize: "0.8rem", fontWeight: 700, color: gain >= 0 ? cardSuccess : cardError }}>
+                            {gain >= 0 ? "+" : ""}{fmt(gain)}
+                          </Typography>
+                          <Typography sx={{ fontSize: "0.65rem", fontWeight: 600, color: gain >= 0 ? cardSuccess : cardError, opacity: 0.8 }}>
+                            {gain >= 0 ? "+" : ""}{gainPct.toFixed(1)}%
+                          </Typography>
+                        </Box>
+                      )}
+                      <Box sx={{ flex: 1, minWidth: 80, p: 1, borderRadius: 1.5, bgcolor: alpha(dayChg >= 0 ? cardSuccess : cardError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
+                        <Typography sx={{ fontSize: "0.6rem", fontWeight: 500, color: cardMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
+                          Today
+                        </Typography>
+                        <Typography noWrap sx={{ fontSize: "0.8rem", fontWeight: 700, color: dayChg >= 0 ? cardSuccess : cardError }}>
+                          {dayChg >= 0 ? "+" : ""}{fmt(dayChg)}
+                        </Typography>
+                        <Typography sx={{ fontSize: "0.65rem", fontWeight: 600, color: dayChg >= 0 ? cardSuccess : cardError, opacity: 0.8 }}>
+                          {dayChg >= 0 ? "+" : ""}{dayPct.toFixed(2)}%
+                        </Typography>
+                      </Box>
                     </Stack>
                   </Paper>
                 </FadeIn>

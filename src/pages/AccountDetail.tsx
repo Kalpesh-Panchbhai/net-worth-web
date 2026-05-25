@@ -13,7 +13,6 @@ import ShowChartIcon from "@mui/icons-material/ShowChart";
 import ReceiptOutlinedIcon from "@mui/icons-material/ReceiptOutlined";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import PauseCircleOutlineIcon from "@mui/icons-material/PauseCircleOutline";
-import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import AddCircleRoundedIcon from "@mui/icons-material/AddCircleRounded";
 import { useUser } from "../context/UserContext";
@@ -32,7 +31,7 @@ import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
-import { EmptyState, ErrorState, ListSkeleton, TintedChip, FadeIn } from "../components/shared";
+import { EmptyState, ErrorState, ListSkeleton, FadeIn } from "../components/shared";
 import EntityChart from "../components/EntityChart";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
@@ -453,48 +452,82 @@ function AccountDetail() {
                       const gainPct = h.invested > 0 ? (gain / h.invested) * 100 : 0;
                       const dayChg = h.currentDayValue - h.previousDayValue;
                       const dayPct = h.previousDayValue > 0 ? (dayChg / h.previousDayValue) * 100 : 0;
+                      const isDark = theme.palette.mode === "dark";
+                      const cardMuted = isDark ? alpha(colors.pureWhite, 0.5) : colors.gray400;
+                      const cardSubtle = isDark ? alpha(colors.pureWhite, 0.08) : colors.gray100;
+                      const cardInvested = isDark ? "#60A5FA" : colors.brand;
+                      const cardSuccess = isDark ? "#34D399" : colors.success;
+                      const cardError = isDark ? "#F87171" : colors.error;
                       return (
                         <FadeIn key={h.id} delay={i * 40}>
                           <Paper
                             onClick={() => navigate(`/accounts/${accountId}/holdings/${h.id}`)}
                             sx={{
                               p: 2.5, cursor: "pointer", borderRadius: 3,
+                              borderLeft: `4px solid ${colors.brand}`,
                               transition: "all 0.2s ease",
                               "&:hover": { boxShadow: shadow.hover, transform: "translateY(-2px)" },
+                              height: "100%", display: "flex", flexDirection: "column",
                             }}
                           >
-                            <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-                              <Box sx={{ display: "flex", gap: 1.5, alignItems: "flex-start", minWidth: 0 }}>
-                                <Avatar sx={{ width: 40, height: 40, bgcolor: alpha(colors.brand, 0.08), color: colors.brand, fontSize: "0.7rem", fontWeight: 800, borderRadius: 2.5 }}>
-                                  {h.symbol.slice(0, 3)}
-                                </Avatar>
-                                <Box sx={{ minWidth: 0 }}>
-                                  <Typography sx={{ fontWeight: 650, fontSize: "0.9rem", lineHeight: 1.2 }} noWrap>{h.name}</Typography>
-                                  <Typography variant="caption" sx={{ color: colors.gray400 }}>{h.symbol} · {fmtUnits(h.units)} units</Typography>
-                                </Box>
+                            <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5, mb: 1.5 }}>
+                              <Avatar sx={{ width: 36, height: 36, bgcolor: alpha(colors.brand, 0.1), color: colors.brand, fontSize: "0.65rem", fontWeight: 800, borderRadius: 2 }}>
+                                {h.symbol.slice(0, 3)}
+                              </Avatar>
+                              <Box sx={{ flex: 1, minWidth: 0 }}>
+                                <Typography sx={{ fontWeight: 650, fontSize: "0.9rem", lineHeight: 1.3 }} noWrap>{h.name}</Typography>
+                                <Typography variant="caption" sx={{ color: cardMuted }}>{h.symbol} · {fmtUnits(h.units)} units</Typography>
                               </Box>
                               <Stack direction="row" spacing={0} onClick={e => e.stopPropagation()} sx={{ ml: 1 }}>
                                 {account?.isActive && (<IconButton size="small" onClick={() => setDeleteHoldingConfirm(h)} sx={{ color: colors.error, opacity: 0.6, "&:hover": { opacity: 1, bgcolor: alpha(colors.error, 0.08) } }}>
                                   <DeleteOutlineIcon sx={{ fontSize: 16 }} />
                                 </IconButton>)}
-                                <ChevronRightRoundedIcon fontSize="small" sx={{ color: colors.gray300, mt: 0.5 }} />
                               </Stack>
+                            </Box>
+
+                            <Box sx={{ px: 1.5, py: 1, borderRadius: 1.5, bgcolor: cardSubtle, display: "inline-block", mb: 1.5, alignSelf: "flex-start" }}>
+                              <Typography sx={{ fontSize: "0.6rem", fontWeight: 500, color: cardMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.15 }}>
+                                Value
+                              </Typography>
+                              <Typography sx={{ fontSize: "1.25rem", fontWeight: 750, letterSpacing: "-0.02em" }}>
+                                {fmt(h.currentDayValue, account.currency)}
+                              </Typography>
+                            </Box>
+
+                            <Stack direction="row" sx={{ gap: 1, flexWrap: "wrap", mt: "auto" }}>
+                              <Box sx={{ flex: 1, minWidth: 80, p: 1, borderRadius: 1.5, bgcolor: alpha(cardInvested, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
+                                <Typography sx={{ fontSize: "0.6rem", fontWeight: 500, color: cardMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
+                                  Invested
+                                </Typography>
+                                <Typography noWrap sx={{ fontSize: "0.8rem", fontWeight: 700, color: cardInvested }}>
+                                  {fmt(h.invested, account.currency)}
+                                </Typography>
+                              </Box>
+                              {h.invested > 0 && (
+                                <Box sx={{ flex: 1, minWidth: 80, p: 1, borderRadius: 1.5, bgcolor: alpha(gain >= 0 ? cardSuccess : cardError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
+                                  <Typography sx={{ fontSize: "0.6rem", fontWeight: 500, color: cardMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
+                                    P&L
+                                  </Typography>
+                                  <Typography noWrap sx={{ fontSize: "0.8rem", fontWeight: 700, color: gain >= 0 ? cardSuccess : cardError }}>
+                                    {gain >= 0 ? "+" : ""}{fmt(gain, account.currency)}
+                                  </Typography>
+                                  <Typography sx={{ fontSize: "0.65rem", fontWeight: 600, color: gain >= 0 ? cardSuccess : cardError, opacity: 0.8 }}>
+                                    {gain >= 0 ? "+" : ""}{gainPct.toFixed(1)}%
+                                  </Typography>
+                                </Box>
+                              )}
+                              <Box sx={{ flex: 1, minWidth: 80, p: 1, borderRadius: 1.5, bgcolor: alpha(dayChg >= 0 ? cardSuccess : cardError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
+                                <Typography sx={{ fontSize: "0.6rem", fontWeight: 500, color: cardMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
+                                  Today
+                                </Typography>
+                                <Typography noWrap sx={{ fontSize: "0.8rem", fontWeight: 700, color: dayChg >= 0 ? cardSuccess : cardError }}>
+                                  {dayChg >= 0 ? "+" : ""}{fmt(dayChg, account.currency)}
+                                </Typography>
+                                <Typography sx={{ fontSize: "0.65rem", fontWeight: 600, color: dayChg >= 0 ? cardSuccess : cardError, opacity: 0.8 }}>
+                                  {dayChg >= 0 ? "+" : ""}{dayPct.toFixed(2)}%
+                                </Typography>
+                              </Box>
                             </Stack>
-                            <Typography sx={{ fontSize: "1.25rem", fontWeight: 750, letterSpacing: "-0.02em", mt: 1.5, mb: 0.25 }}>
-                              {fmt(h.currentDayValue, account.currency)}
-                            </Typography>
-                            <Typography sx={{ fontSize: 11, color: colors.gray400, mb: 0.5 }}>
-                              Invested: {fmt(h.invested, account.currency)}
-                            </Typography>
-                            <TintedChip
-                              label={`${gain >= 0 ? "+" : ""}${gainPct.toFixed(1)}% · ${gain >= 0 ? "+" : ""}${fmt(gain, account.currency)}`}
-                              color={gain >= 0 ? colors.success : colors.error}
-                              size="small"
-                            />
-                            <Typography sx={{ fontSize: 11, fontWeight: 600, color: dayChg >= 0 ? colors.success : colors.error, mt: 0.5, display: "flex", alignItems: "center", gap: 0.5 }}>
-                              <Box component="span" sx={{ fontSize: 9, fontWeight: 700, bgcolor: alpha(dayChg >= 0 ? colors.success : colors.error, 0.12), px: 0.6, py: 0.1, borderRadius: 0.5 }}>1D</Box>
-                              {dayChg >= 0 ? "+" : ""}{dayPct.toFixed(2)}% · {dayChg >= 0 ? "+" : ""}{fmt(dayChg, account.currency)}
-                            </Typography>
                           </Paper>
                         </FadeIn>
                       );

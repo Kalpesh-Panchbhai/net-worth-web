@@ -168,6 +168,12 @@ function Accounts() {
     const dayChg = a.currentDayValue - a.previousDayValue;
     const dayPct = a.previousDayValue > 0 ? (dayChg / a.previousDayValue) * 100 : 0;
     const tc = typeColors[a.type] || colors.gray500;
+    const isDark = theme.palette.mode === "dark";
+    const cardMuted = isDark ? alpha(colors.pureWhite, 0.5) : colors.gray400;
+    const cardSubtle = isDark ? alpha(colors.pureWhite, 0.08) : colors.gray100;
+    const cardInvested = isDark ? "#60A5FA" : colors.brand;
+    const cardSuccess = isDark ? "#34D399" : colors.success;
+    const cardError = isDark ? "#F87171" : colors.error;
     return (
       <FadeIn delay={i * 40}>
         <Paper
@@ -179,17 +185,16 @@ function Accounts() {
             transition: "all 0.2s ease",
             "&:hover": { boxShadow: shadow.hover, transform: "translateY(-2px)" },
             opacity: a.isActive ? 1 : 0.6,
-            position: "relative",
             height: "100%", display: "flex", flexDirection: "column",
           }}
         >
-          <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5, mb: 2 }}>
-            <Avatar sx={{ width: 36, height: 36, bgcolor: alpha(tc, 0.1), color: tc }}>
+          <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5, mb: 1.5 }}>
+            <Avatar sx={{ width: 36, height: 36, bgcolor: alpha(tc, 0.1), color: tc, borderRadius: 2 }}>
               {TYPE_ICONS[a.type] || TYPE_ICONS.OTHER}
             </Avatar>
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Typography sx={{ fontWeight: 650, fontSize: "0.9rem", lineHeight: 1.3 }} noWrap>{a.name}</Typography>
-              <Typography variant="caption" sx={{ color: colors.gray400 }}>
+              <Typography variant="caption" sx={{ color: cardMuted }}>
                 {TYPE_LABELS[a.type as AccountType] || a.type} · {a.currency}
                 {!a.isActive && " · Inactive"}
               </Typography>
@@ -203,25 +208,51 @@ function Accounts() {
               </IconButton>
             </Stack>
           </Box>
-          <Typography sx={{ fontSize: "1.35rem", fontWeight: 750, letterSpacing: "-0.02em", mb: 0.25 }}>
-            {fmt(a.currentDayValue, a.currency)}
-          </Typography>
-          {(a.type === "BROKER" || a.needsDailyData) && (
-            <Typography sx={{ fontSize: 11, color: colors.gray400, mb: 0.5 }}>
-              Invested: {fmt(a.invested, a.currency)}
+
+          <Box sx={{ px: 1.5, py: 1, borderRadius: 1.5, bgcolor: cardSubtle, display: "inline-block", mb: 1.5, alignSelf: "flex-start" }}>
+            <Typography sx={{ fontSize: "0.6rem", fontWeight: 500, color: cardMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.15 }}>
+              Value
             </Typography>
-          )}
-          <Stack spacing={0.5} sx={{ mt: 0.5, alignSelf: "flex-start" }}>
-            {(a.type === "BROKER" || a.needsDailyData) && a.invested > 0 && (
-              <Typography sx={{ fontSize: 11, fontWeight: 600, color: gain >= 0 ? colors.success : colors.error, display: "flex", alignItems: "center", gap: 0.5 }}>
-                <Box component="span" sx={{ fontSize: 9, fontWeight: 700, bgcolor: alpha(gain >= 0 ? colors.success : colors.error, 0.12), px: 0.6, py: 0.1, borderRadius: 0.5 }}>P&L</Box>
-                {gain >= 0 ? "+" : ""}{gainPct.toFixed(1)}% · {gain >= 0 ? "+" : ""}{fmt(gain, a.currency)}
-              </Typography>
+            <Typography sx={{ fontSize: "1.25rem", fontWeight: 750, letterSpacing: "-0.02em" }}>
+              {fmt(a.currentDayValue, a.currency)}
+            </Typography>
+          </Box>
+
+          <Stack direction="row" sx={{ gap: 1, flexWrap: "wrap", mt: "auto" }}>
+            {(a.type === "BROKER" || a.needsDailyData) && (
+              <Box sx={{ flex: 1, minWidth: 80, p: 1, borderRadius: 1.5, bgcolor: alpha(cardInvested, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
+                <Typography sx={{ fontSize: "0.6rem", fontWeight: 500, color: cardMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
+                  Invested
+                </Typography>
+                <Typography noWrap sx={{ fontSize: "0.8rem", fontWeight: 700, color: cardInvested }}>
+                  {fmt(a.invested, a.currency)}
+                </Typography>
+              </Box>
             )}
-            <Typography sx={{ fontSize: 11, fontWeight: 600, color: dayChg >= 0 ? colors.success : colors.error, display: "flex", alignItems: "center", gap: 0.5 }}>
-              <Box component="span" sx={{ fontSize: 9, fontWeight: 700, bgcolor: alpha(dayChg >= 0 ? colors.success : colors.error, 0.12), px: 0.6, py: 0.1, borderRadius: 0.5 }}>1D</Box>
-              {dayChg >= 0 ? "+" : ""}{dayPct.toFixed(2)}% · {dayChg >= 0 ? "+" : ""}{fmt(dayChg, a.currency)}
-            </Typography>
+            {(a.type === "BROKER" || a.needsDailyData) && a.invested > 0 && (
+              <Box sx={{ flex: 1, minWidth: 80, p: 1, borderRadius: 1.5, bgcolor: alpha(gain >= 0 ? cardSuccess : cardError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
+                <Typography sx={{ fontSize: "0.6rem", fontWeight: 500, color: cardMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
+                  P&L
+                </Typography>
+                <Typography noWrap sx={{ fontSize: "0.8rem", fontWeight: 700, color: gain >= 0 ? cardSuccess : cardError }}>
+                  {gain >= 0 ? "+" : ""}{fmt(gain, a.currency)}
+                </Typography>
+                <Typography sx={{ fontSize: "0.65rem", fontWeight: 600, color: gain >= 0 ? cardSuccess : cardError, opacity: 0.8 }}>
+                  {gain >= 0 ? "+" : ""}{gainPct.toFixed(1)}%
+                </Typography>
+              </Box>
+            )}
+            <Box sx={{ flex: 1, minWidth: 80, p: 1, borderRadius: 1.5, bgcolor: alpha(dayChg >= 0 ? cardSuccess : cardError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
+              <Typography sx={{ fontSize: "0.6rem", fontWeight: 500, color: cardMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
+                Today
+              </Typography>
+              <Typography noWrap sx={{ fontSize: "0.8rem", fontWeight: 700, color: dayChg >= 0 ? cardSuccess : cardError }}>
+                {dayChg >= 0 ? "+" : ""}{fmt(dayChg, a.currency)}
+              </Typography>
+              <Typography sx={{ fontSize: "0.65rem", fontWeight: 600, color: dayChg >= 0 ? cardSuccess : cardError, opacity: 0.8 }}>
+                {dayChg >= 0 ? "+" : ""}{dayPct.toFixed(2)}%
+              </Typography>
+            </Box>
           </Stack>
         </Paper>
       </FadeIn>
