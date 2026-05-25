@@ -142,9 +142,20 @@ function AccountDetail() {
     finally { setHoldingsLoading(false); }
   }, [isBroker, numAccountId]);
 
+  // For non-broker accounts, resolve the default holding ID
+  const [defaultHoldingId, setDefaultHoldingId] = useState<number | null>(null);
+
   const loadTransactions = useCallback(async () => {
     if (isBroker || !numAccountId) return;
-    try { setTxnLoading(true); setTransactions(await getTransactions({ accountId: numAccountId })); }
+    try {
+      setTxnLoading(true);
+      const [txns, h] = await Promise.all([
+        getTransactions({ accountId: numAccountId }),
+        getHoldings(numAccountId),
+      ]);
+      setTransactions(txns);
+      if (h.length > 0) setDefaultHoldingId(h[0].id);
+    }
     catch (err) { showToast(err instanceof Error ? err.message : "Failed to load transactions", "error"); }
     finally { setTxnLoading(false); }
   }, [isBroker, numAccountId]);
@@ -199,7 +210,7 @@ function AccountDetail() {
   const canAddTxn = !minTxnDate || minTxnDate <= todayStr;
 
   const handleCreateTxn = async () => {
-    if (!txnDate || !txnValue || (showInvested && !txnInvested)) return;
+    if (!txnDate || !txnValue || (showInvested && !txnInvested) || !defaultHoldingId) return;
     let invested = showInvested ? parseFloat(parseFloat(txnInvested).toFixed(2)) : parseFloat(parseFloat(txnValue).toFixed(2));
     let value = parseFloat(parseFloat(txnValue).toFixed(2));
     // Add mode: add to last transaction's cumulative values
@@ -209,13 +220,14 @@ function AccountDetail() {
       value = parseFloat((last.value + value).toFixed(2));
     }
     const date = txnDate;
+    const holdingId = defaultHoldingId;
     const prev = transactions;
     const tempId = -Date.now();
-    const optimistic: Transaction = { id: tempId, accountId: numAccountId, holdingId: numAccountId, txnDate: date, invested, value };
+    const optimistic: Transaction = { id: tempId, accountId: numAccountId, holdingId, txnDate: date, invested, value };
     setTransactions(t => [optimistic, ...t]);
     setCreateTxnOpen(false); setTxnDate(""); setTxnInvested(""); setTxnValue(""); setTxnMode("add");
     try {
-      const created = await createTransaction({ accountId: numAccountId, holdingId: numAccountId, txnDate: date, invested, value, mode: "update" });
+      const created = await createTransaction({ accountId: numAccountId, holdingId, txnDate: date, invested, value, mode: "update" });
       setTransactions(t => t.map(txn => txn.id === tempId ? created : txn));
       invalidateCache("transactions");
       showToast(`Transaction on ${date} created`);
