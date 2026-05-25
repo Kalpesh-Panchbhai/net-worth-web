@@ -1,4 +1,7 @@
 {
+  "functions": {
+    "source": "functions"
+  },
   "hosting": {
     "target": "app",
     "public": "dist",
@@ -8,6 +11,10 @@
       "**/node_modules/**"
     ],
     "rewrites": [
+      {
+        "source": "/yahoo-search",
+        "function": "yahooSearch"
+      },
       {
         "source": "**",
         "destination": "/index.html"

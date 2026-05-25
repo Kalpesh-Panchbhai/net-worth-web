@@ -69,6 +69,32 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   return data;
 }
 
+// Yahoo Finance symbol search
+export interface YahooQuote {
+  symbol: string;
+  shortname?: string;
+  longname?: string;
+  exchDisp?: string;
+  typeDisp?: string;
+}
+
+export async function searchSymbol(query: string): Promise<YahooQuote[]> {
+  if (!query.trim()) return [];
+  const encoded = encodeURIComponent(query.trim());
+  // In dev: use Vite proxy to Yahoo directly; in prod: use Firebase Cloud Function
+  const url = import.meta.env.DEV
+    ? `/yahoo-finance/v1/finance/search?q=${encoded}&quotesCount=20&newsCount=0`
+    : `/yahoo-search?q=${encoded}`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const json = await res.json();
+    return (json.quotes ?? []).filter((q: YahooQuote) => q.symbol);
+  } catch {
+    return [];
+  }
+}
+
 // Users
 export function ensureUser(externalUserId: string) {
   return request<User>("/users", {

@@ -4,7 +4,7 @@ import {
   Box, Paper, Typography, TextField, Button, MenuItem, Avatar,
   Dialog, DialogTitle, DialogContent, DialogActions,
   Stack, IconButton, Fab, Breadcrumbs, Link as MuiLink,
-  useMediaQuery, useTheme,
+  useMediaQuery, useTheme, CircularProgress, InputAdornment, ListItemAvatar,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
@@ -16,13 +16,16 @@ import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 import PauseCircleOutlineIcon from "@mui/icons-material/PauseCircleOutline";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
+import AddCircleRoundedIcon from "@mui/icons-material/AddCircleRounded";
 import { useUser } from "../context/UserContext";
 import {
   getAccounts, getHoldings, createHolding, deleteHolding,
   getTransactions, createTransaction, deleteTransaction,
   getAccountWatchlists, getWatchlists, linkWatchlistAccount, unlinkWatchlistAccount,
-  invalidateCache,
+  invalidateCache, searchSymbol,
 } from "../api/client";
+import type { YahooQuote } from "../api/client";
 import Chip from "@mui/material/Chip";
 import Checkbox from "@mui/material/Checkbox";
 import List from "@mui/material/List";
@@ -93,8 +96,9 @@ function AccountDetail() {
   const [holdings, setHoldings] = useState<HoldingSummary[]>([]);
   const [holdingsLoading, setHoldingsLoading] = useState(false);
   const [createHoldingOpen, setCreateHoldingOpen] = useState(false);
-  const [newHoldingName, setNewHoldingName] = useState("");
-  const [newHoldingSymbol, setNewHoldingSymbol] = useState("");
+  const [holdingSearch, setHoldingSearch] = useState("");
+  const [holdingResults, setHoldingResults] = useState<YahooQuote[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const [deleteHoldingConfirm, setDeleteHoldingConfirm] = useState<HoldingSummary | null>(null);
 
   // Transactions (non-broker accounts)
@@ -164,21 +168,33 @@ function AccountDetail() {
   useEffect(() => { loadAccountWatchlists(); }, [loadAccountWatchlists]);
   useEffect(() => { if (account) { if (isBroker) loadHoldings(); else loadTransactions(); } }, [account, isBroker, loadHoldings, loadTransactions]);
 
+  // Debounced Yahoo Finance search
+  useEffect(() => {
+    const q = holdingSearch.trim();
+    if (!q) { setHoldingResults([]); setIsSearching(false); return; }
+    setIsSearching(true);
+    const timer = setTimeout(async () => {
+      const results = await searchSymbol(q);
+      setHoldingResults(results);
+      setIsSearching(false);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [holdingSearch]);
+
   // Holdings actions
-  const handleCreateHolding = async () => {
-    if (!newHoldingName.trim() || !newHoldingSymbol.trim()) return;
-    const trimmed = newHoldingName.trim();
-    const symbol = newHoldingSymbol.trim();
+  const handleCreateHoldingFromQuote = async (quote: YahooQuote) => {
+    const name = quote.longname || quote.shortname || quote.symbol;
+    const symbol = quote.symbol;
     const prev = holdings;
     const tempId = -Date.now();
-    const optimistic: HoldingSummary = { id: tempId, accountId: numAccountId, name: trimmed, symbol, units: 0, currentDayValue: 0, previousDayValue: 0, invested: 0 };
+    const optimistic: HoldingSummary = { id: tempId, accountId: numAccountId, name, symbol, units: 0, currentDayValue: 0, previousDayValue: 0, invested: 0 };
     setHoldings(h => [...h, optimistic]);
-    setCreateHoldingOpen(false); setNewHoldingName(""); setNewHoldingSymbol("");
+    setCreateHoldingOpen(false); setHoldingSearch(""); setHoldingResults([]);
     try {
-      const created = await createHolding({ accountId: numAccountId, name: trimmed, symbol });
+      const created = await createHolding({ accountId: numAccountId, name, symbol });
       setHoldings(h => h.map(hld => hld.id === tempId ? { ...optimistic, ...created } : hld));
       invalidateCache("holdings");
-      showToast(`Holding "${trimmed}" created`);
+      showToast(`Holding "${name}" created`);
     } catch (err) {
       setHoldings(prev);
       showToast(err instanceof Error ? err.message : "Failed to create holding", "error");
@@ -586,18 +602,82 @@ function AccountDetail() {
 
       {/* ── Dialogs ── */}
 
-      {/* Create Holding */}
-      <Dialog open={createHoldingOpen} onClose={() => setCreateHoldingOpen(false)} fullScreen={isMobile} fullWidth maxWidth="sm">
-        <DialogTitle>New Holding</DialogTitle>
-        <DialogContent sx={{ pt: "16px !important" }}>
-          <Stack spacing={2}>
-            <TextField label="Name" value={newHoldingName} onChange={e => setNewHoldingName(e.target.value)} fullWidth autoFocus />
-            <TextField label="Symbol" value={newHoldingSymbol} onChange={e => setNewHoldingSymbol(e.target.value)} fullWidth />
-          </Stack>
+      {/* Create Holding — Yahoo Finance Search */}
+      <Dialog
+        open={createHoldingOpen}
+        onClose={() => { setCreateHoldingOpen(false); setHoldingSearch(""); setHoldingResults([]); }}
+        fullScreen={isMobile}
+        fullWidth maxWidth="sm"
+        PaperProps={{ sx: { minHeight: isMobile ? undefined : 420 } }}
+      >
+        <DialogTitle>Add Holding</DialogTitle>
+        <DialogContent sx={{ pt: "8px !important", px: 2, pb: 0 }}>
+          <TextField
+            placeholder="Search company name or symbol..."
+            value={holdingSearch}
+            onChange={e => setHoldingSearch(e.target.value)}
+            fullWidth autoFocus
+            size="small"
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchRoundedIcon sx={{ color: colors.gray400, fontSize: 20 }} />
+                  </InputAdornment>
+                ),
+                endAdornment: isSearching ? (
+                  <InputAdornment position="end">
+                    <CircularProgress size={18} />
+                  </InputAdornment>
+                ) : null,
+              },
+            }}
+          />
+          <Box sx={{ mt: 1, maxHeight: isMobile ? "calc(100vh - 180px)" : 320, overflowY: "auto" }}>
+            {holdingResults.length > 0 ? (
+              <List dense disablePadding>
+                {holdingResults.map(q => (
+                  <ListItem key={q.symbol} disablePadding>
+                    <ListItemButton onClick={() => handleCreateHoldingFromQuote(q)} sx={{ borderRadius: 1, py: 1 }}>
+                      <ListItemAvatar sx={{ minWidth: 40 }}>
+                        <Avatar sx={{ width: 32, height: 32, bgcolor: alpha(colors.brand, 0.1), color: colors.brand, fontSize: 12, fontWeight: 700 }}>
+                          {q.symbol.slice(0, 2)}
+                        </Avatar>
+                      </ListItemAvatar>
+                      <ListItemText
+                        primary={q.longname || q.shortname || q.symbol}
+                        secondary={
+                          <span>
+                            <strong>{q.symbol}</strong>
+                            {q.exchDisp ? ` · ${q.exchDisp}` : ""}
+                            {q.typeDisp ? ` · ${q.typeDisp}` : ""}
+                          </span>
+                        }
+                        primaryTypographyProps={{ fontSize: 14, fontWeight: 500, noWrap: true }}
+                        secondaryTypographyProps={{ fontSize: 12 }}
+                      />
+                      <AddCircleRoundedIcon sx={{ color: colors.brand, fontSize: 22, ml: 1 }} />
+                    </ListItemButton>
+                  </ListItem>
+                ))}
+              </List>
+            ) : holdingSearch.trim() && !isSearching ? (
+              <Box sx={{ textAlign: "center", py: 5 }}>
+                <SearchRoundedIcon sx={{ fontSize: 36, color: colors.gray300, mb: 1 }} />
+                <Typography fontWeight={600} sx={{ mb: 0.5 }}>No results found</Typography>
+                <Typography variant="body2" color="text.secondary">Try a different company name or symbol</Typography>
+              </Box>
+            ) : !holdingSearch.trim() ? (
+              <Box sx={{ textAlign: "center", py: 5 }}>
+                <ShowChartIcon sx={{ fontSize: 36, color: colors.gray300, mb: 1 }} />
+                <Typography fontWeight={600} sx={{ mb: 0.5 }}>Search for a stock</Typography>
+                <Typography variant="body2" color="text.secondary">e.g. AAPL, RELIANCE, GOOGL, INFY</Typography>
+              </Box>
+            ) : null}
+          </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateHoldingOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleCreateHolding} disabled={!newHoldingName.trim() || !newHoldingSymbol.trim()}>Create</Button>
+          <Button onClick={() => { setCreateHoldingOpen(false); setHoldingSearch(""); setHoldingResults([]); }}>Cancel</Button>
         </DialogActions>
       </Dialog>
 
