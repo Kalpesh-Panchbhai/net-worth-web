@@ -144,6 +144,20 @@ export default function EntityChart({ entityType, entityId, accentColor, currenc
   const [data, setData] = useState<ChartDataPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const [showCount, setShowCount] = useState<Record<string, number>>({});
+  const toggle = (key: string) => {
+    setHidden(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+        setShowCount(sc => ({ ...sc, [key]: (sc[key] ?? 0) + 1 }));
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
 
   const load = useCallback(async () => {
     if (!entityId) return;
@@ -309,34 +323,42 @@ export default function EntityChart({ entityType, entityId, accentColor, currenc
             <Legend
               iconSize={7}
               wrapperStyle={{ fontSize: 12, paddingTop: 12, color: colors.gray500 }}
-              formatter={(value: string) => <span style={{ fontSize: 12, verticalAlign: "middle" }}>{value}</span>}
+              onClick={(e: { value?: string }) => { if (e.value) toggle(e.value); }}
+              formatter={(value: string) => (
+                <span style={{ fontSize: 12, verticalAlign: "middle", opacity: hidden.has(value) ? 0.35 : 1, textDecoration: hidden.has(value) ? "line-through" : "none", cursor: "pointer" }}>{value}</span>
+              )}
               payload={[
-                { value: "Value", type: "circle" as const, color: hasInvData ? colors.success : color },
-                ...(showInvested ? [{ value: "Invested", type: "circle" as const, color: colors.warning }] : []),
+                { value: "Value", type: "circle" as const, color: hidden.has("Value") ? colors.gray300 : (hasInvData ? colors.success : color) },
+                ...(showInvested ? [{ value: "Invested", type: "circle" as const, color: hidden.has("Invested") ? colors.gray300 : colors.warning }] : []),
               ]}
             />
             <Area
+              key={`val-${showCount["Value"] ?? 0}`}
               type="monotone" dataKey="value" name="Value"
-              stroke={hasInvData ? `url(#${valStrokeId})` : color}
-              strokeWidth={2.5}
-              fill={hasInvData ? `url(#${valFillId})` : `url(#${gradientId})`}
+              stroke={hidden.has("Value") ? "transparent" : (hasInvData ? `url(#${valStrokeId})` : color)}
+              strokeWidth={hidden.has("Value") ? 0 : 2.5}
+              fill={hidden.has("Value") ? "transparent" : (hasInvData ? `url(#${valFillId})` : `url(#${gradientId})`)}
               dot={false}
-              activeDot={hasInvData
+              activeDot={hidden.has("Value") ? false : (hasInvData
                 ? (props: { cx: number; cy: number; payload: ChartDataPoint }) => {
                     const pl = props.payload.invested > 0 ? props.payload.value - props.payload.invested : 0;
                     const c = pl >= 0 ? colors.success : colors.error;
                     return <circle cx={props.cx} cy={props.cy} r={5} strokeWidth={2} stroke={colors.white} fill={c} />;
                   }
-                : { r: 5, strokeWidth: 2, stroke: colors.white, fill: color }}
-              isAnimationActive animationDuration={800} animationEasing="ease-out"
+                : { r: 5, strokeWidth: 2, stroke: colors.white, fill: color })}
+              isAnimationActive={!hidden.has("Value")} animationDuration={800} animationEasing="ease-out"
             />
             {showInvested && (
               <Area
+                key={`inv-${showCount["Invested"] ?? 0}`}
                 type="monotone" dataKey="invested" name="Invested"
-                stroke={colors.warning} strokeWidth={1.5} strokeDasharray="6 4"
-                fill={`url(#${gradientInvId})`} dot={false}
-                activeDot={{ r: 4, strokeWidth: 2, stroke: colors.white, fill: colors.warning }}
-                isAnimationActive animationDuration={800} animationEasing="ease-out" animationBegin={100}
+                stroke={hidden.has("Invested") ? "transparent" : colors.warning}
+                strokeWidth={hidden.has("Invested") ? 0 : 1.5}
+                strokeDasharray={hidden.has("Invested") ? undefined : "6 4"}
+                fill={hidden.has("Invested") ? "transparent" : `url(#${gradientInvId})`}
+                dot={false}
+                activeDot={hidden.has("Invested") ? false : { r: 4, strokeWidth: 2, stroke: colors.white, fill: colors.warning }}
+                isAnimationActive={!hidden.has("Invested")} animationDuration={800} animationEasing="ease-out" animationBegin={100}
               />
             )}
           </AreaChart>

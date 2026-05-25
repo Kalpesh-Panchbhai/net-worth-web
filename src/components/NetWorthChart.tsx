@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
 import { Box, Typography, useTheme, useMediaQuery } from "@mui/material";
 import { alpha } from "@mui/material/styles";
@@ -68,6 +69,20 @@ function NetWorthChart({ data }: NetWorthChartProps) {
   const { colors, shadow } = useTokens();
 
   const hasSavings = data.some((d) => d.savingsRate != null);
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const [showCount, setShowCount] = useState<Record<string, number>>({});
+  const toggle = (key: string) => {
+    setHidden(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+        setShowCount(sc => ({ ...sc, [key]: (sc[key] ?? 0) + 1 }));
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
 
   // Compute savings Y-axis max and gradient thresholds
   const savMax = (() => {
@@ -144,41 +159,53 @@ function NetWorthChart({ data }: NetWorthChartProps) {
         <Legend
           iconSize={7}
           wrapperStyle={{ fontSize: 12, paddingTop: 12, color: colors.gray500 }}
-          formatter={(value: string) => <span style={{ fontSize: 12, verticalAlign: "middle" }}>{value}</span>}
+          onClick={(e: { value?: string }) => { if (e.value) toggle(e.value); }}
+          formatter={(value: string) => (
+            <span style={{ fontSize: 12, verticalAlign: "middle", opacity: hidden.has(value) ? 0.35 : 1, textDecoration: hidden.has(value) ? "line-through" : "none", cursor: "pointer" }}>{value}</span>
+          )}
           payload={[
-            { value: "Value", type: "circle", color: colors.brand },
-            { value: "Invested", type: "circle", color: colors.warning },
-            ...(hasSavings ? [{ value: "Saved %", type: "circle" as const, color: colors.success }] : []),
+            { value: "Value", type: "circle", color: hidden.has("Value") ? colors.gray300 : colors.brand },
+            { value: "Invested", type: "circle", color: hidden.has("Invested") ? colors.gray300 : colors.warning },
+            ...(hasSavings ? [{ value: "Saved %", type: "circle" as const, color: hidden.has("Saved %") ? colors.gray300 : colors.success }] : []),
           ]}
         />
         <Area
+          key={`val-${showCount["Value"] ?? 0}`}
           yAxisId="left"
           type="monotone" dataKey="value" name="Value"
-          stroke={colors.brand} strokeWidth={2.5} fill="url(#gVal)" dot={false}
-          activeDot={{ r: 5, strokeWidth: 2, stroke: colors.white, fill: colors.brand }}
-          isAnimationActive animationDuration={800} animationEasing="ease-out"
+          stroke={hidden.has("Value") ? "transparent" : colors.brand}
+          strokeWidth={hidden.has("Value") ? 0 : 2.5}
+          fill={hidden.has("Value") ? "transparent" : "url(#gVal)"} dot={false}
+          activeDot={hidden.has("Value") ? false : { r: 5, strokeWidth: 2, stroke: colors.white, fill: colors.brand }}
+          isAnimationActive={!hidden.has("Value")} animationDuration={800} animationEasing="ease-out"
         />
         <Area
+          key={`inv-${showCount["Invested"] ?? 0}`}
           yAxisId="left"
           type="monotone" dataKey="invested" name="Invested"
-          stroke={colors.warning} strokeWidth={1.5} strokeDasharray="6 4"
-          fill="url(#gInv)" dot={false}
-          activeDot={{ r: 4, strokeWidth: 2, stroke: colors.white, fill: colors.warning }}
-          isAnimationActive animationDuration={800} animationEasing="ease-out" animationBegin={100}
+          stroke={hidden.has("Invested") ? "transparent" : colors.warning}
+          strokeWidth={hidden.has("Invested") ? 0 : 1.5}
+          strokeDasharray={hidden.has("Invested") ? undefined : "6 4"}
+          fill={hidden.has("Invested") ? "transparent" : "url(#gInv)"} dot={false}
+          activeDot={hidden.has("Invested") ? false : { r: 4, strokeWidth: 2, stroke: colors.white, fill: colors.warning }}
+          isAnimationActive={!hidden.has("Invested")} animationDuration={800} animationEasing="ease-out" animationBegin={100}
         />
         {hasSavings && (
           <Area
+            key={`sav-${showCount["Saved %"] ?? 0}`}
             yAxisId="right"
             type="monotone" dataKey="savingsRate" name="Saved %"
-            stroke="url(#gSavStroke)" strokeWidth={2} strokeDasharray="4 3"
-            fill="url(#gSavFill)" dot={false}
-            activeDot={(props: { cx: number; cy: number; payload: EnrichedDataPoint }) => {
+            stroke={hidden.has("Saved %") ? "transparent" : "url(#gSavStroke)"}
+            strokeWidth={hidden.has("Saved %") ? 0 : 2}
+            strokeDasharray={hidden.has("Saved %") ? undefined : "4 3"}
+            fill={hidden.has("Saved %") ? "transparent" : "url(#gSavFill)"} dot={false}
+            activeDot={hidden.has("Saved %") ? false : ((props: { cx: number; cy: number; payload: EnrichedDataPoint }) => {
               const sr = props.payload.savingsRate ?? 0;
               const c = sr >= 50 ? colors.success : sr >= 25 ? colors.warning : colors.error;
               return <circle cx={props.cx} cy={props.cy} r={4} strokeWidth={2} stroke={colors.white} fill={c} />;
-            }}
+            })}
             connectNulls
-            isAnimationActive animationDuration={800} animationEasing="ease-out" animationBegin={200}
+            isAnimationActive={!hidden.has("Saved %")} animationDuration={800} animationEasing="ease-out" animationBegin={200}
           />
         )}
       </AreaChart>

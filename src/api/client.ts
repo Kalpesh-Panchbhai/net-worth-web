@@ -36,17 +36,30 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   // Return cached data for GET requests
   if (!isWrite && cache.has(url)) return cache.get(url) as T;
 
-  const response = await fetch(`${BASE_URL}${url}`, {
-    ...options,
-    headers: {
-      ...(isWrite ? { "Content-Type": "application/json" } : {}),
-      ...options?.headers as Record<string, string>,
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${BASE_URL}${url}`, {
+      ...options,
+      headers: {
+        ...(isWrite ? { "Content-Type": "application/json" } : {}),
+        ...options?.headers as Record<string, string>,
+      },
+    });
+  } catch {
+    throw new Error("Unable to reach the server. Please check your connection or try again later.");
+  }
   if (response.status === 204) return undefined as T;
-  const json = await response.json();
+  if (response.status === 502 || response.status === 503 || response.status === 504) {
+    throw new Error("Unable to reach the server. Please check your connection or try again later.");
+  }
+  let json: Record<string, unknown>;
+  try {
+    json = await response.json();
+  } catch {
+    throw new Error("Unable to reach the server. Please check your connection or try again later.");
+  }
   if (!response.ok || json.success === false) {
-    throw new Error(json?.error?.message || json?.message || `Request failed: ${response.status}`);
+    throw new Error((json?.error as Record<string, unknown>)?.message as string || json?.message as string || `Request failed: ${response.status}`);
   }
   const data = (json.data ?? json) as T;
 

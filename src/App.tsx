@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
-import { Box, CircularProgress } from "@mui/material";
+import { Box, Button, CircularProgress, Typography } from "@mui/material";
 import Dashboard from "./pages/Dashboard";
 import Accounts from "./pages/Accounts";
 import AccountDetail from "./pages/AccountDetail";
@@ -21,7 +21,7 @@ function ScrollToTop() {
 }
 
 function AuthGate() {
-  const { firebaseUser, loading } = useUser();
+  const { firebaseUser, loading, error, userId } = useUser();
 
   if (loading) {
     return (
@@ -32,6 +32,20 @@ function AuthGate() {
   }
 
   if (!firebaseUser) return <Login />;
+
+  if (error || !userId) {
+    return (
+      <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", gap: 2, px: 3, textAlign: "center" }}>
+        <Typography variant="h6" color="error" fontWeight={700}>Unable to reach the server</Typography>
+        <Typography color="text.secondary" sx={{ maxWidth: 400 }}>
+          {error || "Please check your connection or try again later."}
+        </Typography>
+        <Button variant="contained" onClick={() => window.location.reload()} sx={{ mt: 1 }}>
+          Retry
+        </Button>
+      </Box>
+    );
+  }
 
   return (
     <Layout>
