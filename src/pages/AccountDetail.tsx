@@ -348,7 +348,7 @@ function AccountDetail() {
 
                 <Stack direction="row" sx={{ mt: 2.5, gap: { xs: 1, sm: 2 }, flexWrap: "wrap" }}>
                   {showInvested && (
-                    <Box sx={{ flex: 1, minWidth: { xs: 0, sm: 120 }, p: 1.5, borderRadius: 2, bgcolor: alpha(heroInvested, isDark ? 0.1 : 0.06) }}>
+                    <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 8px)", sm: 120 }, p: 1.5, borderRadius: 2, bgcolor: alpha(heroInvested, isDark ? 0.1 : 0.06) }}>
                       <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
                         Invested
                       </Typography>
@@ -358,7 +358,7 @@ function AccountDetail() {
                     </Box>
                   )}
                   {showInvested && account.invested > 0 && (
-                    <Box sx={{ flex: 1, minWidth: { xs: 0, sm: 120 }, p: 1.5, borderRadius: 2, bgcolor: alpha(acctGain >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
+                    <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 8px)", sm: 120 }, p: 1.5, borderRadius: 2, bgcolor: alpha(acctGain >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
                       <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
                         Total P&L
                       </Typography>
@@ -370,7 +370,7 @@ function AccountDetail() {
                       </Typography>
                     </Box>
                   )}
-                  <Box sx={{ flex: 1, minWidth: { xs: 0, sm: 120 }, p: 1.5, borderRadius: 2, bgcolor: alpha(acctDayChg >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
+                  <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 8px)", sm: 120 }, p: 1.5, borderRadius: 2, bgcolor: alpha(acctDayChg >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
                     <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
                       Today
                     </Typography>
