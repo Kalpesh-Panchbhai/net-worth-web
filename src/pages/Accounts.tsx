@@ -51,7 +51,7 @@ function Accounts() {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-  const { colors, typeColors, shadow, gradients } = useTokens();
+  const { colors, typeColors, shadow } = useTokens();
   const { showToast } = useToast();
   const [accounts, setAccounts] = useState<AccountSummary[]>([]);
   const [loading, setLoading] = useState(true);
