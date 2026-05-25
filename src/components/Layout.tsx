@@ -48,7 +48,7 @@ function Layout({ children }: { children: ReactNode }) {
   const { firebaseUser, userId, logout } = useUser();
   const { showToast } = useToast();
   const { preference, setPreference } = useColorMode();
-  const { colors, gradients } = useTokens();
+  const { colors } = useTokens();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -92,12 +92,12 @@ function Layout({ children }: { children: ReactNode }) {
         sx={{ px: 1, mb: 3, display: "flex", alignItems: "center", gap: 1.5, cursor: "pointer" }}
         onClick={() => { navigate("/"); setDrawerOpen(false); }}
       >
-        <Avatar sx={{
-          width: 34, height: 34, background: gradients.hero,
-          fontSize: "0.75rem", fontWeight: 800, letterSpacing: "-0.02em",
-        }}>
-          NW
-        </Avatar>
+        <Box
+          component="img"
+          src="/favicon.svg"
+          alt="Net Worth"
+          sx={{ width: 34, height: 34, borderRadius: 2 }}
+        />
         <Typography sx={{ fontWeight: 800, fontSize: "1.05rem", letterSpacing: "-0.03em", color: colors.gray900 }}>
           Net Worth
         </Typography>
@@ -262,10 +262,12 @@ function Layout({ children }: { children: ReactNode }) {
             <IconButton onClick={() => setDrawerOpen(true)} sx={{ mr: 1 }}>
               <MenuIcon />
             </IconButton>
-            <Avatar sx={{
-              width: 28, height: 28, background: gradients.hero,
-              fontSize: "0.6rem", fontWeight: 800, mr: 1,
-            }}>NW</Avatar>
+            <Box
+              component="img"
+              src="/favicon.svg"
+              alt="Net Worth"
+              sx={{ width: 28, height: 28, borderRadius: 1.5, mr: 1 }}
+            />
             <Typography sx={{ fontWeight: 700, fontSize: "1rem", letterSpacing: "-0.02em" }}>
               Net Worth
             </Typography>

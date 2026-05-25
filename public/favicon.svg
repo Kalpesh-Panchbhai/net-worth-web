@@ -4,7 +4,17 @@
       <stop offset="0%" stop-color="#2563EB"/>
       <stop offset="100%" stop-color="#7C3AED"/>
     </linearGradient>
+    <linearGradient id="line" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0%" stop-color="#93C5FD"/>
+      <stop offset="100%" stop-color="#FFFFFF"/>
+    </linearGradient>
   </defs>
   <rect width="512" height="512" rx="108" fill="url(#bg)"/>
-  <text x="256" y="340" font-size="260" text-anchor="middle" fill="#fff" font-family="-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',Roboto,sans-serif" font-weight="800" letter-spacing="-12">NW</text>
+  <!-- Upward trending chart line -->
+  <polyline points="100,360 180,310 260,330 340,240 420,140" fill="none" stroke="url(#line)" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Arrow head at the end -->
+  <polygon points="420,140 380,170 400,190" fill="#FFFFFF" opacity="0.9"/>
+  <!-- Dollar sign -->
+  <circle cx="380" cy="360" r="60" fill="rgba(255,255,255,0.15)"/>
+  <text x="380" y="384" font-size="80" text-anchor="middle" fill="#fff" font-family="-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',Roboto,sans-serif" font-weight="700">₹</text>
 </svg>
