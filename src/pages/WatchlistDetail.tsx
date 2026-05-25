@@ -11,8 +11,6 @@ import { alpha } from "@mui/material/styles";
 import LinkIcon from "@mui/icons-material/Link";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import AccountBalanceWalletOutlinedIcon from "@mui/icons-material/AccountBalanceWalletOutlined";
-import TrendingUpIcon from "@mui/icons-material/TrendingUp";
-import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 import ShowChartRoundedIcon from "@mui/icons-material/ShowChartRounded";
 import SavingsRoundedIcon from "@mui/icons-material/SavingsRounded";
 import CreditCardRoundedIcon from "@mui/icons-material/CreditCardRounded";
@@ -58,7 +56,7 @@ function WatchlistDetail() {
   const { userId } = useUser();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-  const { colors, shadow, typeColors, gradients } = useTokens();
+  const { colors, shadow, typeColors } = useTokens();
 
   const { showToast } = useToast();
   const [watchlist, setWatchlist] = useState<WatchlistSummary | null>(null);
@@ -215,7 +213,6 @@ function WatchlistDetail() {
   if (error && !watchlist && !loading) return <ErrorState message={error} onRetry={loadWatchlist} />;
 
   const isAll = watchlist?.name === "All";
-  const heroGradient = isAll ? gradients.hero : gradients.accentCard;
 
   return (
     <Stack spacing={{ xs: 2.5, sm: 3 }}>
@@ -231,56 +228,86 @@ function WatchlistDetail() {
         <>
           {/* ── Watchlist Hero Card ── */}
           <FadeIn>
-            <Paper sx={{
-              p: { xs: 3, sm: 4 }, borderRadius: 4, border: "none",
-              background: heroGradient, color: colors.pureWhite,
-              position: "relative", overflow: "hidden",
-              boxShadow: `0 8px 32px ${alpha(isAll ? colors.brand : colors.accent, 0.3)}`,
-            }}>
-              <Box sx={{ position: "absolute", top: -50, right: -50, width: 180, height: 180, borderRadius: "50%", bgcolor: alpha(colors.pureWhite, 0.06) }} />
-              <Box sx={{ position: "absolute", bottom: -30, right: 80, width: 100, height: 100, borderRadius: "50%", bgcolor: alpha(colors.pureWhite, 0.04) }} />
-
-              <Box sx={{ position: "relative", zIndex: 1 }}>
+            {(() => {
+              const isDark = theme.palette.mode === "dark";
+              const accentColor = isAll ? colors.brand : colors.accent;
+              const heroBg = isDark ? colors.white : colors.pureWhite;
+              const heroText = isDark ? colors.pureWhite : colors.gray900;
+              const heroMuted = isDark ? alpha(colors.pureWhite, 0.5) : colors.gray400;
+              const heroSubtle = isDark ? alpha(colors.pureWhite, 0.08) : colors.gray100;
+              const heroInvested = isDark ? "#60A5FA" : colors.brand;
+              const heroSuccess = isDark ? "#34D399" : colors.success;
+              const heroError = isDark ? "#F87171" : colors.error;
+              const hasInvestable = linkedAccounts.some(a => a.type === "BROKER" || a.needsDailyData);
+              return (
+              <Paper sx={{
+                p: { xs: 2.5, sm: 3 }, borderRadius: 3,
+                bgcolor: heroBg,
+                border: "none", borderLeft: `4px solid ${accentColor}`,
+                boxShadow: isDark ? "0 4px 20px rgba(0,0,0,0.3)" : "0 4px 20px rgba(0,0,0,0.08)",
+              }}>
                 <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1.5 }}>
-                  <Avatar sx={{ width: 36, height: 36, bgcolor: alpha(colors.pureWhite, 0.2), color: colors.pureWhite, borderRadius: 2 }}>
+                  <Avatar sx={{ width: 36, height: 36, bgcolor: alpha(accentColor, 0.1), color: accentColor, borderRadius: 2 }}>
                     {isAll ? <AllInclusiveRoundedIcon sx={{ fontSize: 20 }} /> : <VisibilityRoundedIcon sx={{ fontSize: 20 }} />}
                   </Avatar>
                   <Box>
-                    <Typography sx={{ fontSize: { xs: "1.1rem", sm: "1.25rem" }, fontWeight: 700, opacity: 0.95, lineHeight: 1.2 }}>
+                    <Typography sx={{ fontSize: { xs: "1.1rem", sm: "1.25rem" }, fontWeight: 700, color: heroText, lineHeight: 1.2 }}>
                       {watchlist.name}
                     </Typography>
-                    <Typography sx={{ fontSize: "0.7rem", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", opacity: 0.65 }}>
+                    <Typography sx={{ fontSize: "0.7rem", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: heroMuted }}>
                       {linkedAccounts.length} account{linkedAccounts.length !== 1 ? "s" : ""}
                     </Typography>
                   </Box>
                 </Stack>
-                <Typography sx={{ fontSize: { xs: "1.75rem", sm: "2.25rem" }, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.1 }}>
-                  {fmt(totalValue)}
-                </Typography>
-              </Box>
 
-              {(() => {
-                const hasInvestable = linkedAccounts.some(a => a.type === "BROKER" || a.needsDailyData);
-                return (
-                <Stack direction="row" spacing={1.5} sx={{ mt: 2, position: "relative", zIndex: 1 }} flexWrap="wrap">
+                <Box sx={{ px: 2, py: 1.5, borderRadius: 2, bgcolor: heroSubtle, display: "inline-block" }}>
+                  <Typography sx={{ fontSize: "0.7rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
+                    Total Value
+                  </Typography>
+                  <Typography sx={{ fontSize: { xs: "1.75rem", sm: "2.25rem" }, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.1, color: heroText }}>
+                    {fmt(totalValue)}
+                  </Typography>
+                </Box>
+
+                <Stack direction="row" sx={{ mt: 2.5, gap: { xs: 1, sm: 2 }, flexWrap: "wrap" }}>
                   {hasInvestable && (
-                    <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, px: 1.5, py: 0.5, borderRadius: 2, bgcolor: alpha(colors.pureWhite, 0.12), fontSize: "0.78rem", fontWeight: 600 }}>
-                      Invested: {fmt(totalInvested)}
+                    <Box sx={{ flex: 1, minWidth: 120, p: 1.5, borderRadius: 2, bgcolor: alpha(heroInvested, isDark ? 0.1 : 0.06) }}>
+                      <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
+                        Invested
+                      </Typography>
+                      <Typography sx={{ fontSize: "0.95rem", fontWeight: 700, color: heroInvested }}>
+                        {fmt(totalInvested)}
+                      </Typography>
                     </Box>
                   )}
                   {hasInvestable && totalInvested > 0 && (
-                    <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, px: 1.5, py: 0.5, borderRadius: 2, bgcolor: alpha(colors.pureWhite, totalGain >= 0 ? 0.15 : 0.12), fontSize: "0.78rem", fontWeight: 600 }}>
-                      {totalGain >= 0 ? <TrendingUpIcon sx={{ fontSize: 14 }} /> : <TrendingDownIcon sx={{ fontSize: 14 }} />}
-                      {totalGain >= 0 ? "+" : ""}{fmt(totalGain)} ({totalGainPct >= 0 ? "+" : ""}{totalGainPct.toFixed(1)}%)
+                    <Box sx={{ flex: 1, minWidth: 120, p: 1.5, borderRadius: 2, bgcolor: alpha(totalGain >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
+                      <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
+                        Total P&L
+                      </Typography>
+                      <Typography sx={{ fontSize: "0.95rem", fontWeight: 700, color: totalGain >= 0 ? heroSuccess : heroError, display: "flex", alignItems: "center", gap: 0.5 }}>
+                        {totalGain >= 0 ? "+" : ""}{fmt(totalGain)}
+                        <Box component="span" sx={{ fontSize: "0.7rem", fontWeight: 600, opacity: 0.8 }}>
+                          {totalGainPct >= 0 ? "+" : ""}{totalGainPct.toFixed(1)}%
+                        </Box>
+                      </Typography>
                     </Box>
                   )}
-                  <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, px: 1.5, py: 0.5, borderRadius: 2, bgcolor: alpha(colors.pureWhite, 0.12), fontSize: "0.78rem", fontWeight: 600 }}>
-                    1D {totalDayChg >= 0 ? "+" : ""}{fmt(totalDayChg)} ({totalDayPct >= 0 ? "+" : ""}{totalDayPct.toFixed(1)}%)
+                  <Box sx={{ flex: 1, minWidth: 120, p: 1.5, borderRadius: 2, bgcolor: alpha(totalDayChg >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
+                    <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
+                      Today
+                    </Typography>
+                    <Typography sx={{ fontSize: "0.95rem", fontWeight: 700, color: totalDayChg >= 0 ? heroSuccess : heroError, display: "flex", alignItems: "center", gap: 0.5 }}>
+                      {totalDayChg >= 0 ? "+" : ""}{fmt(totalDayChg)}
+                      <Box component="span" sx={{ fontSize: "0.7rem", fontWeight: 600, opacity: 0.8 }}>
+                        {totalDayPct >= 0 ? "+" : ""}{totalDayPct.toFixed(1)}%
+                      </Box>
+                    </Typography>
                   </Box>
                 </Stack>
-                );
-              })()}
-            </Paper>
+              </Paper>
+              );
+            })()}
           </FadeIn>
 
 

@@ -1,14 +1,14 @@
 import { useEffect, useState, useCallback } from "react";
 import {
-  Box, Paper, Typography, Skeleton,
+  Avatar, Box, Paper, Typography, Skeleton,
   ToggleButtonGroup, ToggleButton, Stack,
+  useTheme,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import TrendingUpIcon from "@mui/icons-material/TrendingUp";
-import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 import ShowChartOutlinedIcon from "@mui/icons-material/ShowChartOutlined";
+import AccountBalanceWalletRoundedIcon from "@mui/icons-material/AccountBalanceWalletRounded";
 import NetWorthChart from "../components/NetWorthChart";
-import { ChartSkeleton, TintedChip, ErrorState, EmptyState, FadeIn } from "../components/shared";
+import { ChartSkeleton, ErrorState, EmptyState, FadeIn } from "../components/shared";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
 import { getWatchlists, getChartData, getIncomes } from "../api/client";
@@ -24,7 +24,8 @@ function fmt(v: number): string {
 
 function Dashboard() {
   const { userId, loading: userLoading } = useUser();
-  const { colors, gradients } = useTokens();
+  const theme = useTheme();
+  const { colors } = useTokens();
   const { showToast } = useToast();
   const [watchlist, setWatchlist] = useState<WatchlistSummary | null>(null);
   const [incomes, setIncomes] = useState<Income[]>([]);
@@ -97,82 +98,80 @@ function Dashboard() {
         </Paper>
       ) : watchlist && (
         <FadeIn>
-          <Paper sx={{
-            p: { xs: 3, sm: 4 },
-            background: gradients.hero,
-            color: colors.pureWhite,
-            borderRadius: 4,
-            border: "none",
-            position: "relative",
-            overflow: "hidden",
-            boxShadow: `0 8px 32px ${alpha(colors.brand, 0.3)}`,
-          }}>
-            {/* Decorative circles */}
-            <Box sx={{
-              position: "absolute", top: -60, right: -60,
-              width: 200, height: 200, borderRadius: "50%",
-              bgcolor: alpha(colors.pureWhite, 0.06),
-            }} />
-            <Box sx={{
-              position: "absolute", bottom: -40, right: 60,
-              width: 120, height: 120, borderRadius: "50%",
-              bgcolor: alpha(colors.pureWhite, 0.04),
-            }} />
+          {(() => {
+            const isDark = theme.palette.mode === "dark";
+            const heroBg = isDark ? colors.white : colors.pureWhite;
+            const heroText = isDark ? colors.pureWhite : colors.gray900;
+            const heroMuted = isDark ? alpha(colors.pureWhite, 0.5) : colors.gray400;
+            const heroSubtle = isDark ? alpha(colors.pureWhite, 0.08) : colors.gray100;
+            const heroInvested = isDark ? "#60A5FA" : colors.brand;
+            const heroSuccess = isDark ? "#34D399" : colors.success;
+            const heroError = isDark ? "#F87171" : colors.error;
+            return (
+            <Paper sx={{
+              p: { xs: 2.5, sm: 3 }, borderRadius: 3,
+              bgcolor: heroBg,
+              border: "none", borderLeft: `4px solid ${colors.brand}`,
+              boxShadow: isDark ? "0 4px 20px rgba(0,0,0,0.3)" : "0 4px 20px rgba(0,0,0,0.08)",
+            }}>
+              {/* Header */}
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+                <Avatar sx={{ width: 32, height: 32, bgcolor: alpha(colors.brand, 0.1), color: colors.brand, borderRadius: 1.5 }}>
+                  <AccountBalanceWalletRoundedIcon sx={{ fontSize: 18 }} />
+                </Avatar>
+                <Typography sx={{ fontSize: "0.85rem", fontWeight: 600, color: heroMuted }}>
+                  Net Worth
+                </Typography>
+              </Stack>
 
-            <Typography sx={{ fontSize: "0.75rem", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.75, mb: 0.5 }}>
-              Net Worth
-            </Typography>
-            <Typography sx={{ fontSize: { xs: "2rem", sm: "2.75rem" }, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.1, mb: 1.5 }}>
-              {fmt(watchlist.currentDayValue)}
-            </Typography>
-            <Stack direction="row" spacing={1.5} flexWrap="wrap" sx={{ position: "relative", zIndex: 1 }}>
-              <Box sx={{
-                display: "inline-flex", alignItems: "center", gap: 0.5,
-                px: 1.5, py: 0.5, borderRadius: 2,
-                bgcolor: alpha(colors.pureWhite, dayChange >= 0 ? 0.15 : 0.12),
-                fontSize: "0.8rem", fontWeight: 600,
-              }}>
-                {dayChange >= 0 ? <TrendingUpIcon sx={{ fontSize: 16 }} /> : <TrendingDownIcon sx={{ fontSize: 16 }} />}
-                {dayChange >= 0 ? "+" : ""}{fmt(dayChange)} ({dayPct >= 0 ? "+" : ""}{dayPct.toFixed(2)}%) today
+              {/* Total value */}
+              <Box sx={{ px: 2, py: 1.5, borderRadius: 2, bgcolor: heroSubtle, display: "inline-block" }}>
+                <Typography sx={{ fontSize: "0.7rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
+                  Total Value
+                </Typography>
+                <Typography sx={{ fontSize: { xs: "1.75rem", sm: "2.25rem" }, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.1, color: heroText }}>
+                  {fmt(watchlist.currentDayValue)}
+                </Typography>
               </Box>
-              <Box sx={{
-                display: "inline-flex", alignItems: "center", gap: 0.5,
-                px: 1.5, py: 0.5, borderRadius: 2,
-                bgcolor: alpha(colors.pureWhite, 0.1),
-                fontSize: "0.8rem", fontWeight: 600,
-              }}>
-                {gainPct >= 0 ? "+" : ""}{gainPct.toFixed(2)}% all time
-              </Box>
-            </Stack>
-          </Paper>
-        </FadeIn>
-      )}
 
-      {/* ── Metrics row ── */}
-      {!loading && watchlist && (
-        <FadeIn delay={80}>
-          <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2, minWidth: 0 }}>
-            <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3, minWidth: 0, overflow: "hidden" }}>
-              <Typography variant="overline" sx={{ color: colors.gray400 }}>Invested</Typography>
-              <Typography noWrap sx={{ fontSize: { xs: "1rem", sm: "1.5rem" }, fontWeight: 700, letterSpacing: "-0.02em", mt: 0.25 }}>
-                {fmt(watchlist.invested)}
-              </Typography>
+              {/* Metrics row */}
+              <Stack direction="row" sx={{ mt: 2.5, gap: { xs: 1, sm: 2 }, flexWrap: "wrap" }}>
+                <Box sx={{ flex: 1, minWidth: 120, p: 1.5, borderRadius: 2, bgcolor: alpha(heroInvested, isDark ? 0.1 : 0.06) }}>
+                  <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
+                    Invested
+                  </Typography>
+                  <Typography sx={{ fontSize: "0.95rem", fontWeight: 700, color: heroInvested }}>
+                    {fmt(watchlist.invested)}
+                  </Typography>
+                </Box>
+                {watchlist.invested > 0 && (
+                  <Box sx={{ flex: 1, minWidth: 120, p: 1.5, borderRadius: 2, bgcolor: alpha(totalGain >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
+                    <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
+                      Total P&L
+                    </Typography>
+                    <Typography sx={{ fontSize: "0.95rem", fontWeight: 700, color: totalGain >= 0 ? heroSuccess : heroError, display: "flex", alignItems: "center", gap: 0.5 }}>
+                      {totalGain >= 0 ? "+" : ""}{fmt(totalGain)}
+                      <Box component="span" sx={{ fontSize: "0.7rem", fontWeight: 600, opacity: 0.8 }}>
+                        {gainPct >= 0 ? "+" : ""}{gainPct.toFixed(2)}%
+                      </Box>
+                    </Typography>
+                  </Box>
+                )}
+                <Box sx={{ flex: 1, minWidth: 120, p: 1.5, borderRadius: 2, bgcolor: alpha(dayChange >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
+                  <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
+                    Today
+                  </Typography>
+                  <Typography sx={{ fontSize: "0.95rem", fontWeight: 700, color: dayChange >= 0 ? heroSuccess : heroError, display: "flex", alignItems: "center", gap: 0.5 }}>
+                    {dayChange >= 0 ? "+" : ""}{fmt(dayChange)}
+                    <Box component="span" sx={{ fontSize: "0.7rem", fontWeight: 600, opacity: 0.8 }}>
+                      {dayPct >= 0 ? "+" : ""}{dayPct.toFixed(2)}%
+                    </Box>
+                  </Typography>
+                </Box>
+              </Stack>
             </Paper>
-            <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3, minWidth: 0, overflow: "hidden" }}>
-              <Typography variant="overline" sx={{ color: colors.gray400 }}>Total Gain</Typography>
-              <Typography noWrap sx={{
-                fontSize: { xs: "1rem", sm: "1.5rem" }, fontWeight: 700, letterSpacing: "-0.02em", mt: 0.25,
-                color: totalGain >= 0 ? colors.success : colors.error,
-              }}>
-                {totalGain >= 0 ? "+" : ""}{fmt(totalGain)}
-              </Typography>
-              <TintedChip
-                label={`${gainPct >= 0 ? "+" : ""}${gainPct.toFixed(2)}%`}
-                color={totalGain >= 0 ? colors.success : colors.error}
-                size="small"
-              />
-            </Paper>
-          </Box>
+            );
+          })()}
         </FadeIn>
       )}
 
