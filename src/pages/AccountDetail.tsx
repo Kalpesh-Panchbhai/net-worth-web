@@ -609,26 +609,25 @@ function AccountDetail() {
 
                                     {/* Invested: delta + total (only for broker or needsDailyData) */}
                                     {showInvested && (
-                                    <Stack direction="row" spacing={1} alignItems="baseline" sx={{ mt: 0.75 }}>
-                                      <Typography sx={{ fontSize: "1.05rem", fontWeight: 700 }}>
+                                    <Box sx={{ mt: 0.75 }}>
+                                      <Typography noWrap sx={{ fontSize: "1.05rem", fontWeight: 700 }}>
                                         {investedDelta >= 0 ? "+" : ""}{fmt(investedDelta, account.currency)}
                                       </Typography>
-                                      <Typography sx={{ fontSize: "0.78rem", color: colors.gray400 }}>
+                                      <Typography noWrap sx={{ fontSize: "0.75rem", color: colors.gray400, mt: 0.25 }}>
                                         → Total: {fmt(t.invested, account.currency)}
                                       </Typography>
-                                    </Stack>
+                                    </Box>
                                     )}
 
                                     {/* Amount/Units: delta + total */}
-                                    <Stack direction="row" spacing={1} alignItems={showInvested ? "center" : "baseline"} sx={{ mt: showInvested ? 0.5 : 0.75 }}>
-                                      <Typography sx={{ fontSize: showInvested ? "0.8rem" : "1.05rem", fontWeight: showInvested ? 650 : 700, color: showInvested ? unitColor : undefined }}>
+                                    <Box sx={{ mt: showInvested ? 0.5 : 0.75 }}>
+                                      <Typography noWrap sx={{ fontSize: showInvested ? "0.8rem" : "1.05rem", fontWeight: showInvested ? 650 : 700, color: showInvested ? unitColor : undefined }}>
                                         {isAdd ? "+" : ""}{showInvested ? `${fmtUnits(delta)} units` : fmt(delta, account.currency)}
                                       </Typography>
-                                      <Typography sx={{ fontSize: showInvested ? "0.7rem" : "0.78rem", color: colors.gray400 }}>→</Typography>
-                                      <Typography sx={{ fontSize: showInvested ? "0.8rem" : "0.78rem", fontWeight: 600, color: colors.gray500 }}>
-                                        Total: {showInvested ? `${fmtUnits(t.value)} units` : fmt(t.value, account.currency)}
+                                      <Typography noWrap sx={{ fontSize: showInvested ? "0.75rem" : "0.75rem", color: colors.gray400, mt: 0.25 }}>
+                                        → Total: {showInvested ? `${fmtUnits(t.value)} units` : fmt(t.value, account.currency)}
                                       </Typography>
-                                    </Stack>
+                                    </Box>
                                   </Box>
                                   {account?.isActive && (<IconButton size="small" onClick={() => setDeleteTxnConfirm(t)} sx={{ color: colors.error, opacity: 0.6, "&:hover": { opacity: 1, bgcolor: alpha(colors.error, 0.08) }, mt: -0.5 }}>
                                     <DeleteOutlineIcon sx={{ fontSize: 16 }} />
