@@ -19,8 +19,9 @@ import PersonRemoveRoundedIcon from "@mui/icons-material/PersonRemoveRounded";
 import DarkModeRoundedIcon from "@mui/icons-material/DarkModeRounded";
 import LightModeRoundedIcon from "@mui/icons-material/LightModeRounded";
 import SettingsBrightnessRoundedIcon from "@mui/icons-material/SettingsBrightnessRounded";
+import SyncRoundedIcon from "@mui/icons-material/SyncRounded";
 import { useUser } from "../context/UserContext";
-import { deleteUser, invalidateCache } from "../api/client";
+import { deleteUser, invalidateCache, refreshData } from "../api/client";
 import { useToast } from "../context/ToastContext";
 import { useColorMode, useTokens } from "../context/ColorModeContext";
 import type { ColorModePref } from "../context/ColorModeContext";
@@ -51,6 +52,21 @@ function Layout({ children }: { children: ReactNode }) {
   const { colors } = useTokens();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    try {
+      setRefreshing(true);
+      const result = await refreshData();
+      invalidateCache();
+      showToast(`Data refreshed in ${(result.durationMs / 1000).toFixed(1)}s`, "success");
+      window.location.reload();
+    } catch {
+      showToast("Failed to refresh data. Please try again.", "error");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const handleDeleteAccount = async () => {
     if (!userId) return;
@@ -148,6 +164,36 @@ function Layout({ children }: { children: ReactNode }) {
 
       {/* Spacer */}
       <Box sx={{ flex: 1 }} />
+
+      {/* Refresh */}
+      <Box sx={{ px: 1, mb: 1.5 }}>
+        <Button
+          fullWidth
+          variant="outlined"
+          onClick={handleRefresh}
+          disabled={refreshing}
+          startIcon={
+            <SyncRoundedIcon sx={{
+              fontSize: 18,
+              ...(refreshing ? {
+                animation: "spin 1s linear infinite",
+                "@keyframes spin": { from: { transform: "rotate(0deg)" }, to: { transform: "rotate(360deg)" } },
+              } : {}),
+            }} />
+          }
+          sx={{
+            borderRadius: 2.5, py: 0.75, textTransform: "none",
+            fontSize: "0.8rem", fontWeight: 600,
+            borderColor: colors.gray200, color: colors.gray600,
+            "&:hover": { borderColor: colors.brand, color: colors.brand, bgcolor: alpha(colors.brand, 0.04) },
+          }}
+        >
+          {refreshing ? "Refreshing…" : "Refresh Data"}
+        </Button>
+        <Typography sx={{ fontSize: "0.6rem", color: colors.gray400, textAlign: "center", mt: 0.5 }}>
+          Sync latest prices & balances
+        </Typography>
+      </Box>
 
       {/* Appearance */}
       <Box sx={{ px: 1, mb: 1.5 }}>
