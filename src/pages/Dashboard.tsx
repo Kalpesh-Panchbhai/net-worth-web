@@ -136,36 +136,36 @@ function Dashboard() {
 
               {/* Metrics row */}
               <Stack direction="row" sx={{ mt: 2.5, gap: { xs: 1, sm: 2 }, flexWrap: "wrap" }}>
-                <Box sx={{ flex: 1, minWidth: 120, p: 1.5, borderRadius: 2, bgcolor: alpha(heroInvested, isDark ? 0.1 : 0.06) }}>
+                <Box sx={{ flex: 1, minWidth: { xs: 0, sm: 120 }, p: 1.5, borderRadius: 2, bgcolor: alpha(heroInvested, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
                   <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
                     Invested
                   </Typography>
-                  <Typography sx={{ fontSize: "0.95rem", fontWeight: 700, color: heroInvested }}>
+                  <Typography noWrap sx={{ fontSize: { xs: "0.8rem", sm: "0.95rem" }, fontWeight: 700, color: heroInvested }}>
                     {fmt(watchlist.invested)}
                   </Typography>
                 </Box>
                 {watchlist.invested > 0 && (
-                  <Box sx={{ flex: 1, minWidth: 120, p: 1.5, borderRadius: 2, bgcolor: alpha(totalGain >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
+                  <Box sx={{ flex: 1, minWidth: { xs: 0, sm: 120 }, p: 1.5, borderRadius: 2, bgcolor: alpha(totalGain >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
                     <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
                       Total P&L
                     </Typography>
-                    <Typography sx={{ fontSize: "0.95rem", fontWeight: 700, color: totalGain >= 0 ? heroSuccess : heroError, display: "flex", alignItems: "center", gap: 0.5 }}>
+                    <Typography noWrap sx={{ fontSize: { xs: "0.8rem", sm: "0.95rem" }, fontWeight: 700, color: totalGain >= 0 ? heroSuccess : heroError }}>
                       {totalGain >= 0 ? "+" : ""}{fmt(totalGain)}
-                      <Box component="span" sx={{ fontSize: "0.7rem", fontWeight: 600, opacity: 0.8 }}>
-                        {gainPct >= 0 ? "+" : ""}{gainPct.toFixed(2)}%
-                      </Box>
+                    </Typography>
+                    <Typography sx={{ fontSize: "0.65rem", fontWeight: 600, color: totalGain >= 0 ? heroSuccess : heroError, opacity: 0.8 }}>
+                      {gainPct >= 0 ? "+" : ""}{gainPct.toFixed(2)}%
                     </Typography>
                   </Box>
                 )}
-                <Box sx={{ flex: 1, minWidth: 120, p: 1.5, borderRadius: 2, bgcolor: alpha(dayChange >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
+                <Box sx={{ flex: 1, minWidth: { xs: 0, sm: 120 }, p: 1.5, borderRadius: 2, bgcolor: alpha(dayChange >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
                   <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
                     Today
                   </Typography>
-                  <Typography sx={{ fontSize: "0.95rem", fontWeight: 700, color: dayChange >= 0 ? heroSuccess : heroError, display: "flex", alignItems: "center", gap: 0.5 }}>
+                  <Typography noWrap sx={{ fontSize: { xs: "0.8rem", sm: "0.95rem" }, fontWeight: 700, color: dayChange >= 0 ? heroSuccess : heroError }}>
                     {dayChange >= 0 ? "+" : ""}{fmt(dayChange)}
-                    <Box component="span" sx={{ fontSize: "0.7rem", fontWeight: 600, opacity: 0.8 }}>
-                      {dayPct >= 0 ? "+" : ""}{dayPct.toFixed(2)}%
-                    </Box>
+                  </Typography>
+                  <Typography sx={{ fontSize: "0.65rem", fontWeight: 600, color: dayChange >= 0 ? heroSuccess : heroError, opacity: 0.8 }}>
+                    {dayPct >= 0 ? "+" : ""}{dayPct.toFixed(2)}%
                   </Typography>
                 </Box>
               </Stack>

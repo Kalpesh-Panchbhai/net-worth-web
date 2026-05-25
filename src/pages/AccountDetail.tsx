@@ -348,7 +348,7 @@ function AccountDetail() {
 
                 <Stack direction="row" sx={{ mt: 2.5, gap: { xs: 1, sm: 2 }, flexWrap: "wrap" }}>
                   {showInvested && (
-                    <Box sx={{ flex: 1, minWidth: 120, p: 1.5, borderRadius: 2, bgcolor: alpha(heroInvested, isDark ? 0.1 : 0.06) }}>
+                    <Box sx={{ flex: 1, minWidth: { xs: 0, sm: 120 }, p: 1.5, borderRadius: 2, bgcolor: alpha(heroInvested, isDark ? 0.1 : 0.06) }}>
                       <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
                         Invested
                       </Typography>
@@ -358,27 +358,27 @@ function AccountDetail() {
                     </Box>
                   )}
                   {showInvested && account.invested > 0 && (
-                    <Box sx={{ flex: 1, minWidth: 120, p: 1.5, borderRadius: 2, bgcolor: alpha(acctGain >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
+                    <Box sx={{ flex: 1, minWidth: { xs: 0, sm: 120 }, p: 1.5, borderRadius: 2, bgcolor: alpha(acctGain >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
                       <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
                         Total P&L
                       </Typography>
-                      <Typography sx={{ fontSize: "0.95rem", fontWeight: 700, color: acctGain >= 0 ? heroSuccess : heroError, display: "flex", alignItems: "center", gap: 0.5 }}>
+                      <Typography noWrap sx={{ fontSize: { xs: "0.8rem", sm: "0.95rem" }, fontWeight: 700, color: acctGain >= 0 ? heroSuccess : heroError }}>
                         {acctGain >= 0 ? "+" : ""}{fmt(acctGain, account.currency)}
-                        <Box component="span" sx={{ fontSize: "0.7rem", fontWeight: 600, opacity: 0.8 }}>
-                          {acctGainPct >= 0 ? "+" : ""}{acctGainPct.toFixed(1)}%
-                        </Box>
+                      </Typography>
+                      <Typography sx={{ fontSize: "0.65rem", fontWeight: 600, color: acctGain >= 0 ? heroSuccess : heroError, opacity: 0.8 }}>
+                        {acctGainPct >= 0 ? "+" : ""}{acctGainPct.toFixed(1)}%
                       </Typography>
                     </Box>
                   )}
-                  <Box sx={{ flex: 1, minWidth: 120, p: 1.5, borderRadius: 2, bgcolor: alpha(acctDayChg >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
+                  <Box sx={{ flex: 1, minWidth: { xs: 0, sm: 120 }, p: 1.5, borderRadius: 2, bgcolor: alpha(acctDayChg >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
                     <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
                       Today
                     </Typography>
-                    <Typography sx={{ fontSize: "0.95rem", fontWeight: 700, color: acctDayChg >= 0 ? heroSuccess : heroError, display: "flex", alignItems: "center", gap: 0.5 }}>
+                    <Typography noWrap sx={{ fontSize: { xs: "0.8rem", sm: "0.95rem" }, fontWeight: 700, color: acctDayChg >= 0 ? heroSuccess : heroError }}>
                       {acctDayChg >= 0 ? "+" : ""}{fmt(acctDayChg, account.currency)}
-                      <Box component="span" sx={{ fontSize: "0.7rem", fontWeight: 600, opacity: 0.8 }}>
-                        {acctDayPct >= 0 ? "+" : ""}{acctDayPct.toFixed(1)}%
-                      </Box>
+                    </Typography>
+                    <Typography sx={{ fontSize: "0.65rem", fontWeight: 600, color: acctDayChg >= 0 ? heroSuccess : heroError, opacity: 0.8 }}>
+                      {acctDayPct >= 0 ? "+" : ""}{acctDayPct.toFixed(1)}%
                     </Typography>
                   </Box>
                 </Stack>
