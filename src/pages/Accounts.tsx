@@ -43,7 +43,9 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
 
 function fmt(v: number, currency = "INR"): string {
   const hasDecimals = v % 1 !== 0;
-  return new Intl.NumberFormat("en-IN", { style: "currency", currency, minimumFractionDigits: hasDecimals ? 2 : 0, maximumFractionDigits: hasDecimals ? 2 : 0 }).format(v);
+  const abs = Math.abs(v);
+  const formatted = new Intl.NumberFormat("en-IN", { style: "currency", currency, minimumFractionDigits: hasDecimals ? 2 : 0, maximumFractionDigits: hasDecimals ? 2 : 0 }).format(abs);
+  return v < 0 ? `-${formatted}` : formatted;
 }
 
 function Accounts() {
@@ -69,6 +71,7 @@ function Accounts() {
   const [deleteConfirm, setDeleteConfirm] = useState<AccountSummary | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [groupByType, setGroupByType] = useState(true);
+  const [showInactive, setShowInactive] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
@@ -80,11 +83,14 @@ function Accounts() {
 
   useEffect(() => { load(); }, [load]);
 
-  const totalValue = accounts.reduce((s, a) => s + a.currentDayValue, 0);
-  const totalInvested = accounts.reduce((s, a) => s + a.invested, 0);
+  const hasInactiveAccounts = accounts.some(a => !a.isActive);
+  const visibleAccounts = showInactive ? accounts : accounts.filter(a => a.isActive);
+
+  const totalValue = visibleAccounts.reduce((s, a) => s + a.currentDayValue, 0);
+  const totalInvested = visibleAccounts.reduce((s, a) => s + a.invested, 0);
   const totalGain = totalValue - totalInvested;
   const totalGainPct = totalInvested > 0 ? (totalGain / totalInvested) * 100 : 0;
-  const totalPrev = accounts.reduce((s, a) => s + a.previousDayValue, 0);
+  const totalPrev = visibleAccounts.reduce((s, a) => s + a.previousDayValue, 0);
   const totalDayChg = totalValue - totalPrev;
   const totalDayPct = totalPrev > 0 ? (totalDayChg / totalPrev) * 100 : 0;
 
@@ -142,11 +148,11 @@ function Accounts() {
 
   const openEdit = (a: AccountSummary) => { setEditAccount(a); setEditName(a.name); setEditActive(a.isActive); };
 
-  // Filter accounts by search query
+  // Filter accounts by search query and active status
   const q = searchQuery.toLowerCase().trim();
   const filtered = (q
-    ? accounts.filter(a => a.name.toLowerCase().includes(q) || (TYPE_LABELS[a.type as AccountType] || a.type).toLowerCase().includes(q))
-    : accounts
+    ? visibleAccounts.filter(a => a.name.toLowerCase().includes(q) || (TYPE_LABELS[a.type as AccountType] || a.type).toLowerCase().includes(q))
+    : visibleAccounts
   ).sort((a, b) => groupByType
     ? (TYPE_LABELS[a.type as AccountType] || a.type).localeCompare(TYPE_LABELS[b.type as AccountType] || b.type) || a.name.localeCompare(b.name)
     : a.name.localeCompare(b.name)
@@ -291,7 +297,7 @@ function Accounts() {
                   Accounts
                 </Typography>
                 <Box sx={{ px: 0.8, py: 0.15, borderRadius: 1, bgcolor: heroSubtle, fontSize: "0.7rem", fontWeight: 600, color: heroMuted }}>
-                  {accounts.length}
+                  {visibleAccounts.length}
                 </Box>
               </Stack>
 
@@ -307,7 +313,7 @@ function Accounts() {
 
               {/* Metrics row */}
               {(() => {
-                const hasInvestable = accounts.some(a => a.type === "BROKER" || a.needsDailyData);
+                const hasInvestable = visibleAccounts.some(a => a.type === "BROKER" || a.needsDailyData);
                 return (
                 <Stack
                   direction="row"
@@ -358,22 +364,31 @@ function Accounts() {
 
       {/* Search + Group toolbar */}
       {!loading && accounts.length > 0 && (
-        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
+        <Stack spacing={1}>
           <TextField
             size="small" placeholder="Search by name or type…" value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchRoundedIcon sx={{ fontSize: 18, color: colors.gray400 }} /></InputAdornment> }}
-            sx={{ flex: 1, maxWidth: { sm: 320 } }}
+            fullWidth
+            sx={{ maxWidth: { sm: 320 } }}
           />
-          <FormControlLabel
-            control={<Switch checked={groupByType} onChange={e => setGroupByType(e.target.checked)} size="small" />}
-            label={<Typography variant="body2" sx={{ fontWeight: 600, fontSize: "0.8rem" }}>Group by type</Typography>}
-          />
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ px: 1 }}>
+            <FormControlLabel
+              control={<Switch checked={groupByType} onChange={e => setGroupByType(e.target.checked)} size="small" />}
+              label={<Typography variant="body2" sx={{ fontWeight: 600, fontSize: "0.8rem" }}>Group by type</Typography>}
+            />
+            {hasInactiveAccounts && (
+              <FormControlLabel
+                control={<Switch checked={showInactive} onChange={e => setShowInactive(e.target.checked)} size="small" />}
+                label={<Typography variant="body2" sx={{ fontWeight: 600, fontSize: "0.8rem" }}>Show inactive</Typography>}
+              />
+            )}
+          </Stack>
         </Stack>
       )}
 
       {/* Account cards grid */}
-      {loading ? <ListSkeleton rows={4} /> : accounts.length === 0 ? (
+      {loading ? <ListSkeleton rows={4} /> : visibleAccounts.length === 0 && accounts.length === 0 ? (
         <Paper>
           <EmptyState
             icon={<AccountBalanceWalletOutlinedIcon />}
@@ -381,6 +396,10 @@ function Accounts() {
             description="Create your first account to start tracking your net worth."
             action={{ label: "Add Account", onClick: () => setCreateOpen(true) }}
           />
+        </Paper>
+      ) : visibleAccounts.length === 0 ? (
+        <Paper sx={{ p: 4, textAlign: "center" }}>
+          <Typography color="text.secondary">No active accounts. Toggle "Show inactive" to see inactive accounts.</Typography>
         </Paper>
       ) : filtered.length === 0 ? (
         <Paper sx={{ p: 4, textAlign: "center" }}>

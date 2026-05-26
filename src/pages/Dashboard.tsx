@@ -19,7 +19,9 @@ const TIME_PERIODS: TimePeriod[] = ["1M", "3M", "6M", "1Y", "2Y", "5Y", "ALL"];
 
 function fmt(v: number): string {
   const hasDecimals = v % 1 !== 0;
-  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: hasDecimals ? 2 : 0, maximumFractionDigits: hasDecimals ? 2 : 0 }).format(v);
+  const abs = Math.abs(v);
+  const formatted = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: hasDecimals ? 2 : 0, maximumFractionDigits: hasDecimals ? 2 : 0 }).format(abs);
+  return v < 0 ? `-${formatted}` : formatted;
 }
 
 function Dashboard() {

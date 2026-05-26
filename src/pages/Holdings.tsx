@@ -19,7 +19,9 @@ import { useToast } from "../context/ToastContext";
 import type { AccountSummary, HoldingSummary } from "../api/types";
 
 function fmt(v: number, currency = "INR"): string {
-  return new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 0 }).format(v);
+  const abs = Math.abs(v);
+  const formatted = new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 0 }).format(abs);
+  return v < 0 ? `-${formatted}` : formatted;
 }
 
 function fmtUnits(v: number): string {

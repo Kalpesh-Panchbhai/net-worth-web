@@ -17,11 +17,13 @@ interface IncomeChartProps {
 
 function fmtCurrency(v: number, currency = "INR") {
   const hasDecimals = v % 1 !== 0;
-  return new Intl.NumberFormat("en-IN", {
+  const abs = Math.abs(v);
+  const formatted = new Intl.NumberFormat("en-IN", {
     style: "currency", currency,
     minimumFractionDigits: hasDecimals ? 2 : 0,
     maximumFractionDigits: hasDecimals ? 2 : 0,
-  }).format(v);
+  }).format(abs);
+  return v < 0 ? `-${formatted}` : formatted;
 }
 
 // Custom bar shape that grows from bottom with a staggered left-to-right delay

@@ -43,7 +43,9 @@ const TYPE_LABELS: Record<string, string> = {
 
 function fmt(v: number, currency = "INR"): string {
   const hasDecimals = v % 1 !== 0;
-  return new Intl.NumberFormat("en-IN", { style: "currency", currency, minimumFractionDigits: hasDecimals ? 2 : 0, maximumFractionDigits: hasDecimals ? 2 : 0 }).format(v);
+  const abs = Math.abs(v);
+  const formatted = new Intl.NumberFormat("en-IN", { style: "currency", currency, minimumFractionDigits: hasDecimals ? 2 : 0, maximumFractionDigits: hasDecimals ? 2 : 0 }).format(abs);
+  return v < 0 ? `-${formatted}` : formatted;
 }
 
 function fmtUnits(v: number): string {
@@ -609,22 +611,22 @@ function AccountDetail() {
 
                                     {/* Invested: delta + total (only for broker or needsDailyData) */}
                                     {showInvested && (
-                                    <Box sx={{ mt: 0.75 }}>
-                                      <Typography noWrap sx={{ fontSize: "1.05rem", fontWeight: 700 }}>
-                                        {investedDelta >= 0 ? "+" : ""}{fmt(investedDelta, account.currency)}
+                                    <Box sx={{ mt: 0.75, overflow: "hidden" }}>
+                                      <Typography sx={{ fontSize: "1.05rem", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                        {`${investedDelta >= 0 ? "+" : ""}${fmt(investedDelta, account.currency)}`}
                                       </Typography>
-                                      <Typography noWrap sx={{ fontSize: "0.75rem", color: colors.gray400, mt: 0.25 }}>
+                                      <Typography sx={{ fontSize: "0.75rem", color: colors.gray400, mt: 0.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                                         → Total: {fmt(t.invested, account.currency)}
                                       </Typography>
                                     </Box>
                                     )}
 
                                     {/* Amount/Units: delta + total */}
-                                    <Box sx={{ mt: showInvested ? 0.5 : 0.75 }}>
-                                      <Typography noWrap sx={{ fontSize: showInvested ? "0.8rem" : "1.05rem", fontWeight: showInvested ? 650 : 700, color: showInvested ? unitColor : undefined }}>
-                                        {isAdd ? "+" : ""}{showInvested ? `${fmtUnits(delta)} units` : fmt(delta, account.currency)}
+                                    <Box sx={{ mt: showInvested ? 0.5 : 0.75, overflow: "hidden" }}>
+                                      <Typography sx={{ fontSize: showInvested ? "0.8rem" : "1.05rem", fontWeight: showInvested ? 650 : 700, color: showInvested ? unitColor : undefined, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                        {`${isAdd ? "+" : ""}${showInvested ? `${fmtUnits(delta)} units` : fmt(delta, account.currency)}`}
                                       </Typography>
-                                      <Typography noWrap sx={{ fontSize: showInvested ? "0.75rem" : "0.75rem", color: colors.gray400, mt: 0.25 }}>
+                                      <Typography sx={{ fontSize: "0.75rem", color: colors.gray400, mt: 0.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                                         → Total: {showInvested ? `${fmtUnits(t.value)} units` : fmt(t.value, account.currency)}
                                       </Typography>
                                     </Box>

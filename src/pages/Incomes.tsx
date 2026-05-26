@@ -35,7 +35,9 @@ type Grouping = "month" | "source" | "tag" | "year" | "fy";
 
 function fmt(v: number, currency = "INR"): string {
   const hasDecimals = v % 1 !== 0;
-  return new Intl.NumberFormat("en-IN", { style: "currency", currency, minimumFractionDigits: hasDecimals ? 2 : 0, maximumFractionDigits: hasDecimals ? 2 : 0 }).format(v);
+  const abs = Math.abs(v);
+  const formatted = new Intl.NumberFormat("en-IN", { style: "currency", currency, minimumFractionDigits: hasDecimals ? 2 : 0, maximumFractionDigits: hasDecimals ? 2 : 0 }).format(abs);
+  return v < 0 ? `-${formatted}` : formatted;
 }
 function parseCreditDate(d: string) {
   const dt = new Date(d + "T00:00:00");

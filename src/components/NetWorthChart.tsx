@@ -14,8 +14,11 @@ interface NetWorthChartProps {
   data: EnrichedDataPoint[];
 }
 
-const fmtCurrency = (v: number) =>
-  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(v);
+const fmtCurrency = (v: number) => {
+  const abs = Math.abs(v);
+  const formatted = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(abs);
+  return v < 0 ? `-${formatted}` : formatted;
+};
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function CustomTooltip({ active, payload, label, colors, shadow }: any) {
