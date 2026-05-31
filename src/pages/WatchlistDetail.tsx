@@ -110,7 +110,7 @@ function WatchlistDetail() {
       const results = await Promise.all(
         eligible.map(async a => {
           try { return [a.id, await getTransactions({ accountId: a.id })] as const; }
-          catch { return [a.id, []] as const; }
+          catch { return [a.id, [] as Transaction[]] as const; }
         })
       );
       if (cancelled) return;
