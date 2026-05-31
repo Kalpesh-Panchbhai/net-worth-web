@@ -407,7 +407,7 @@ export default function EntityChart({ entityType, entityId, accentColor, currenc
                   Best P&L
                 </Typography>
                 <Typography sx={{ fontSize: 14, fontWeight: 750, color: colors.success, letterSpacing: "-0.01em" }}>
-                  +{fmtCurrency(best.pl, currency)} <Typography component="span" sx={{ fontSize: 11, fontWeight: 600 }}>({best.plPct >= 0 ? "+" : ""}{best.plPct.toFixed(2)}%)</Typography>
+                  {best.pl >= 0 ? "+" : ""}{fmtCurrency(best.pl, currency)} <Typography component="span" sx={{ fontSize: 11, fontWeight: 600 }}>({best.plPct >= 0 ? "+" : ""}{best.plPct.toFixed(2)}%)</Typography>
                 </Typography>
               </Box>
               <Typography sx={{ fontSize: 11, fontWeight: 600, color: colors.gray400, whiteSpace: "nowrap" }}>

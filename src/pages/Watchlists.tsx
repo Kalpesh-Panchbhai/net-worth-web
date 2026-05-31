@@ -18,12 +18,15 @@ import AllInclusiveRoundedIcon from "@mui/icons-material/AllInclusiveRounded";
 import { useUser } from "../context/UserContext";
 import {
   getWatchlists, createWatchlist, updateWatchlist, deleteWatchlist,
+  getWatchlistAccounts, getTransactions,
   invalidateCache,
 } from "../api/client";
 import { EmptyState, ErrorState, ListSkeleton, FadeIn } from "../components/shared";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
-import type { WatchlistSummary } from "../api/types";
+import { computeXirr } from "../utils/xirr";
+import XirrBadge from "../components/XirrBadge";
+import type { WatchlistSummary, Transaction } from "../api/types";
 
 function fmt(v: number, currency = "INR"): string {
   const hasDecimals = v % 1 !== 0;
@@ -42,6 +45,8 @@ function Watchlists() {
   const [watchlists, setWatchlists] = useState<WatchlistSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [xirrByWatchlist, setXirrByWatchlist] = useState<Map<number, number | null>>(new Map());
+  const [xirrLoading, setXirrLoading] = useState(true);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
@@ -58,6 +63,41 @@ function Watchlists() {
   }, [userId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Compute XIRR per watchlist (fetch linked accounts + their txns)
+  useEffect(() => {
+    if (watchlists.length === 0) return;
+    let cancelled = false;
+    setXirrLoading(true);
+    (async () => {
+      const results = await Promise.all(
+        watchlists.map(async w => {
+          try {
+            const accs = await getWatchlistAccounts(w.id);
+            const eligible = accs.filter(a => a.type === "BROKER" || a.needsDailyData);
+            if (eligible.length === 0) return [w.id, null] as const;
+            const txnsPer = await Promise.all(
+              eligible.map(async a => ({ a, txns: await getTransactions({ accountId: a.id }).catch(() => [] as Transaction[]) }))
+            );
+            const allTxns: Transaction[] = [];
+            let totalCurrent = 0;
+            for (const { a, txns } of txnsPer) {
+              if (txns.length > 0) { allTxns.push(...txns); totalCurrent += a.currentDayValue; }
+            }
+            return [w.id, allTxns.length > 0 ? computeXirr(allTxns, totalCurrent) : null] as const;
+          } catch { return [w.id, null] as const; }
+        })
+      );
+      if (cancelled) return;
+      setXirrByWatchlist(prev => {
+        const next = new Map(prev);
+        for (const [id, x] of results) next.set(id, x);
+        return next;
+      });
+      setXirrLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [watchlists]);
 
   const handleCreate = async () => {
     if (!userId || !newName.trim()) return;
@@ -137,7 +177,7 @@ function Watchlists() {
         </Stack>
       )}
 
-      {loading ? <ListSkeleton rows={3} /> : watchlists.length === 0 ? (
+      {loading || xirrLoading ? <ListSkeleton rows={3} /> : watchlists.length === 0 ? (
         <Paper>
           <EmptyState
             icon={<VisibilityOutlinedIcon />}
@@ -179,7 +219,7 @@ function Watchlists() {
                       height: "100%", display: "flex", flexDirection: "column",
                     }}
                   >
-                    <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5, mb: 1.5 }}>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.5 }}>
                       <Avatar sx={{
                         width: 36, height: 36, borderRadius: 2,
                         bgcolor: alpha(accentColor, 0.1),
@@ -190,6 +230,7 @@ function Watchlists() {
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography sx={{ fontWeight: 650, fontSize: "0.9rem", lineHeight: 1.3 }} noWrap>{w.name}</Typography>
                       </Box>
+                      <XirrBadge value={xirrByWatchlist.get(w.id) ?? null} size="sm" />
                       {!isAll && (
                         <Stack direction="row" spacing={0} onClick={e => e.stopPropagation()}>
                           <IconButton size="small" onClick={() => { setEditWl(w); setEditName(w.name); }} sx={{ color: colors.brand, opacity: 0.6, "&:hover": { opacity: 1, bgcolor: alpha(colors.brand, 0.08) } }}>

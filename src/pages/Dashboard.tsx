@@ -8,12 +8,14 @@ import { alpha } from "@mui/material/styles";
 import ShowChartOutlinedIcon from "@mui/icons-material/ShowChartOutlined";
 import AccountBalanceWalletRoundedIcon from "@mui/icons-material/AccountBalanceWalletRounded";
 import NetWorthChart from "../components/NetWorthChart";
+import XirrBadge from "../components/XirrBadge";
 import { ChartSkeleton, ErrorState, EmptyState, FadeIn } from "../components/shared";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
-import { getWatchlists, getChartData, getIncomes } from "../api/client";
+import { getWatchlists, getChartData, getIncomes, getAccounts, getTransactions } from "../api/client";
 import { useUser } from "../context/UserContext";
-import type { WatchlistSummary, ChartDataPoint, TimePeriod, Income } from "../api/types";
+import { computeXirr } from "../utils/xirr";
+import type { WatchlistSummary, ChartDataPoint, TimePeriod, Income, Transaction } from "../api/types";
 
 const TIME_PERIODS: TimePeriod[] = ["1M", "3M", "6M", "1Y", "2Y", "5Y", "ALL"];
 
@@ -33,6 +35,8 @@ function Dashboard() {
   const [incomes, setIncomes] = useState<Income[]>([]);
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [timePeriod, setTimePeriod] = useState<TimePeriod>("1Y");
+  const [xirr, setXirr] = useState<number | null>(null);
+  const [xirrLoading, setXirrLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [chartLoading, setChartLoading] = useState(false);
   const [chartKey, setChartKey] = useState(0);
@@ -70,6 +74,32 @@ function Dashboard() {
   useEffect(() => { if (!userLoading) loadDashboard(); }, [loadDashboard, userLoading]);
   useEffect(() => { if (watchlist) loadChart(); }, [timePeriod]);
 
+  // Compute XIRR across all XIRR-eligible accounts of the user
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    setXirrLoading(true);
+    (async () => {
+      try {
+        const accounts = await getAccounts(userId);
+        const eligible = accounts.filter(a => a.type === "BROKER" || a.needsDailyData);
+        if (eligible.length === 0) { if (!cancelled) setXirrLoading(false); return; }
+        const txnsPerAcct = await Promise.all(
+          eligible.map(async a => ({ a, txns: await getTransactions({ accountId: a.id }).catch(() => [] as Transaction[]) }))
+        );
+        if (cancelled) return;
+        const allTxns: Transaction[] = [];
+        let totalCurrent = 0;
+        for (const { a, txns } of txnsPerAcct) {
+          if (txns.length > 0) { allTxns.push(...txns); totalCurrent += a.currentDayValue; }
+        }
+        setXirr(allTxns.length > 0 ? computeXirr(allTxns, totalCurrent) : null);
+      } catch { /* silent */ }
+      finally { if (!cancelled) setXirrLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [userId]);
+
   if (error && !watchlist) return <ErrorState message={error} onRetry={loadDashboard} />;
 
   const dayChange = watchlist ? watchlist.currentDayValue - watchlist.previousDayValue : 0;
@@ -92,7 +122,7 @@ function Dashboard() {
   return (
     <Stack spacing={{ xs: 2.5, sm: 3 }}>
       {/* ── Hero Card ── */}
-      {loading ? (
+      {loading || xirrLoading ? (
         <Paper sx={{ p: { xs: 3, sm: 4 }, borderRadius: 4 }}>
           <Skeleton width={100} height={16} sx={{ mb: 1 }} />
           <Skeleton width={220} height={48} sx={{ mb: 2 }} />
@@ -124,6 +154,8 @@ function Dashboard() {
                 <Typography sx={{ fontSize: "0.85rem", fontWeight: 600, color: heroMuted }}>
                   Net Worth
                 </Typography>
+                <Box sx={{ flex: 1 }} />
+                <XirrBadge value={xirr} size="lg" />
               </Stack>
 
               {/* Total value */}

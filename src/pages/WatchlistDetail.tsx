@@ -24,7 +24,7 @@ import ExpandLessRoundedIcon from "@mui/icons-material/ExpandLessRounded";
 import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
 import { useUser } from "../context/UserContext";
 import {
-  getWatchlists, getWatchlistAccounts, getAccounts,
+  getWatchlists, getWatchlistAccounts, getAccounts, getTransactions,
   linkWatchlistAccount, unlinkWatchlistAccount,
   invalidateCache,
 } from "../api/client";
@@ -32,7 +32,9 @@ import { EmptyState, ErrorState, ListSkeleton, FadeIn } from "../components/shar
 import EntityChart from "../components/EntityChart";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
-import type { WatchlistSummary, AccountSummary, AccountType } from "../api/types";
+import { computeXirr } from "../utils/xirr";
+import XirrBadge from "../components/XirrBadge";
+import type { WatchlistSummary, AccountSummary, AccountType, Transaction } from "../api/types";
 
 const TYPE_LABELS: Record<string, string> = {
   BROKER: "Broker", SAVINGS: "Savings", CREDIT_CARD: "Credit Card", LOAN: "Loan", OTHER: "Other",
@@ -65,6 +67,8 @@ function WatchlistDetail() {
   const [linkedAccounts, setLinkedAccounts] = useState<AccountSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [txnsByAccount, setTxnsByAccount] = useState<Map<number, Transaction[]>>(new Map());
+  const [xirrLoading, setXirrLoading] = useState(true);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [groupByType, setGroupByType] = useState(true);
@@ -95,6 +99,31 @@ function WatchlistDetail() {
 
   useEffect(() => { loadWatchlist(); }, [loadWatchlist]);
 
+  // Fetch txns for XIRR-eligible linked accounts
+  useEffect(() => {
+    if (loading) return;
+    const eligible = linkedAccounts.filter(a => a.type === "BROKER" || a.needsDailyData);
+    if (eligible.length === 0) { setXirrLoading(false); return; }
+    let cancelled = false;
+    setXirrLoading(true);
+    (async () => {
+      const results = await Promise.all(
+        eligible.map(async a => {
+          try { return [a.id, await getTransactions({ accountId: a.id })] as const; }
+          catch { return [a.id, []] as const; }
+        })
+      );
+      if (cancelled) return;
+      setTxnsByAccount(prev => {
+        const next = new Map(prev);
+        for (const [id, txns] of results) next.set(id, txns);
+        return next;
+      });
+      setXirrLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [linkedAccounts, loading]);
+
   const totalValue = linkedAccounts.reduce((s, a) => s + a.currentDayValue, 0);
   const totalInvested = linkedAccounts.reduce((s, a) => s + a.invested, 0);
   const totalGain = totalValue - totalInvested;
@@ -102,6 +131,17 @@ function WatchlistDetail() {
   const totalPrev = linkedAccounts.reduce((s, a) => s + a.previousDayValue, 0);
   const totalDayChg = totalValue - totalPrev;
   const totalDayPct = totalPrev > 0 ? (totalDayChg / totalPrev) * 100 : 0;
+
+  const totalXirr = (() => {
+    const eligible = linkedAccounts.filter(a => a.type === "BROKER" || a.needsDailyData);
+    const allTxns: Transaction[] = [];
+    let totalCurrent = 0;
+    for (const a of eligible) {
+      const t = txnsByAccount.get(a.id);
+      if (t && t.length > 0) { allTxns.push(...t); totalCurrent += a.currentDayValue; }
+    }
+    return allTxns.length > 0 ? computeXirr(allTxns, totalCurrent) : null;
+  })();
 
   const openLinkDialog = async () => {
     if (!userId) return;
@@ -161,6 +201,8 @@ function WatchlistDetail() {
     const gainPct = a.invested > 0 ? (gain / a.invested) * 100 : 0;
     const dayChg = a.currentDayValue - a.previousDayValue;
     const dayPct = a.previousDayValue > 0 ? (dayChg / a.previousDayValue) * 100 : 0;
+    const aTxns = txnsByAccount.get(a.id);
+    const aXirr = aTxns && aTxns.length > 0 ? computeXirr(aTxns, a.currentDayValue) : null;
     const tc = typeColors[a.type] || colors.gray500;
     const isDark = theme.palette.mode === "dark";
     const cardMuted = isDark ? alpha(colors.pureWhite, 0.5) : colors.gray400;
@@ -192,6 +234,7 @@ function WatchlistDetail() {
                 {!a.isActive && " · Inactive"}
               </Typography>
             </Box>
+            <XirrBadge value={aXirr} size="sm" />
           </Stack>
 
           <Box sx={{ px: 1.5, py: 1, borderRadius: 1.5, bgcolor: cardSubtle, display: "inline-block", mb: 1.5, alignSelf: "flex-start" }}>
@@ -258,7 +301,7 @@ function WatchlistDetail() {
         <Typography color="text.primary">{watchlist?.name || "..."}</Typography>
       </Breadcrumbs>
 
-      {loading ? <ListSkeleton rows={3} /> : watchlist && (
+      {loading || xirrLoading ? <ListSkeleton rows={3} /> : watchlist && (
         <>
           {/* ── Watchlist Hero Card ── */}
           <FadeIn>
@@ -284,7 +327,7 @@ function WatchlistDetail() {
                   <Avatar sx={{ width: 36, height: 36, bgcolor: alpha(accentColor, 0.1), color: accentColor, borderRadius: 2 }}>
                     {isAll ? <AllInclusiveRoundedIcon sx={{ fontSize: 20 }} /> : <VisibilityRoundedIcon sx={{ fontSize: 20 }} />}
                   </Avatar>
-                  <Box>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography sx={{ fontSize: { xs: "1.1rem", sm: "1.25rem" }, fontWeight: 700, color: heroText, lineHeight: 1.2 }}>
                       {watchlist.name}
                     </Typography>
@@ -292,6 +335,7 @@ function WatchlistDetail() {
                       {linkedAccounts.length} account{linkedAccounts.length !== 1 ? "s" : ""}
                     </Typography>
                   </Box>
+                  <XirrBadge value={totalXirr} size="lg" />
                 </Stack>
 
                 <Box sx={{ px: 2, py: 1.5, borderRadius: 2, bgcolor: heroSubtle, display: "inline-block" }}>
@@ -392,6 +436,16 @@ function WatchlistDetail() {
                   const groupPrev = group.reduce((s, a) => s + a.previousDayValue, 0);
                   const groupDayChg = groupTotal - groupPrev;
                   const groupDayPct = groupPrev > 0 ? (groupDayChg / groupPrev) * 100 : 0;
+                  const groupXirr = (() => {
+                    const eligible = group.filter(a => a.type === "BROKER" || a.needsDailyData);
+                    const allTxns: Transaction[] = [];
+                    let totalCurrent = 0;
+                    for (const a of eligible) {
+                      const t = txnsByAccount.get(a.id);
+                      if (t && t.length > 0) { allTxns.push(...t); totalCurrent += a.currentDayValue; }
+                    }
+                    return allTxns.length > 0 ? computeXirr(allTxns, totalCurrent) : null;
+                  })();
                   const isGroupCollapsed = !!collapsed[type];
                   return (
                     <FadeIn key={type} delay={si * 40}>
@@ -427,6 +481,12 @@ function WatchlistDetail() {
                               {fmt(groupTotal)}
                             </Typography>
                             <Stack direction="row" spacing={1}>
+                              {groupXirr != null && (
+                                <Typography sx={{ fontSize: 10, fontWeight: 600, color: groupXirr >= 0 ? colors.success : colors.error, display: "flex", alignItems: "center", gap: 0.4 }}>
+                                  <Box component="span" sx={{ fontSize: 8, fontWeight: 700, bgcolor: alpha(groupXirr >= 0 ? colors.success : colors.error, 0.12), px: 0.5, py: 0.1, borderRadius: 0.5 }}>XIRR</Box>
+                                  {groupXirr * 100 >= 0 ? "+" : ""}{(groupXirr * 100).toFixed(2)}%
+                                </Typography>
+                              )}
                               {group.some(a => a.type === "BROKER" || a.needsDailyData) && groupInvested > 0 && (
                                 <Typography sx={{ fontSize: 10, fontWeight: 600, color: groupGain >= 0 ? colors.success : colors.error, display: "flex", alignItems: "center", gap: 0.4 }}>
                                   <Box component="span" sx={{ fontSize: 8, fontWeight: 700, bgcolor: alpha(groupGain >= 0 ? colors.success : colors.error, 0.12), px: 0.5, py: 0.1, borderRadius: 0.5 }}>P&L</Box>

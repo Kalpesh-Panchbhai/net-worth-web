@@ -19,6 +19,8 @@ import {
 } from "../api/client";
 import { EmptyState, ErrorState, ListSkeleton, FadeIn } from "../components/shared";
 import EntityChart from "../components/EntityChart";
+import XirrBadge from "../components/XirrBadge";
+import { computeXirr } from "../utils/xirr";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
 import type { AccountSummary, HoldingSummary, Transaction } from "../api/types";
@@ -57,7 +59,7 @@ function HoldingDetail() {
   const [holding, setHolding] = useState<HoldingSummary | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
-  const [txnLoading, setTxnLoading] = useState(false);
+  const [txnLoading, setTxnLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Create transaction
@@ -151,6 +153,7 @@ function HoldingDetail() {
 
   const holdingGain = holding ? holding.currentDayValue - holding.invested : 0;
   const holdingGainPct = holding && holding.invested > 0 ? (holdingGain / holding.invested) * 100 : 0;
+  const holdingXirr = holding && transactions.length > 0 ? computeXirr(transactions, holding.currentDayValue) : null;
   const holdingDayChg = holding ? holding.currentDayValue - holding.previousDayValue : 0;
   const holdingDayPct = holding && holding.previousDayValue > 0 ? (holdingDayChg / holding.previousDayValue) * 100 : 0;
 
@@ -167,7 +170,7 @@ function HoldingDetail() {
         <Typography color="text.primary">{holding?.name || "..."}</Typography>
       </Breadcrumbs>
 
-      {loading ? <ListSkeleton rows={3} /> : holding && (
+      {loading || txnLoading ? <ListSkeleton rows={3} /> : holding && (
         <>
           {/* ── Holding Hero Card ── */}
           <FadeIn>
@@ -192,7 +195,7 @@ function HoldingDetail() {
                   <Avatar sx={{ width: 36, height: 36, bgcolor: alpha(colors.brand, 0.1), color: colors.brand, fontSize: "0.65rem", fontWeight: 800, borderRadius: 2 }}>
                     {holding.symbol.slice(0, 3)}
                   </Avatar>
-                  <Box>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography sx={{ fontSize: { xs: "1rem", sm: "1.15rem" }, fontWeight: 700, color: heroText, lineHeight: 1.2 }}>
                       {holding.name}
                     </Typography>
@@ -207,6 +210,7 @@ function HoldingDetail() {
                       )}
                     </Stack>
                   </Box>
+                  <XirrBadge value={holdingXirr} size="lg" />
                 </Stack>
 
                 <Box sx={{ px: 2, py: 1.5, borderRadius: 2, bgcolor: heroSubtle, display: "inline-block" }}>

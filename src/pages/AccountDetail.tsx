@@ -33,6 +33,8 @@ import ListItemIcon from "@mui/material/ListItemIcon";
 import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
 import { EmptyState, ErrorState, ListSkeleton, FadeIn } from "../components/shared";
 import EntityChart from "../components/EntityChart";
+import XirrBadge from "../components/XirrBadge";
+import { computeXirr } from "../utils/xirr";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
 import type { AccountSummary, HoldingSummary, Transaction, WatchlistSummary } from "../api/types";
@@ -87,6 +89,7 @@ function AccountDetail() {
   // Transactions (non-broker accounts)
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [txnLoading, setTxnLoading] = useState(false);
+  const [xirrLoading, setXirrLoading] = useState(true);
   const [createTxnOpen, setCreateTxnOpen] = useState(false);
   const [txnDate, setTxnDate] = useState("");
   const [txnInvested, setTxnInvested] = useState("");
@@ -135,7 +138,7 @@ function AccountDetail() {
   const loadTransactions = useCallback(async () => {
     if (isBroker || !numAccountId) return;
     try {
-      setTxnLoading(true);
+      setTxnLoading(true); setXirrLoading(true);
       const [txns, h] = await Promise.all([
         getTransactions({ accountId: numAccountId }),
         getHoldings(numAccountId),
@@ -144,12 +147,22 @@ function AccountDetail() {
       if (h.length > 0) setDefaultHoldingId(h[0].id);
     }
     catch (err) { showToast(err instanceof Error ? err.message : "Failed to load transactions", "error"); }
-    finally { setTxnLoading(false); }
+    finally { setTxnLoading(false); setXirrLoading(false); }
+  }, [isBroker, numAccountId]);
+
+  // For broker accounts: load all txns (for XIRR) in addition to holdings list
+  const loadBrokerTransactions = useCallback(async () => {
+    if (!isBroker || !numAccountId) return;
+    setXirrLoading(true);
+    try { setTransactions(await getTransactions({ accountId: numAccountId })); }
+    catch { /* silent — XIRR optional */ }
+    finally { setXirrLoading(false); }
   }, [isBroker, numAccountId]);
 
   useEffect(() => { loadAccount(); }, [loadAccount]);
   useEffect(() => { loadAccountWatchlists(); }, [loadAccountWatchlists]);
-  useEffect(() => { if (account) { if (isBroker) loadHoldings(); else loadTransactions(); } }, [account, isBroker, loadHoldings, loadTransactions]);
+  useEffect(() => { if (account) { if (isBroker) { loadHoldings(); loadBrokerTransactions(); } else loadTransactions(); } }, [account, isBroker, loadHoldings, loadTransactions, loadBrokerTransactions]);
+  useEffect(() => { if (account && !showInvested) setXirrLoading(false); }, [account, showInvested]);
 
   // Debounced Yahoo Finance search
   useEffect(() => {
@@ -292,6 +305,7 @@ function AccountDetail() {
   const acctGainPct = account && account.invested > 0 ? (acctGain / account.invested) * 100 : 0;
   const acctDayChg = account ? account.currentDayValue - account.previousDayValue : 0;
   const acctDayPct = account && account.previousDayValue > 0 ? (acctDayChg / account.previousDayValue) * 100 : 0;
+  const acctXirr = showInvested && account && transactions.length > 0 ? computeXirr(transactions, account.currentDayValue) : null;
   const tc = account ? (typeColors[account.type] || colors.gray500) : colors.gray500;
 
   return (
@@ -304,7 +318,7 @@ function AccountDetail() {
         <Typography color="text.primary">{account?.name || "..."}</Typography>
       </Breadcrumbs>
 
-      {loading ? <ListSkeleton rows={3} /> : account && (
+      {loading || xirrLoading ? <ListSkeleton rows={3} /> : account && (
         <>
           {/* ── Account Hero Card ── */}
           <FadeIn>
@@ -334,6 +348,8 @@ function AccountDetail() {
                       <PauseCircleOutlineIcon sx={{ fontSize: 12 }} /> Inactive
                     </Box>
                   )}
+                  <Box sx={{ flex: 1 }} />
+                  <XirrBadge value={acctXirr} size="lg" />
                 </Stack>
                 <Typography sx={{ fontSize: { xs: "1.1rem", sm: "1.25rem" }, fontWeight: 700, mb: 1.5, color: heroText }}>
                   {account.name}
@@ -454,6 +470,8 @@ function AccountDetail() {
                       const gainPct = h.invested > 0 ? (gain / h.invested) * 100 : 0;
                       const dayChg = h.currentDayValue - h.previousDayValue;
                       const dayPct = h.previousDayValue > 0 ? (dayChg / h.previousDayValue) * 100 : 0;
+                      const hTxns = transactions.filter(t => t.holdingId === h.id);
+                      const hXirr = hTxns.length > 0 ? computeXirr(hTxns, h.currentDayValue) : null;
                       const isDark = theme.palette.mode === "dark";
                       const cardMuted = isDark ? alpha(colors.pureWhite, 0.5) : colors.gray400;
                       const cardSubtle = isDark ? alpha(colors.pureWhite, 0.08) : colors.gray100;
@@ -480,7 +498,8 @@ function AccountDetail() {
                                 <Typography sx={{ fontWeight: 650, fontSize: "0.9rem", lineHeight: 1.3 }} noWrap>{h.name}</Typography>
                                 <Typography variant="caption" sx={{ color: cardMuted }}>{h.symbol} · {fmtUnits(h.units)} units</Typography>
                               </Box>
-                              <Stack direction="row" spacing={0} onClick={e => e.stopPropagation()} sx={{ ml: 1 }}>
+                              <Stack direction="row" spacing={0.5} alignItems="center" onClick={e => e.stopPropagation()} sx={{ ml: 1 }}>
+                                <XirrBadge value={hXirr} size="sm" />
                                 {account?.isActive && (<IconButton size="small" onClick={() => setDeleteHoldingConfirm(h)} sx={{ color: colors.error, opacity: 0.6, "&:hover": { opacity: 1, bgcolor: alpha(colors.error, 0.08) } }}>
                                   <DeleteOutlineIcon sx={{ fontSize: 16 }} />
                                 </IconButton>)}

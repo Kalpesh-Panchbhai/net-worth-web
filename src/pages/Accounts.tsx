@@ -22,8 +22,11 @@ import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import ExpandLessRoundedIcon from "@mui/icons-material/ExpandLessRounded";
 import { useUser } from "../context/UserContext";
 import {
-  getAccounts, createAccount, updateAccount, deleteAccount, invalidateCache,
+  getAccounts, createAccount, updateAccount, deleteAccount, getTransactions, invalidateCache,
 } from "../api/client";
+import { computeXirr } from "../utils/xirr";
+import XirrBadge from "../components/XirrBadge";
+import type { Transaction } from "../api/types";
 import AccountBalanceWalletRoundedIcon from "@mui/icons-material/AccountBalanceWalletRounded";
 import { EmptyState, ErrorState, ListSkeleton, FadeIn } from "../components/shared";
 import { useTokens } from "../context/ColorModeContext";
@@ -58,6 +61,8 @@ function Accounts() {
   const [accounts, setAccounts] = useState<AccountSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [txnsByAccount, setTxnsByAccount] = useState<Map<number, Transaction[]>>(new Map());
+  const [xirrLoading, setXirrLoading] = useState(true);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
@@ -83,6 +88,31 @@ function Accounts() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Fetch txns for XIRR-eligible accounts in parallel
+  useEffect(() => {
+    if (loading) return;
+    const eligible = accounts.filter(a => a.type === "BROKER" || a.needsDailyData);
+    if (eligible.length === 0) { setXirrLoading(false); return; }
+    let cancelled = false;
+    setXirrLoading(true);
+    (async () => {
+      const results = await Promise.all(
+        eligible.map(async a => {
+          try { return [a.id, await getTransactions({ accountId: a.id })] as const; }
+          catch { return [a.id, []] as const; }
+        })
+      );
+      if (cancelled) return;
+      setTxnsByAccount(prev => {
+        const next = new Map(prev);
+        for (const [id, txns] of results) next.set(id, txns);
+        return next;
+      });
+      setXirrLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [accounts, loading]);
+
   const hasInactiveAccounts = accounts.some(a => !a.isActive);
   const visibleAccounts = showInactive ? accounts : accounts.filter(a => a.isActive);
 
@@ -93,6 +123,20 @@ function Accounts() {
   const totalPrev = visibleAccounts.reduce((s, a) => s + a.previousDayValue, 0);
   const totalDayChg = totalValue - totalPrev;
   const totalDayPct = totalPrev > 0 ? (totalDayChg / totalPrev) * 100 : 0;
+
+  const xirrEligibleAccounts = visibleAccounts.filter(a => a.type === "BROKER" || a.needsDailyData);
+  const totalXirr = (() => {
+    const allTxns: Transaction[] = [];
+    let totalCurrent = 0;
+    for (const a of xirrEligibleAccounts) {
+      const t = txnsByAccount.get(a.id);
+      if (t && t.length > 0) {
+        allTxns.push(...t);
+        totalCurrent += a.currentDayValue;
+      }
+    }
+    return allTxns.length > 0 ? computeXirr(allTxns, totalCurrent) : null;
+  })();
 
   const handleCreate = async () => {
     if (!userId || !newName.trim()) return;
@@ -173,6 +217,8 @@ function Accounts() {
     const gainPct = a.invested > 0 ? (gain / a.invested) * 100 : 0;
     const dayChg = a.currentDayValue - a.previousDayValue;
     const dayPct = a.previousDayValue > 0 ? (dayChg / a.previousDayValue) * 100 : 0;
+    const aTxns = txnsByAccount.get(a.id);
+    const aXirr = aTxns && aTxns.length > 0 ? computeXirr(aTxns, a.currentDayValue) : null;
     const tc = typeColors[a.type] || colors.gray500;
     const isDark = theme.palette.mode === "dark";
     const cardMuted = isDark ? alpha(colors.pureWhite, 0.5) : colors.gray400;
@@ -205,7 +251,8 @@ function Accounts() {
                 {!a.isActive && " · Inactive"}
               </Typography>
             </Box>
-            <Stack direction="row" spacing={0} onClick={e => e.stopPropagation()}>
+            <Stack direction="row" spacing={0.5} alignItems="center" onClick={e => e.stopPropagation()}>
+              <XirrBadge value={aXirr} size="sm" />
               <IconButton size="small" onClick={() => openEdit(a)} sx={{ color: colors.brand, opacity: 0.6, "&:hover": { opacity: 1, bgcolor: alpha(colors.brand, 0.08) } }}>
                 <EditOutlinedIcon sx={{ fontSize: 16 }} />
               </IconButton>
@@ -270,7 +317,7 @@ function Accounts() {
   return (
     <Stack spacing={{ xs: 2.5, sm: 3 }}>
       {/* ── Hero Card ── */}
-      {!loading && (
+      {!loading && !xirrLoading && (
         <FadeIn>
           {(() => {
             const isDark = theme.palette.mode === "dark";
@@ -299,6 +346,8 @@ function Accounts() {
                 <Box sx={{ px: 0.8, py: 0.15, borderRadius: 1, bgcolor: heroSubtle, fontSize: "0.7rem", fontWeight: 600, color: heroMuted }}>
                   {visibleAccounts.length}
                 </Box>
+                <Box sx={{ flex: 1 }} />
+                <XirrBadge value={totalXirr} size="lg" />
               </Stack>
 
               {/* Total value */}
@@ -388,7 +437,7 @@ function Accounts() {
       )}
 
       {/* Account cards grid */}
-      {loading ? <ListSkeleton rows={4} /> : visibleAccounts.length === 0 && accounts.length === 0 ? (
+      {loading || xirrLoading ? <ListSkeleton rows={4} /> : visibleAccounts.length === 0 && accounts.length === 0 ? (
         <Paper>
           <EmptyState
             icon={<AccountBalanceWalletOutlinedIcon />}
@@ -417,6 +466,16 @@ function Accounts() {
               const groupPrev = group.reduce((s, a) => s + a.previousDayValue, 0);
               const groupDayChg = groupTotal - groupPrev;
               const groupDayPct = groupPrev > 0 ? (groupDayChg / groupPrev) * 100 : 0;
+              const groupXirr = (() => {
+                const eligible = group.filter(a => a.type === "BROKER" || a.needsDailyData);
+                const allTxns: Transaction[] = [];
+                let totalCurrent = 0;
+                for (const a of eligible) {
+                  const t = txnsByAccount.get(a.id);
+                  if (t && t.length > 0) { allTxns.push(...t); totalCurrent += a.currentDayValue; }
+                }
+                return allTxns.length > 0 ? computeXirr(allTxns, totalCurrent) : null;
+              })();
               const isCollapsed = !!collapsed[type];
               return (
                 <FadeIn key={type} delay={si * 40}>
@@ -452,6 +511,12 @@ function Accounts() {
                           {fmt(groupTotal)}
                         </Typography>
                         <Stack direction="row" spacing={1}>
+                          {groupXirr != null && (
+                            <Typography sx={{ fontSize: 10, fontWeight: 600, color: groupXirr >= 0 ? colors.success : colors.error, display: "flex", alignItems: "center", gap: 0.4 }}>
+                              <Box component="span" sx={{ fontSize: 8, fontWeight: 700, bgcolor: alpha(groupXirr >= 0 ? colors.success : colors.error, 0.12), px: 0.5, py: 0.1, borderRadius: 0.5 }}>XIRR</Box>
+                              {groupXirr * 100 >= 0 ? "+" : ""}{(groupXirr * 100).toFixed(2)}%
+                            </Typography>
+                          )}
                           {group.some(a => a.type === "BROKER" || a.needsDailyData) && groupInvested > 0 && (
                             <Typography sx={{ fontSize: 10, fontWeight: 600, color: groupGain >= 0 ? colors.success : colors.error, display: "flex", alignItems: "center", gap: 0.4 }}>
                               <Box component="span" sx={{ fontSize: 8, fontWeight: 700, bgcolor: alpha(groupGain >= 0 ? colors.success : colors.error, 0.12), px: 0.5, py: 0.1, borderRadius: 0.5 }}>P&L</Box>
