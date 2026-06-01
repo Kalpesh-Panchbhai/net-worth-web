@@ -376,8 +376,8 @@ export default function EntityChart({ entityType, entityId, accentColor, currenc
           plPct: (d.value - d.invested) / d.invested * 100,
         }));
         if (plPoints.length < 2) return null;
-        const best = plPoints.reduce((a, b) => b.pl > a.pl ? b : a);
-        const worst = plPoints.reduce((a, b) => b.pl < a.pl ? b : a);
+        const best = plPoints.reduce((a, b) => b.plPct > a.plPct ? b : a);
+        const worst = plPoints.reduce((a, b) => b.plPct < a.plPct ? b : a);
         const fmtDate = (s: string) => {
           const d = new Date(s + "T00:00:00");
           return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
