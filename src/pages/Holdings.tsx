@@ -171,6 +171,11 @@ function Holdings() {
                   </Box>
                   <Box sx={{ textAlign: "right", minWidth: 110 }}>
                     <Typography variant="subtitle2">{fmt(h.currentDayValue)}</Typography>
+                    {h.invested > 0 && (
+                      <Typography variant="caption" sx={{ fontWeight: 600, color: gain >= 0 ? colors.success : colors.error }}>
+                        {gain >= 0 ? "+" : ""}{fmt(gain)}
+                      </Typography>
+                    )}
                     <TintedChip
                       label={`${gain >= 0 ? "+" : ""}${gainPct.toFixed(1)}%`}
                       color={gain >= 0 ? colors.success : colors.error}

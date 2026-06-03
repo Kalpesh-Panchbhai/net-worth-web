@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Box, Paper, Typography, Stack, ToggleButton, ToggleButtonGroup, CircularProgress } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
@@ -8,7 +8,7 @@ import TrendingUpRoundedIcon from "@mui/icons-material/TrendingUpRounded";
 import TrendingDownRoundedIcon from "@mui/icons-material/TrendingDownRounded";
 import { useTokens } from "../context/ColorModeContext";
 import { getChartData } from "../api/client";
-import type { ChartDataPoint, EntityType, TimePeriod } from "../api/types";
+import type { ChartDataPoint, EntityType, TimePeriod, Transaction } from "../api/types";
 
 const PERIODS: { value: TimePeriod; label: string }[] = [
   { value: "1M", label: "1M" },
@@ -26,6 +26,7 @@ interface EntityChartProps {
   accentColor?: string;
   currency?: string;
   showInvested?: boolean;
+  transactions?: Transaction[];
 }
 
 function fmtCurrency(v: number, currency = "INR") {
@@ -100,6 +101,32 @@ function CustomTooltip({ active, payload, label, currency, accentColor, showInve
         )}
       </Stack>
 
+      {/* Transaction marker */}
+      {(() => {
+        const dp = payload?.[0]?.payload;
+        if (dp?.txnInvestedDelta == null) return null;
+        const isBuy = (dp.txnUnitsDelta ?? 0) >= 0;
+        const txnColor = isBuy ? colors.success : colors.error;
+        return (
+          <Box sx={{ px: 2.5, pb: 1 }}>
+            <Stack direction="row" spacing={0.75} alignItems="center" sx={{
+              px: 1.25, py: 0.5, borderRadius: 1.5,
+              bgcolor: alpha(txnColor, 0.08),
+              display: "inline-flex",
+            }}>
+              <Typography sx={{ fontSize: 11, fontWeight: 800, color: txnColor }}>{isBuy ? "▲" : "▼"}</Typography>
+              <Typography sx={{ fontSize: 11, fontWeight: 700, color: txnColor }}>
+                {isBuy ? "Bought" : "Sold"} {Math.abs(dp.txnUnitsDelta ?? 0).toFixed(3)} units
+              </Typography>
+              <Typography sx={{ fontSize: 10, color: alpha(txnColor, 0.6) }}>·</Typography>
+              <Typography sx={{ fontSize: 11, fontWeight: 600, color: colors.gray400 }}>
+                {fmtCurrency(Math.abs(dp.txnInvestedDelta), currency)}
+              </Typography>
+            </Stack>
+          </Box>
+        );
+      })()}
+
       {/* P&L footer */}
       {showInvested && invested > 0 && (
         <Box sx={{
@@ -136,7 +163,7 @@ function CustomTooltip({ active, payload, label, currency, accentColor, showInve
   );
 }
 
-export default function EntityChart({ entityType, entityId, accentColor, currency = "INR", showInvested = true }: EntityChartProps) {
+export default function EntityChart({ entityType, entityId, accentColor, currency = "INR", showInvested = true, transactions }: EntityChartProps) {
   const theme = useTheme();
   const compact = useMediaQuery(theme.breakpoints.down("sm"));
   const { colors, shadow } = useTokens();
@@ -177,6 +204,31 @@ export default function EntityChart({ entityType, entityId, accentColor, currenc
   }, [entityType, entityId, period]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Build transaction markers: date → delta info
+  const txnDateMap = useMemo(() => {
+    if (!transactions || transactions.length === 0) return new Map<string, { investedDelta: number; unitsDelta: number }>();
+    const sorted = [...transactions].sort((a, b) => a.txnDate.localeCompare(b.txnDate));
+    const map = new Map<string, { investedDelta: number; unitsDelta: number }>();
+    for (let i = 0; i < sorted.length; i++) {
+      const t = sorted[i];
+      const prev = i > 0 ? sorted[i - 1] : null;
+      map.set(t.txnDate, {
+        investedDelta: prev ? t.invested - prev.invested : t.invested,
+        unitsDelta: prev ? t.value - prev.value : t.value,
+      });
+    }
+    return map;
+  }, [transactions]);
+
+  // Enrich chart data with transaction markers
+  const chartData = useMemo(() => {
+    if (txnDateMap.size === 0) return data;
+    return data.map(d => {
+      const txn = txnDateMap.get(d.date);
+      return txn ? { ...d, txnInvestedDelta: txn.investedDelta, txnUnitsDelta: txn.unitsDelta } : d;
+    });
+  }, [data, txnDateMap]);
 
   const gradientId = `grad-${entityType}-${entityId}`;
   const gradientInvId = `grad-inv-${entityType}-${entityId}`;
@@ -272,99 +324,112 @@ export default function EntityChart({ entityType, entityId, accentColor, currenc
         }
 
         return (
-        <ResponsiveContainer width="100%" height={compact ? 240 : 320}>
-          <AreaChart data={data} margin={{ top: 4, right: compact ? 4 : 8, left: compact ? -20 : 0, bottom: 0 }}>
-            <defs>
-              {hasInvData ? (
-                <>
-                  <linearGradient id={valStrokeId} x1="0" y1="0" x2="1" y2="0">
-                    {strokeStops.map((s, i) => (
-                      <stop key={i} offset={s.offset} stopColor={s.color} />
-                    ))}
+          <ResponsiveContainer width="100%" height={compact ? 240 : 320}>
+            <AreaChart data={chartData} margin={{ top: 4, right: compact ? 4 : 8, left: compact ? -20 : 0, bottom: 0 }}>
+              <defs>
+                {hasInvData ? (
+                  <>
+                    <linearGradient id={valStrokeId} x1="0" y1="0" x2="1" y2="0">
+                      {strokeStops.map((s, i) => (
+                        <stop key={i} offset={s.offset} stopColor={s.color} />
+                      ))}
+                    </linearGradient>
+                    <linearGradient id={valFillId} x1="0" y1="0" x2="1" y2="0">
+                      {fillStops.map((s, i) => (
+                        <stop key={i} offset={s.offset} stopColor={s.color} stopOpacity={s.opacity} />
+                      ))}
+                    </linearGradient>
+                  </>
+                ) : (
+                  <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={color} stopOpacity={0.12} />
+                    <stop offset="100%" stopColor={color} stopOpacity={0} />
                   </linearGradient>
-                  <linearGradient id={valFillId} x1="0" y1="0" x2="1" y2="0">
-                    {fillStops.map((s, i) => (
-                      <stop key={i} offset={s.offset} stopColor={s.color} stopOpacity={s.opacity} />
-                    ))}
+                )}
+                {showInvested && (
+                  <linearGradient id={gradientInvId} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={colors.warning} stopOpacity={0.1} />
+                    <stop offset="100%" stopColor={colors.warning} stopOpacity={0} />
                   </linearGradient>
-                </>
-              ) : (
-                <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={color} stopOpacity={0.12} />
-                  <stop offset="100%" stopColor={color} stopOpacity={0} />
-                </linearGradient>
-              )}
-              {showInvested && (
-                <linearGradient id={gradientInvId} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={colors.warning} stopOpacity={0.1} />
-                  <stop offset="100%" stopColor={colors.warning} stopOpacity={0} />
-                </linearGradient>
-              )}
-            </defs>
-            <CartesianGrid vertical={false} stroke={colors.gray100} />
-            <XAxis
-              dataKey="date" tickLine={false} axisLine={false}
-              tick={{ fontSize: compact ? 9 : 11, fill: colors.gray400 }}
-              tickFormatter={(dateStr: string) => formatDateLabel(dateStr, multiYear)}
-              interval={compact ? "preserveStartEnd" : undefined}
-            />
-            <YAxis
-              tickLine={false} axisLine={false} width={compact ? 40 : 52}
-              tick={{ fontSize: compact ? 9 : 11, fill: colors.gray400 }}
-              tickFormatter={(v: number) => {
-                if (Math.abs(v) >= 1e7) return `${(v / 1e7).toFixed(1)}Cr`;
-                if (Math.abs(v) >= 1e5) return `${(v / 1e5).toFixed(1)}L`;
-                if (Math.abs(v) >= 1e3) return `${(v / 1e3).toFixed(0)}K`;
-                return String(v);
-              }}
-            />
-            <Tooltip
-              content={<CustomTooltip currency={currency} accentColor={color} showInvested={showInvested} colors={colors} shadow={shadow} />}
-              cursor={{ stroke: colors.gray200, strokeDasharray: "4 4" }}
-            />
-            <Legend
-              iconSize={7}
-              wrapperStyle={{ fontSize: 12, paddingTop: 12, color: colors.gray500 }}
-              onClick={(e: { value?: string }) => { if (e.value) toggle(e.value); }}
-              formatter={(value: string) => (
-                <span style={{ fontSize: 12, verticalAlign: "middle", opacity: hidden.has(value) ? 0.35 : 1, textDecoration: hidden.has(value) ? "line-through" : "none", cursor: "pointer" }}>{value}</span>
-              )}
-              payload={[
-                { value: "Value", type: "circle" as const, color: hidden.has("Value") ? colors.gray300 : (hasInvData ? colors.success : color) },
-                ...(showInvested ? [{ value: "Invested", type: "circle" as const, color: hidden.has("Invested") ? colors.gray300 : colors.warning }] : []),
-              ]}
-            />
-            <Area
-              key={`val-${showCount["Value"] ?? 0}`}
-              type="monotone" dataKey="value" name="Value"
-              stroke={hidden.has("Value") ? "transparent" : (hasInvData ? `url(#${valStrokeId})` : color)}
-              strokeWidth={hidden.has("Value") ? 0 : 2.5}
-              fill={hidden.has("Value") ? "transparent" : (hasInvData ? `url(#${valFillId})` : `url(#${gradientId})`)}
-              dot={false}
-              activeDot={hidden.has("Value") ? false : (hasInvData
-                ? (props: { cx: number; cy: number; payload: ChartDataPoint }) => {
+                )}
+              </defs>
+              <CartesianGrid vertical={false} stroke={colors.gray100} />
+              <XAxis
+                dataKey="date" tickLine={false} axisLine={false}
+                tick={{ fontSize: compact ? 9 : 11, fill: colors.gray400 }}
+                tickFormatter={(dateStr: string) => formatDateLabel(dateStr, multiYear)}
+                interval={compact ? "preserveStartEnd" : undefined}
+              />
+              <YAxis
+                tickLine={false} axisLine={false} width={compact ? 40 : 52}
+                tick={{ fontSize: compact ? 9 : 11, fill: colors.gray400 }}
+                tickFormatter={(v: number) => {
+                  if (Math.abs(v) >= 1e7) return `${(v / 1e7).toFixed(1)}Cr`;
+                  if (Math.abs(v) >= 1e5) return `${(v / 1e5).toFixed(1)}L`;
+                  if (Math.abs(v) >= 1e3) return `${(v / 1e3).toFixed(0)}K`;
+                  return String(v);
+                }}
+              />
+              <Tooltip
+                content={<CustomTooltip currency={currency} accentColor={color} showInvested={showInvested} colors={colors} shadow={shadow} />}
+                cursor={{ stroke: colors.gray200, strokeDasharray: "4 4" }}
+              />
+              <Legend
+                iconSize={7}
+                wrapperStyle={{ fontSize: 12, paddingTop: 12, color: colors.gray500 }}
+                onClick={(e: { value?: string }) => { if (e.value) toggle(e.value); }}
+                formatter={(value: string) => (
+                  <span style={{ fontSize: 12, verticalAlign: "middle", opacity: hidden.has(value) ? 0.35 : 1, textDecoration: hidden.has(value) ? "line-through" : "none", cursor: "pointer" }}>{value}</span>
+                )}
+                payload={[
+                  { value: "Value", type: "circle" as const, color: hidden.has("Value") ? colors.gray300 : (hasInvData ? colors.success : color) },
+                  ...(showInvested ? [{ value: "Invested", type: "circle" as const, color: hidden.has("Invested") ? colors.gray300 : colors.warning }] : []),
+                ]}
+              />
+              <Area
+                key={`val-${showCount["Value"] ?? 0}`}
+                type="monotone" dataKey="value" name="Value"
+                stroke={hidden.has("Value") ? "transparent" : (hasInvData ? `url(#${valStrokeId})` : color)}
+                strokeWidth={hidden.has("Value") ? 0 : 2.5}
+                fill={hidden.has("Value") ? "transparent" : (hasInvData ? `url(#${valFillId})` : `url(#${gradientId})`)}
+                dot={!hidden.has("Value") && txnDateMap.size > 0
+                  ? (props: any) => {
+                    const { cx, cy, payload: dp } = props;
+                    if (cx == null || cy == null || dp?.txnInvestedDelta == null) return <g />;
+                    const isBuy = (dp.txnUnitsDelta ?? 0) >= 0;
+                    const mc = isBuy ? color : colors.error;
+                    return (
+                      <g>
+                        <circle cx={cx} cy={cy} r={10} fill="none" stroke={mc} strokeWidth={1.5} opacity={0.2} />
+                        <circle cx={cx} cy={cy} r={5} fill={mc} stroke={colors.white} strokeWidth={2.5} />
+                      </g>
+                    );
+                  }
+                  : false}
+                activeDot={hidden.has("Value") ? false : (hasInvData
+                  ? (props: { cx: number; cy: number; payload: ChartDataPoint }) => {
                     const pl = props.payload.invested > 0 ? props.payload.value - props.payload.invested : 0;
                     const c = pl >= 0 ? colors.success : colors.error;
                     return <circle cx={props.cx} cy={props.cy} r={5} strokeWidth={2} stroke={colors.white} fill={c} />;
                   }
-                : { r: 5, strokeWidth: 2, stroke: colors.white, fill: color })}
-              isAnimationActive={!hidden.has("Value")} animationDuration={800} animationEasing="ease-out"
-            />
-            {showInvested && (
-              <Area
-                key={`inv-${showCount["Invested"] ?? 0}`}
-                type="monotone" dataKey="invested" name="Invested"
-                stroke={hidden.has("Invested") ? "transparent" : colors.warning}
-                strokeWidth={hidden.has("Invested") ? 0 : 1.5}
-                strokeDasharray={hidden.has("Invested") ? undefined : "6 4"}
-                fill={hidden.has("Invested") ? "transparent" : `url(#${gradientInvId})`}
-                dot={false}
-                activeDot={hidden.has("Invested") ? false : { r: 4, strokeWidth: 2, stroke: colors.white, fill: colors.warning }}
-                isAnimationActive={!hidden.has("Invested")} animationDuration={800} animationEasing="ease-out" animationBegin={100}
+                  : { r: 5, strokeWidth: 2, stroke: colors.white, fill: color })}
+                isAnimationActive={!hidden.has("Value")} animationDuration={800} animationEasing="ease-out"
               />
-            )}
-          </AreaChart>
-        </ResponsiveContainer>
+              {showInvested && (
+                <Area
+                  key={`inv-${showCount["Invested"] ?? 0}`}
+                  type="monotone" dataKey="invested" name="Invested"
+                  stroke={hidden.has("Invested") ? "transparent" : colors.warning}
+                  strokeWidth={hidden.has("Invested") ? 0 : 1.5}
+                  strokeDasharray={hidden.has("Invested") ? undefined : "6 4"}
+                  fill={hidden.has("Invested") ? "transparent" : `url(#${gradientInvId})`}
+                  dot={false}
+                  activeDot={hidden.has("Invested") ? false : { r: 4, strokeWidth: 2, stroke: colors.white, fill: colors.warning }}
+                  isAnimationActive={!hidden.has("Invested")} animationDuration={800} animationEasing="ease-out" animationBegin={100}
+                />
+              )}
+            </AreaChart>
+          </ResponsiveContainer>
         );
       })()}
 
