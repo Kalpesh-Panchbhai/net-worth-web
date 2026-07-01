@@ -64,9 +64,9 @@ interface MetricCardProps {
 
 export function MetricCard({ label, value, accent, footer }: MetricCardProps) {
   return (
-    <Paper sx={{ p: { xs: 2.5, sm: 3 }, height: "100%", display: "flex", flexDirection: "column" }}>
-      <Typography variant="overline">{label}</Typography>
-      <Typography variant="h4" sx={{ mt: 0.5, color: accent || "text.primary" }}>
+    <Paper sx={{ p: { xs: 2, sm: 3 }, height: "100%", display: "flex", flexDirection: "column" }}>
+      <Typography variant="overline" sx={{ fontSize: { xs: "0.6rem", sm: "0.75rem" } }}>{label}</Typography>
+      <Typography variant="h4" noWrap sx={{ mt: 0.5, color: accent || "text.primary", fontSize: { xs: "1.5rem", sm: "2.125rem" } }}>
         {value}
       </Typography>
       {footer && <Box sx={{ mt: "auto", pt: 1.5 }}>{footer}</Box>}
@@ -89,7 +89,7 @@ export function ListSkeleton({ rows = 5 }: { rows?: number }) {
   return (
     <Paper>
       {Array.from({ length: rows }).map((_, i) => (
-        <Box key={i} sx={{ px: 3, py: 2, display: "flex", alignItems: "center", gap: 2, borderBottom: i < rows - 1 ? 1 : 0, borderColor: "divider" }}>
+        <Box key={i} sx={{ px: { xs: 2, sm: 3 }, py: 2, display: "flex", alignItems: "center", gap: 2, borderBottom: i < rows - 1 ? 1 : 0, borderColor: "divider" }}>
           <Skeleton variant="circular" width={36} height={36} />
           <Box sx={{ flex: 1 }}>
             <Skeleton width="50%" height={16} />

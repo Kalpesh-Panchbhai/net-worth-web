@@ -31,13 +31,14 @@ function Login() {
         alignItems: "center",
         justifyContent: "center",
         background: `linear-gradient(135deg, ${colors.gray50} 0%, ${colors.gray100} 50%, ${alpha(colors.brand, 0.04)} 100%)`,
-        p: 2,
+        p: { xs: 1.5, sm: 2 },
+        pt: "env(safe-area-inset-top, 0px)",
       }}
     >
       <Paper
         elevation={0}
         sx={{
-          p: { xs: 4, sm: 5 },
+          p: { xs: 3, sm: 5 },
           borderRadius: 4,
           maxWidth: 420,
           width: "100%",

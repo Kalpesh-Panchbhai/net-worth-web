@@ -83,7 +83,7 @@ function IncomeSources() {
       {!loading && (
         <FadeIn>
           <Paper sx={{
-            p: { xs: 3, sm: 4 }, borderRadius: 4, border: "none",
+            p: { xs: 2.5, sm: 4 }, borderRadius: 4, border: "none",
             background: gradients.hero,
             color: colors.pureWhite, position: "relative", overflow: "hidden",
             boxShadow: `0 8px 32px ${alpha(colors.brand, 0.3)}`,
@@ -157,7 +157,7 @@ function IncomeSources() {
         variant={isMobile ? "circular" : "extended"}
         sx={{
           position: "fixed",
-          bottom: 24,
+          bottom: { xs: "calc(24px + env(safe-area-inset-bottom, 0px))", sm: 24 },
           right: { xs: 16, sm: 24 },
           bgcolor: colors.brand,
           color: colors.pureWhite,

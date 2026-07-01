@@ -160,7 +160,7 @@ function Holdings() {
               return (
                 <Box key={h.id} sx={{
                   display: "flex", alignItems: "center", gap: 2,
-                  px: { xs: 2, sm: 3 }, py: 1.5,
+                  px: { xs: 1.5, sm: 3 }, py: 1.5,
                   borderTop: i > 0 ? `1px solid ${theme.palette.divider}` : "none",
                   transition: "background .15s", "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.04) },
                   flexWrap: "wrap",
@@ -169,7 +169,7 @@ function Holdings() {
                     <Typography variant="subtitle2" noWrap>{h.name}</Typography>
                     <Typography variant="caption" color="text.secondary">{h.symbol} · {fmtUnits(h.units)} units</Typography>
                   </Box>
-                  <Box sx={{ textAlign: "right", minWidth: 110 }}>
+                  <Box sx={{ textAlign: "right", minWidth: { xs: 90, sm: 110 } }}>
                     <Typography variant="subtitle2">{fmt(h.currentDayValue)}</Typography>
                     {h.invested > 0 && (
                       <Typography variant="caption" sx={{ fontWeight: 600, color: gain >= 0 ? colors.success : colors.error }}>
@@ -220,7 +220,7 @@ function Holdings() {
       </Dialog>
 
       {isMobile && selectedAccountId && (
-        <Fab onClick={() => setCreateOpen(true)} sx={{ position: "fixed", bottom: 80, right: 20, bgcolor: colors.brand, color: colors.pureWhite, boxShadow: `0 4px 20px ${alpha(colors.brand, 0.4)}`, "&:hover": { bgcolor: colors.brandDark, boxShadow: `0 6px 28px ${alpha(colors.brand, 0.5)}` } }} aria-label="Add holding">
+        <Fab onClick={() => setCreateOpen(true)} sx={{ position: "fixed", bottom: { xs: "calc(80px + env(safe-area-inset-bottom, 0px))", sm: 80 }, right: 20, bgcolor: colors.brand, color: colors.pureWhite, boxShadow: `0 4px 20px ${alpha(colors.brand, 0.4)}`, "&:hover": { bgcolor: colors.brandDark, boxShadow: `0 6px 28px ${alpha(colors.brand, 0.5)}` } }} aria-label="Add holding">
           <AddIcon />
         </Fab>
       )}

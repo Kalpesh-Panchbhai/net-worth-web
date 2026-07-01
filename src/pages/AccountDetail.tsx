@@ -364,10 +364,10 @@ function AccountDetail() {
                   </Typography>
                 </Box>
 
-                <Stack direction="row" sx={{ mt: 2.5, gap: { xs: 1, sm: 2 }, flexWrap: "wrap" }}>
+                <Stack direction="row" sx={{ mt: 2.5, gap: { xs: 0.75, sm: 2 }, flexWrap: "wrap" }}>
                   {showInvested && (
-                    <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 8px)", sm: 120 }, p: 1.5, borderRadius: 2, bgcolor: alpha(heroInvested, isDark ? 0.1 : 0.06) }}>
-                      <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
+                    <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 6px)", sm: 120 }, p: { xs: 1, sm: 1.5 }, borderRadius: 2, bgcolor: alpha(heroInvested, isDark ? 0.1 : 0.06) }}>
+                      <Typography sx={{ fontSize: { xs: "0.6rem", sm: "0.65rem" }, fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
                         Invested
                       </Typography>
                       <Typography sx={{ fontSize: "0.95rem", fontWeight: 700, color: heroInvested }}>
@@ -376,11 +376,11 @@ function AccountDetail() {
                     </Box>
                   )}
                   {showInvested && account.invested > 0 && (
-                    <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 8px)", sm: 120 }, p: 1.5, borderRadius: 2, bgcolor: alpha(acctGain >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
-                      <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
+                    <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 6px)", sm: 120 }, p: { xs: 1, sm: 1.5 }, borderRadius: 2, bgcolor: alpha(acctGain >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
+                      <Typography sx={{ fontSize: { xs: "0.6rem", sm: "0.65rem" }, fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
                         Total P&L
                       </Typography>
-                      <Typography noWrap sx={{ fontSize: { xs: "0.8rem", sm: "0.95rem" }, fontWeight: 700, color: acctGain >= 0 ? heroSuccess : heroError }}>
+                      <Typography noWrap sx={{ fontSize: { xs: "0.75rem", sm: "0.95rem" }, fontWeight: 700, color: acctGain >= 0 ? heroSuccess : heroError }}>
                         {acctGain >= 0 ? "+" : ""}{fmt(acctGain, account.currency)}
                       </Typography>
                       <Typography sx={{ fontSize: "0.65rem", fontWeight: 600, color: acctGain >= 0 ? heroSuccess : heroError, opacity: 0.8 }}>
@@ -388,11 +388,11 @@ function AccountDetail() {
                       </Typography>
                     </Box>
                   )}
-                  <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 8px)", sm: 120 }, p: 1.5, borderRadius: 2, bgcolor: alpha(acctDayChg >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
-                    <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
+                  <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 6px)", sm: 120 }, p: { xs: 1, sm: 1.5 }, borderRadius: 2, bgcolor: alpha(acctDayChg >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
+                    <Typography sx={{ fontSize: { xs: "0.6rem", sm: "0.65rem" }, fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
                       Today
                     </Typography>
-                    <Typography noWrap sx={{ fontSize: { xs: "0.8rem", sm: "0.95rem" }, fontWeight: 700, color: acctDayChg >= 0 ? heroSuccess : heroError }}>
+                    <Typography noWrap sx={{ fontSize: { xs: "0.75rem", sm: "0.95rem" }, fontWeight: 700, color: acctDayChg >= 0 ? heroSuccess : heroError }}>
                       {acctDayChg >= 0 ? "+" : ""}{fmt(acctDayChg, account.currency)}
                     </Typography>
                     <Typography sx={{ fontSize: "0.65rem", fontWeight: 600, color: acctDayChg >= 0 ? heroSuccess : heroError, opacity: 0.8 }}>
@@ -515,8 +515,8 @@ function AccountDetail() {
                               </Typography>
                             </Box>
 
-                            <Stack direction="row" sx={{ gap: 1, flexWrap: "wrap", mt: "auto" }}>
-                              <Box sx={{ flex: 1, minWidth: 80, p: 1, borderRadius: 1.5, bgcolor: alpha(cardInvested, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
+                            <Stack direction="row" sx={{ gap: { xs: 0.75, sm: 1 }, flexWrap: "wrap", mt: "auto" }}>
+                              <Box sx={{ flex: 1, minWidth: { xs: 70, sm: 80 }, p: 1, borderRadius: 1.5, bgcolor: alpha(cardInvested, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
                                 <Typography sx={{ fontSize: "0.6rem", fontWeight: 500, color: cardMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
                                   Invested
                                 </Typography>
@@ -525,7 +525,7 @@ function AccountDetail() {
                                 </Typography>
                               </Box>
                               {h.invested > 0 && (
-                                <Box sx={{ flex: 1, minWidth: 80, p: 1, borderRadius: 1.5, bgcolor: alpha(gain >= 0 ? cardSuccess : cardError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
+                                <Box sx={{ flex: 1, minWidth: { xs: 70, sm: 80 }, p: 1, borderRadius: 1.5, bgcolor: alpha(gain >= 0 ? cardSuccess : cardError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
                                   <Typography sx={{ fontSize: "0.6rem", fontWeight: 500, color: cardMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
                                     P&L
                                   </Typography>
@@ -537,7 +537,7 @@ function AccountDetail() {
                                   </Typography>
                                 </Box>
                               )}
-                              <Box sx={{ flex: 1, minWidth: 80, p: 1, borderRadius: 1.5, bgcolor: alpha(dayChg >= 0 ? cardSuccess : cardError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
+                              <Box sx={{ flex: 1, minWidth: { xs: 70, sm: 80 }, p: 1, borderRadius: 1.5, bgcolor: alpha(dayChg >= 0 ? cardSuccess : cardError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
                                 <Typography sx={{ fontSize: "0.6rem", fontWeight: 500, color: cardMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
                                   Today
                                 </Typography>
@@ -587,7 +587,7 @@ function AccountDetail() {
                         const unitColor = isAdd ? colors.success : colors.error;
                         return (
                           <FadeIn key={t.id} delay={i * 30}>
-                            <Box sx={{ display: "flex", gap: { xs: 1.5, sm: 2.5 }, alignItems: "flex-start", position: "relative" }}>
+                            <Box sx={{ display: "flex", gap: { xs: 1, sm: 2.5 }, alignItems: "flex-start", position: "relative" }}>
                               {/* Timeline connector */}
                               {i < transactions.length - 1 && (
                                 <Box sx={{
@@ -824,7 +824,7 @@ function AccountDetail() {
           variant={isMobile ? "circular" : "extended"}
           sx={{
             position: "fixed",
-            bottom: 24,
+            bottom: { xs: "calc(24px + env(safe-area-inset-bottom, 0px))", sm: 24 },
             right: { xs: 16, sm: 24 },
             bgcolor: tc,
             color: colors.pureWhite,

@@ -185,7 +185,7 @@ function getTheme(mode: PaletteMode) {
         styleOverrides: {
           "*, *::before, *::after": { boxSizing: "border-box" },
           html: { WebkitFontSmoothing: "antialiased", MozOsxFontSmoothing: "grayscale", scrollBehavior: "smooth" },
-          body: { overflowX: "hidden" },
+          body: { overflowX: "hidden", WebkitTapHighlightColor: "transparent" },
           "@media (prefers-reduced-motion: reduce)": { "*, *::before, *::after": { animationDuration: "0.01ms !important", transitionDuration: "0.01ms !important" } },
         },
       },
@@ -256,13 +256,13 @@ function getTheme(mode: PaletteMode) {
         },
       },
       MuiDialogTitle: {
-        styleOverrides: { root: { fontSize: "1.25rem", fontWeight: 700, padding: "24px 24px 8px", letterSpacing: "-0.01em" } },
+        styleOverrides: { root: { fontSize: "1.25rem", fontWeight: 700, padding: "24px 24px 8px", letterSpacing: "-0.01em", "@media (max-width: 420px)": { padding: "20px 16px 8px", fontSize: "1.125rem" } } },
       },
       MuiDialogContent: {
-        styleOverrides: { root: { padding: "16px 24px" } },
+        styleOverrides: { root: { padding: "16px 24px", "@media (max-width: 420px)": { padding: "12px 16px" } } },
       },
       MuiDialogActions: {
-        styleOverrides: { root: { padding: "12px 24px 24px", gap: 8 } },
+        styleOverrides: { root: { padding: "12px 24px 24px", gap: 8, "@media (max-width: 420px)": { padding: "12px 16px 20px" } } },
       },
       MuiTextField: {
         defaultProps: { variant: "outlined", size: "medium" },

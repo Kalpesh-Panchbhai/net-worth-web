@@ -293,11 +293,11 @@ function Incomes() {
             </Box>
 
             <Stack direction="row" spacing={1.5} sx={{ mt: 2, position: "relative", zIndex: 1 }} flexWrap="wrap" useFlexGap>
-              <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, px: 1.5, py: 0.5, borderRadius: 2, bgcolor: alpha(colors.pureWhite, 0.15), fontSize: "0.78rem", fontWeight: 600 }}>
+              <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, px: { xs: 1, sm: 1.5 }, py: 0.5, borderRadius: 2, bgcolor: alpha(colors.pureWhite, 0.15), fontSize: { xs: "0.7rem", sm: "0.78rem" }, fontWeight: 600 }}>
                 <TrendingUpIcon sx={{ fontSize: 14 }} />
                 Net: {fmt(totalNet)} ({netPct.toFixed(1)}%)
               </Box>
-              <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, px: 1.5, py: 0.5, borderRadius: 2, bgcolor: alpha(colors.pureWhite, 0.12), fontSize: "0.78rem", fontWeight: 600 }}>
+              <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, px: { xs: 1, sm: 1.5 }, py: 0.5, borderRadius: 2, bgcolor: alpha(colors.pureWhite, 0.12), fontSize: { xs: "0.7rem", sm: "0.78rem" }, fontWeight: 600 }}>
                 <AccountBalanceRoundedIcon sx={{ fontSize: 14 }} />
                 Tax: {fmt(totalTax)} ({totalAll > 0 ? ((totalTax / totalAll) * 100).toFixed(1) : "0.0"}%)
               </Box>
@@ -309,12 +309,12 @@ function Incomes() {
       {/* ── Group-by + View Toggle + Filters (shared across views) ── */}
       {!loading && incomes.length > 0 && (
         <Stack spacing={1.5}>
-          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ rowGap: 1 }}>
             <ToggleButtonGroup value={grouping} exclusive
               onChange={(_e, val) => val && setGrouping(val)} size="small"
               sx={{
                 "& .MuiToggleButton-root": {
-                  px: 2, py: 0.5, fontSize: "0.8rem", fontWeight: 600,
+                  px: { xs: 1.25, sm: 2 }, py: 0.5, fontSize: { xs: "0.72rem", sm: "0.8rem" }, fontWeight: 600,
                   borderRadius: "20px !important", border: "none",
                   bgcolor: alpha(colors.brand, 0.06),
                   "&.Mui-selected": { bgcolor: colors.brand, color: colors.pureWhite, "&:hover": { bgcolor: colors.brand } },
@@ -329,7 +329,7 @@ function Incomes() {
               <ToggleButton value="fy">FY</ToggleButton>
             </ToggleButtonGroup>
 
-            <Box sx={{ flex: 1 }} />
+            <Box sx={{ flex: 1, display: { xs: "none", sm: "block" } }} />
 
             <Chip
               icon={<FilterListRoundedIcon sx={{ fontSize: 16 }} />}
@@ -495,7 +495,7 @@ function Incomes() {
                   </Box>
                   <Stack alignItems="flex-end" spacing={0.25}>
                     <Typography sx={{ fontWeight: 750, fontSize: "1rem", letterSpacing: "-0.02em" }}>{fmt(sTotal)}</Typography>
-                    <Stack direction="row" spacing={0.5}>
+                    <Stack direction="row" spacing={0.25} sx={{ flexWrap: "wrap" }}>
                       <TintedChip label={`Net ${fmt(sNet)} (${sTotal > 0 ? ((sNet / sTotal) * 100).toFixed(1) : "0.0"}%)`} color={colors.success} size="small" />
                       {sTax > 0 && <TintedChip label={`Tax ${fmt(sTax)} (${sTotal > 0 ? ((sTax / sTotal) * 100).toFixed(1) : "0.0"}%)`} color={colors.error} size="small" />}
                     </Stack>
@@ -543,10 +543,10 @@ function Incomes() {
                             <Typography variant="caption" sx={{ color: colors.gray400 }}>
                               {sourceLookup.get(income.incomeSourceId) ?? "—"} · {dt.full}
                             </Typography>
-                            <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
+                            <Stack direction="row" spacing={1.5} sx={{ mt: 1 }}>
                               <Box>
                                 <Typography variant="caption" sx={{ color: colors.gray400, display: "block", lineHeight: 1 }}>Net</Typography>
-                                <Typography sx={{ fontSize: "0.95rem", fontWeight: 650, mt: 0.25, color: colors.success }}>
+                                <Typography sx={{ fontSize: { xs: "0.85rem", sm: "0.95rem" }, fontWeight: 650, mt: 0.25, color: colors.success }}>
                                   {fmt(income.netAmount, income.currency)} ({gross > 0 ? ((income.netAmount / gross) * 100).toFixed(1) : "0.0"}%)
                                 </Typography>
                               </Box>
@@ -555,7 +555,7 @@ function Incomes() {
                                   <Box sx={{ color: colors.gray300, display: "flex", alignItems: "center" }}>+</Box>
                                   <Box>
                                     <Typography variant="caption" sx={{ color: colors.gray400, display: "block", lineHeight: 1 }}>Tax</Typography>
-                                    <Typography sx={{ fontSize: "0.95rem", fontWeight: 650, mt: 0.25, color: colors.error }}>
+                                    <Typography sx={{ fontSize: { xs: "0.85rem", sm: "0.95rem" }, fontWeight: 650, mt: 0.25, color: colors.error }}>
                                       {fmt(income.taxPaid, income.currency)} ({gross > 0 ? ((income.taxPaid / gross) * 100).toFixed(1) : "0.0"}%)
                                     </Typography>
                                   </Box>
@@ -593,7 +593,7 @@ function Incomes() {
         variant={isMobile ? "circular" : "extended"}
         sx={{
           position: "fixed",
-          bottom: 24,
+          bottom: { xs: "calc(24px + env(safe-area-inset-bottom, 0px))", sm: 24 },
           right: { xs: 16, sm: 24 },
           bgcolor: colors.success,
           color: colors.pureWhite,

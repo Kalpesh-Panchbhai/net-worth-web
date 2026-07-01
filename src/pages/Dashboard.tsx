@@ -169,36 +169,36 @@ function Dashboard() {
               </Box>
 
               {/* Metrics row */}
-              <Stack direction="row" sx={{ mt: 2.5, gap: { xs: 1, sm: 2 }, flexWrap: "wrap" }}>
-                <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 8px)", sm: 120 }, p: 1.5, borderRadius: 2, bgcolor: alpha(heroInvested, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
-                  <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
+              <Stack direction="row" sx={{ mt: 2, gap: { xs: 0.75, sm: 2 }, flexWrap: "wrap" }}>
+                <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 6px)", sm: 120 }, p: { xs: 1, sm: 1.5 }, borderRadius: 2, bgcolor: alpha(heroInvested, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
+                  <Typography sx={{ fontSize: { xs: "0.6rem", sm: "0.65rem" }, fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
                     Invested
                   </Typography>
-                  <Typography noWrap sx={{ fontSize: { xs: "0.8rem", sm: "0.95rem" }, fontWeight: 700, color: heroInvested }}>
+                  <Typography noWrap sx={{ fontSize: { xs: "0.75rem", sm: "0.95rem" }, fontWeight: 700, color: heroInvested }}>
                     {fmt(watchlist.invested)}
                   </Typography>
                 </Box>
                 {watchlist.invested > 0 && (
-                  <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 8px)", sm: 120 }, p: 1.5, borderRadius: 2, bgcolor: alpha(totalGain >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
-                    <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
+                  <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 6px)", sm: 120 }, p: { xs: 1, sm: 1.5 }, borderRadius: 2, bgcolor: alpha(totalGain >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
+                    <Typography sx={{ fontSize: { xs: "0.6rem", sm: "0.65rem" }, fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
                       Total P&L
                     </Typography>
-                    <Typography noWrap sx={{ fontSize: { xs: "0.8rem", sm: "0.95rem" }, fontWeight: 700, color: totalGain >= 0 ? heroSuccess : heroError }}>
+                    <Typography noWrap sx={{ fontSize: { xs: "0.75rem", sm: "0.95rem" }, fontWeight: 700, color: totalGain >= 0 ? heroSuccess : heroError }}>
                       {totalGain >= 0 ? "+" : ""}{fmt(totalGain)}
                     </Typography>
-                    <Typography sx={{ fontSize: "0.65rem", fontWeight: 600, color: totalGain >= 0 ? heroSuccess : heroError, opacity: 0.8 }}>
+                    <Typography sx={{ fontSize: { xs: "0.6rem", sm: "0.65rem" }, fontWeight: 600, color: totalGain >= 0 ? heroSuccess : heroError, opacity: 0.8 }}>
                       {gainPct >= 0 ? "+" : ""}{gainPct.toFixed(2)}%
                     </Typography>
                   </Box>
                 )}
-                <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 8px)", sm: 120 }, p: 1.5, borderRadius: 2, bgcolor: alpha(dayChange >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
-                  <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
+                <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 6px)", sm: 120 }, p: { xs: 1, sm: 1.5 }, borderRadius: 2, bgcolor: alpha(dayChange >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
+                  <Typography sx={{ fontSize: { xs: "0.6rem", sm: "0.65rem" }, fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
                     Today
                   </Typography>
-                  <Typography noWrap sx={{ fontSize: { xs: "0.8rem", sm: "0.95rem" }, fontWeight: 700, color: dayChange >= 0 ? heroSuccess : heroError }}>
+                  <Typography noWrap sx={{ fontSize: { xs: "0.75rem", sm: "0.95rem" }, fontWeight: 700, color: dayChange >= 0 ? heroSuccess : heroError }}>
                     {dayChange >= 0 ? "+" : ""}{fmt(dayChange)}
                   </Typography>
-                  <Typography sx={{ fontSize: "0.65rem", fontWeight: 600, color: dayChange >= 0 ? heroSuccess : heroError, opacity: 0.8 }}>
+                  <Typography sx={{ fontSize: { xs: "0.6rem", sm: "0.65rem" }, fontWeight: 600, color: dayChange >= 0 ? heroSuccess : heroError, opacity: 0.8 }}>
                     {dayPct >= 0 ? "+" : ""}{dayPct.toFixed(2)}%
                   </Typography>
                 </Box>
@@ -222,10 +222,10 @@ function Dashboard() {
                 value={timePeriod} exclusive
                 onChange={(_e, val) => val && setTimePeriod(val)}
                 size="small"
-                sx={{ flexWrap: "wrap", gap: 0.5 }}
+                sx={{ flexWrap: "wrap", gap: 0.25 }}
               >
                 {TIME_PERIODS.map((tp) => (
-                  <ToggleButton key={tp} value={tp} sx={{ px: { xs: 1.2, sm: 1.5 }, fontSize: { xs: "0.7rem", sm: "0.8rem" } }}>{tp}</ToggleButton>
+                  <ToggleButton key={tp} value={tp} sx={{ px: { xs: 0.8, sm: 1.5 }, py: { xs: 0.25, sm: 0.5 }, fontSize: { xs: "0.65rem", sm: "0.8rem" }, minWidth: { xs: 32, sm: "auto" } }}>{tp}</ToggleButton>
                 ))}
               </ToggleButtonGroup>
             </Box>

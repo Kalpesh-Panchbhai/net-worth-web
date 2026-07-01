@@ -244,8 +244,9 @@ export default function EntityChart({ entityType, entityId, accentColor, currenc
           size="small"
           sx={{
             "& .MuiToggleButton-root": {
-              px: { xs: 1, sm: 1.5 }, py: 0.3,
-              fontSize: "0.7rem", fontWeight: 700,
+              px: { xs: 0.7, sm: 1.5 }, py: { xs: 0.2, sm: 0.3 },
+              fontSize: { xs: "0.62rem", sm: "0.7rem" }, fontWeight: 700,
+              minWidth: { xs: 28, sm: "auto" },
               border: `1px solid ${colors.gray200}`,
               color: colors.gray500,
               "&.Mui-selected": {
@@ -455,54 +456,62 @@ export default function EntityChart({ entityType, entityId, accentColor, currenc
           >
             {/* Best P&L */}
             <Box sx={{
-              flex: 1, display: "flex", alignItems: "center", gap: 1.5,
-              px: 2, py: 1.5, borderRadius: 2.5,
+              flex: 1, display: "flex", alignItems: "center", gap: { xs: 1, sm: 1.5 },
+              px: { xs: 1.5, sm: 2 }, py: { xs: 1, sm: 1.5 }, borderRadius: 2.5,
               bgcolor: alpha(colors.success, 0.06),
               border: `1px solid ${alpha(colors.success, 0.12)}`,
+              overflow: "hidden",
             }}>
               <Box sx={{
-                width: 36, height: 36, borderRadius: 2,
+                width: { xs: 30, sm: 36 }, height: { xs: 30, sm: 36 }, borderRadius: 2,
                 display: "flex", alignItems: "center", justifyContent: "center",
-                bgcolor: alpha(colors.success, 0.12),
+                bgcolor: alpha(colors.success, 0.12), flexShrink: 0,
               }}>
-                <TrendingUpRoundedIcon sx={{ fontSize: 20, color: colors.success }} />
+                <TrendingUpRoundedIcon sx={{ fontSize: { xs: 16, sm: 20 }, color: colors.success }} />
               </Box>
               <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography sx={{ fontSize: 10, fontWeight: 600, color: colors.gray400, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                <Typography sx={{ fontSize: { xs: 9, sm: 10 }, fontWeight: 600, color: colors.gray400, letterSpacing: "0.04em", textTransform: "uppercase" }}>
                   Best P&L
                 </Typography>
-                <Typography sx={{ fontSize: 14, fontWeight: 750, color: colors.success, letterSpacing: "-0.01em" }}>
-                  {best.pl >= 0 ? "+" : ""}{fmtCurrency(best.pl, currency)} <Typography component="span" sx={{ fontSize: 11, fontWeight: 600 }}>({best.plPct >= 0 ? "+" : ""}{best.plPct.toFixed(2)}%)</Typography>
+                <Typography noWrap sx={{ fontSize: { xs: 12, sm: 14 }, fontWeight: 750, color: colors.success, letterSpacing: "-0.01em" }}>
+                  {best.pl >= 0 ? "+" : ""}{fmtCurrency(best.pl, currency)} <Typography component="span" sx={{ fontSize: { xs: 9, sm: 11 }, fontWeight: 600 }}>({best.plPct >= 0 ? "+" : ""}{best.plPct.toFixed(2)}%)</Typography>
+                </Typography>
+                <Typography sx={{ fontSize: { xs: 9, sm: 11 }, fontWeight: 600, color: colors.gray400, display: { xs: "block", sm: "none" } }}>
+                  {fmtDate(best.date)}
                 </Typography>
               </Box>
-              <Typography sx={{ fontSize: 11, fontWeight: 600, color: colors.gray400, whiteSpace: "nowrap" }}>
+              <Typography sx={{ fontSize: 11, fontWeight: 600, color: colors.gray400, whiteSpace: "nowrap", display: { xs: "none", sm: "block" } }}>
                 {fmtDate(best.date)}
               </Typography>
             </Box>
 
             {/* Worst P&L */}
             <Box sx={{
-              flex: 1, display: "flex", alignItems: "center", gap: 1.5,
-              px: 2, py: 1.5, borderRadius: 2.5,
+              flex: 1, display: "flex", alignItems: "center", gap: { xs: 1, sm: 1.5 },
+              px: { xs: 1.5, sm: 2 }, py: { xs: 1, sm: 1.5 }, borderRadius: 2.5,
               bgcolor: alpha(colors.error, 0.06),
               border: `1px solid ${alpha(colors.error, 0.12)}`,
+              overflow: "hidden",
             }}>
               <Box sx={{
-                width: 36, height: 36, borderRadius: 2,
+                width: { xs: 30, sm: 36 }, height: { xs: 30, sm: 36 }, borderRadius: 2,
                 display: "flex", alignItems: "center", justifyContent: "center",
-                bgcolor: alpha(colors.error, 0.12),
+                bgcolor: alpha(colors.error, 0.12), flexShrink: 0,
               }}>
-                <TrendingDownRoundedIcon sx={{ fontSize: 20, color: colors.error }} />
+                <TrendingDownRoundedIcon sx={{ fontSize: { xs: 16, sm: 20 }, color: colors.error }} />
               </Box>
               <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography sx={{ fontSize: 10, fontWeight: 600, color: colors.gray400, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                <Typography sx={{ fontSize: { xs: 9, sm: 10 }, fontWeight: 600, color: colors.gray400, letterSpacing: "0.04em", textTransform: "uppercase" }}>
                   Worst P&L
                 </Typography>
-                <Typography sx={{ fontSize: 14, fontWeight: 750, color: colors.error, letterSpacing: "-0.01em" }}>
-                  {worst.pl >= 0 ? "+" : ""}{fmtCurrency(worst.pl, currency)} <Typography component="span" sx={{ fontSize: 11, fontWeight: 600 }}>({worst.plPct >= 0 ? "+" : ""}{worst.plPct.toFixed(2)}%)</Typography>
+                <Typography noWrap sx={{ fontSize: { xs: 12, sm: 14 }, fontWeight: 750, color: colors.error, letterSpacing: "-0.01em" }}>
+                  {worst.pl >= 0 ? "+" : ""}{fmtCurrency(worst.pl, currency)} <Typography component="span" sx={{ fontSize: { xs: 9, sm: 11 }, fontWeight: 600 }}>({worst.plPct >= 0 ? "+" : ""}{worst.plPct.toFixed(2)}%)</Typography>
+                </Typography>
+                <Typography sx={{ fontSize: { xs: 9, sm: 11 }, fontWeight: 600, color: colors.gray400, display: { xs: "block", sm: "none" } }}>
+                  {fmtDate(worst.date)}
                 </Typography>
               </Box>
-              <Typography sx={{ fontSize: 11, fontWeight: 600, color: colors.gray400, whiteSpace: "nowrap" }}>
+              <Typography sx={{ fontSize: 11, fontWeight: 600, color: colors.gray400, whiteSpace: "nowrap", display: { xs: "none", sm: "block" } }}>
                 {fmtDate(worst.date)}
               </Typography>
             </Box>

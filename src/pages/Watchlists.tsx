@@ -252,9 +252,9 @@ function Watchlists() {
                       </Typography>
                     </Box>
 
-                    <Stack direction="row" sx={{ gap: 1, flexWrap: "wrap", mt: "auto" }}>
+                    <Stack direction="row" sx={{ gap: { xs: 0.75, sm: 1 }, flexWrap: "wrap", mt: "auto" }}>
                       {w.invested > 0 && (
-                        <Box sx={{ flex: 1, minWidth: 80, p: 1, borderRadius: 1.5, bgcolor: alpha(cardInvested, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
+                        <Box sx={{ flex: 1, minWidth: { xs: 70, sm: 80 }, p: 1, borderRadius: 1.5, bgcolor: alpha(cardInvested, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
                           <Typography sx={{ fontSize: "0.6rem", fontWeight: 500, color: cardMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
                             Invested
                           </Typography>
@@ -264,7 +264,7 @@ function Watchlists() {
                         </Box>
                       )}
                       {w.invested > 0 && (
-                        <Box sx={{ flex: 1, minWidth: 80, p: 1, borderRadius: 1.5, bgcolor: alpha(gain >= 0 ? cardSuccess : cardError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
+                        <Box sx={{ flex: 1, minWidth: { xs: 70, sm: 80 }, p: 1, borderRadius: 1.5, bgcolor: alpha(gain >= 0 ? cardSuccess : cardError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
                           <Typography sx={{ fontSize: "0.6rem", fontWeight: 500, color: cardMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
                             P&L
                           </Typography>
@@ -276,7 +276,7 @@ function Watchlists() {
                           </Typography>
                         </Box>
                       )}
-                      <Box sx={{ flex: 1, minWidth: 80, p: 1, borderRadius: 1.5, bgcolor: alpha(dayChg >= 0 ? cardSuccess : cardError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
+                      <Box sx={{ flex: 1, minWidth: { xs: 70, sm: 80 }, p: 1, borderRadius: 1.5, bgcolor: alpha(dayChg >= 0 ? cardSuccess : cardError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
                         <Typography sx={{ fontSize: "0.6rem", fontWeight: 500, color: cardMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
                           Today
                         </Typography>
@@ -336,7 +336,7 @@ function Watchlists() {
         variant={isMobile ? "circular" : "extended"}
         sx={{
           position: "fixed",
-          bottom: 24,
+          bottom: { xs: "calc(24px + env(safe-area-inset-bottom, 0px))", sm: 24 },
           right: { xs: 16, sm: 24 },
           bgcolor: colors.accent,
           color: colors.pureWhite,

@@ -222,9 +222,9 @@ function HoldingDetail() {
                     </Typography>
                   </Box>
 
-                  <Stack direction="row" sx={{ mt: 2.5, gap: { xs: 1, sm: 2 }, flexWrap: "wrap" }}>
-                    <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 8px)", sm: 120 }, p: 1.5, borderRadius: 2, bgcolor: alpha(heroInvested, isDark ? 0.1 : 0.06) }}>
-                      <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
+                  <Stack direction="row" sx={{ mt: 2.5, gap: { xs: 0.75, sm: 2 }, flexWrap: "wrap" }}>
+                    <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 6px)", sm: 120 }, p: { xs: 1, sm: 1.5 }, borderRadius: 2, bgcolor: alpha(heroInvested, isDark ? 0.1 : 0.06) }}>
+                      <Typography sx={{ fontSize: { xs: "0.6rem", sm: "0.65rem" }, fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
                         Invested
                       </Typography>
                       <Typography sx={{ fontSize: "0.95rem", fontWeight: 700, color: heroInvested }}>
@@ -232,26 +232,26 @@ function HoldingDetail() {
                       </Typography>
                     </Box>
                     {holding.invested > 0 && (
-                      <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 8px)", sm: 120 }, p: 1.5, borderRadius: 2, bgcolor: alpha(holdingGain >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
-                        <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
+                      <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 6px)", sm: 120 }, p: { xs: 1, sm: 1.5 }, borderRadius: 2, bgcolor: alpha(holdingGain >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
+                        <Typography sx={{ fontSize: { xs: "0.6rem", sm: "0.65rem" }, fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
                           Total P&L
                         </Typography>
-                        <Typography noWrap sx={{ fontSize: { xs: "0.8rem", sm: "0.95rem" }, fontWeight: 700, color: holdingGain >= 0 ? heroSuccess : heroError }}>
+                        <Typography noWrap sx={{ fontSize: { xs: "0.75rem", sm: "0.95rem" }, fontWeight: 700, color: holdingGain >= 0 ? heroSuccess : heroError }}>
                           {holdingGain >= 0 ? "+" : ""}{fmt(holdingGain, currency)}
                         </Typography>
-                        <Typography sx={{ fontSize: "0.65rem", fontWeight: 600, color: holdingGain >= 0 ? heroSuccess : heroError, opacity: 0.8 }}>
+                        <Typography sx={{ fontSize: { xs: "0.6rem", sm: "0.65rem" }, fontWeight: 600, color: holdingGain >= 0 ? heroSuccess : heroError, opacity: 0.8 }}>
                           {holdingGainPct >= 0 ? "+" : ""}{holdingGainPct.toFixed(1)}%
                         </Typography>
                       </Box>
                     )}
-                    <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 8px)", sm: 120 }, p: 1.5, borderRadius: 2, bgcolor: alpha(holdingDayChg >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
-                      <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
+                    <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 6px)", sm: 120 }, p: { xs: 1, sm: 1.5 }, borderRadius: 2, bgcolor: alpha(holdingDayChg >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
+                      <Typography sx={{ fontSize: { xs: "0.6rem", sm: "0.65rem" }, fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
                         Today
                       </Typography>
-                      <Typography noWrap sx={{ fontSize: { xs: "0.8rem", sm: "0.95rem" }, fontWeight: 700, color: holdingDayChg >= 0 ? heroSuccess : heroError }}>
+                      <Typography noWrap sx={{ fontSize: { xs: "0.75rem", sm: "0.95rem" }, fontWeight: 700, color: holdingDayChg >= 0 ? heroSuccess : heroError }}>
                         {holdingDayChg >= 0 ? "+" : ""}{fmt(holdingDayChg, currency)}
                       </Typography>
-                      <Typography sx={{ fontSize: "0.65rem", fontWeight: 600, color: holdingDayChg >= 0 ? heroSuccess : heroError, opacity: 0.8 }}>
+                      <Typography sx={{ fontSize: { xs: "0.6rem", sm: "0.65rem" }, fontWeight: 600, color: holdingDayChg >= 0 ? heroSuccess : heroError, opacity: 0.8 }}>
                         {holdingDayPct >= 0 ? "+" : ""}{holdingDayPct.toFixed(1)}%
                       </Typography>
                     </Box>
@@ -299,7 +299,7 @@ function HoldingDetail() {
                   const plColor = batchPL >= 0 ? colors.success : colors.error;
                   return (
                     <FadeIn key={t.id} delay={i * 30}>
-                      <Box sx={{ display: "flex", gap: { xs: 1.5, sm: 2.5 }, alignItems: "flex-start", position: "relative" }}>
+                      <Box sx={{ display: "flex", gap: { xs: 1, sm: 2.5 }, alignItems: "flex-start", position: "relative" }}>
                         {/* Timeline connector */}
                         {i < transactions.length - 1 && (
                           <Box sx={{
@@ -343,17 +343,17 @@ function HoldingDetail() {
                               </Stack>
 
                               {/* Invested: delta + total */}
-                              <Stack direction="row" spacing={1} alignItems="baseline" sx={{ mt: 0.75 }}>
+                              <Stack direction="row" spacing={0.75} alignItems="baseline" sx={{ mt: 0.75, flexWrap: "wrap" }}>
                                 <Typography sx={{ fontSize: "1.05rem", fontWeight: 700 }}>
                                   {investedDelta >= 0 ? "+" : ""}{fmt(investedDelta, currency)}
                                 </Typography>
-                                <Typography sx={{ fontSize: "0.78rem", color: colors.gray400 }}>
+                                <Typography sx={{ fontSize: { xs: "0.7rem", sm: "0.78rem" }, color: colors.gray400 }}>
                                   → Total: {fmt(t.invested, currency)}
                                 </Typography>
                               </Stack>
 
                               {/* Units: delta + total */}
-                              <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+                              <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.5 }}>
                                 <Typography sx={{ fontSize: "0.8rem", fontWeight: 650, color: unitColor }}>
                                   {isAdd ? "+" : ""}{fmtUnits(delta)} units
                                 </Typography>
@@ -366,10 +366,10 @@ function HoldingDetail() {
                               {/* Per-transaction P&L */}
                               {investedDelta > 0 && delta > 0 && (
                                 <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.75, px: 1.25, py: 0.5, borderRadius: 1.5, bgcolor: alpha(plColor, 0.06), display: "inline-flex", alignSelf: "flex-start" }}>
-                                  <Typography sx={{ fontSize: "0.75rem", fontWeight: 600, color: plColor }}>
+                                  <Typography sx={{ fontSize: { xs: "0.7rem", sm: "0.75rem" }, fontWeight: 600, color: plColor }}>
                                     P&L: {batchPL >= 0 ? "+" : ""}{fmt(batchPL, currency)}
                                   </Typography>
-                                  <Typography sx={{ fontSize: "0.7rem", fontWeight: 600, color: plColor, opacity: 0.8 }}>
+                                  <Typography sx={{ fontSize: { xs: "0.65rem", sm: "0.7rem" }, fontWeight: 600, color: plColor, opacity: 0.8 }}>
                                     ({batchPLPct >= 0 ? "+" : ""}{batchPLPct.toFixed(1)}%)
                                   </Typography>
                                 </Stack>
@@ -428,7 +428,7 @@ function HoldingDetail() {
           variant={isMobile ? "circular" : "extended"}
           sx={{
             position: "fixed",
-            bottom: 24,
+            bottom: { xs: "calc(24px + env(safe-area-inset-bottom, 0px))", sm: 24 },
             right: { xs: 16, sm: 24 },
             bgcolor: colors.brand,
             color: colors.pureWhite,

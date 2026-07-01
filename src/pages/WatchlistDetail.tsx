@@ -246,9 +246,9 @@ function WatchlistDetail() {
             </Typography>
           </Box>
 
-          <Stack direction="row" sx={{ gap: 1, flexWrap: "wrap", mt: "auto" }}>
+          <Stack direction="row" sx={{ gap: { xs: 0.75, sm: 1 }, flexWrap: "wrap", mt: "auto" }}>
             {(a.type === "BROKER" || a.needsDailyData) && (
-              <Box sx={{ flex: 1, minWidth: 80, p: 1, borderRadius: 1.5, bgcolor: alpha(cardInvested, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
+              <Box sx={{ flex: 1, minWidth: { xs: 70, sm: 80 }, p: 1, borderRadius: 1.5, bgcolor: alpha(cardInvested, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
                 <Typography sx={{ fontSize: "0.6rem", fontWeight: 500, color: cardMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
                   Invested
                 </Typography>
@@ -258,7 +258,7 @@ function WatchlistDetail() {
               </Box>
             )}
             {(a.type === "BROKER" || a.needsDailyData) && a.invested > 0 && (
-              <Box sx={{ flex: 1, minWidth: 80, p: 1, borderRadius: 1.5, bgcolor: alpha(gain >= 0 ? cardSuccess : cardError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
+              <Box sx={{ flex: 1, minWidth: { xs: 70, sm: 80 }, p: 1, borderRadius: 1.5, bgcolor: alpha(gain >= 0 ? cardSuccess : cardError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
                 <Typography sx={{ fontSize: "0.6rem", fontWeight: 500, color: cardMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
                   P&L
                 </Typography>
@@ -270,7 +270,7 @@ function WatchlistDetail() {
                 </Typography>
               </Box>
             )}
-            <Box sx={{ flex: 1, minWidth: 80, p: 1, borderRadius: 1.5, bgcolor: alpha(dayChg >= 0 ? cardSuccess : cardError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
+            <Box sx={{ flex: 1, minWidth: { xs: 70, sm: 80 }, p: 1, borderRadius: 1.5, bgcolor: alpha(dayChg >= 0 ? cardSuccess : cardError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
               <Typography sx={{ fontSize: "0.6rem", fontWeight: 500, color: cardMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
                 Today
               </Typography>
@@ -347,23 +347,23 @@ function WatchlistDetail() {
                   </Typography>
                 </Box>
 
-                <Stack direction="row" sx={{ mt: 2.5, gap: { xs: 1, sm: 2 }, flexWrap: "wrap" }}>
+                <Stack direction="row" sx={{ mt: 2.5, gap: { xs: 0.75, sm: 2 }, flexWrap: "wrap" }}>
                   {hasInvestable && (
-                    <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 8px)", sm: 120 }, p: 1.5, borderRadius: 2, bgcolor: alpha(heroInvested, isDark ? 0.1 : 0.06) }}>
-                      <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
+                    <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 6px)", sm: 120 }, p: { xs: 1, sm: 1.5 }, borderRadius: 2, bgcolor: alpha(heroInvested, isDark ? 0.1 : 0.06) }}>
+                      <Typography sx={{ fontSize: { xs: "0.6rem", sm: "0.65rem" }, fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
                         Invested
                       </Typography>
-                      <Typography sx={{ fontSize: "0.95rem", fontWeight: 700, color: heroInvested }}>
+                      <Typography sx={{ fontSize: { xs: "0.75rem", sm: "0.95rem" }, fontWeight: 700, color: heroInvested }}>
                         {fmt(totalInvested)}
                       </Typography>
                     </Box>
                   )}
                   {hasInvestable && totalInvested > 0 && (
-                    <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 8px)", sm: 120 }, p: 1.5, borderRadius: 2, bgcolor: alpha(totalGain >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
-                      <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
+                    <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 6px)", sm: 120 }, p: { xs: 1, sm: 1.5 }, borderRadius: 2, bgcolor: alpha(totalGain >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
+                      <Typography sx={{ fontSize: { xs: "0.6rem", sm: "0.65rem" }, fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
                         Total P&L
                       </Typography>
-                      <Typography noWrap sx={{ fontSize: { xs: "0.8rem", sm: "0.95rem" }, fontWeight: 700, color: totalGain >= 0 ? heroSuccess : heroError }}>
+                      <Typography noWrap sx={{ fontSize: { xs: "0.75rem", sm: "0.95rem" }, fontWeight: 700, color: totalGain >= 0 ? heroSuccess : heroError }}>
                         {totalGain >= 0 ? "+" : ""}{fmt(totalGain)}
                       </Typography>
                       <Typography sx={{ fontSize: "0.65rem", fontWeight: 600, color: totalGain >= 0 ? heroSuccess : heroError, opacity: 0.8 }}>
@@ -371,11 +371,11 @@ function WatchlistDetail() {
                       </Typography>
                     </Box>
                   )}
-                  <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 8px)", sm: 120 }, p: 1.5, borderRadius: 2, bgcolor: alpha(totalDayChg >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
-                    <Typography sx={{ fontSize: "0.65rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
+                  <Box sx={{ flex: "1 1 auto", minWidth: { xs: "calc(50% - 6px)", sm: 120 }, p: { xs: 1, sm: 1.5 }, borderRadius: 2, bgcolor: alpha(totalDayChg >= 0 ? heroSuccess : heroError, isDark ? 0.1 : 0.06) }}>
+                    <Typography sx={{ fontSize: { xs: "0.6rem", sm: "0.65rem" }, fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.5 }}>
                       Today
                     </Typography>
-                    <Typography noWrap sx={{ fontSize: { xs: "0.8rem", sm: "0.95rem" }, fontWeight: 700, color: totalDayChg >= 0 ? heroSuccess : heroError }}>
+                    <Typography noWrap sx={{ fontSize: { xs: "0.75rem", sm: "0.95rem" }, fontWeight: 700, color: totalDayChg >= 0 ? heroSuccess : heroError }}>
                       {totalDayChg >= 0 ? "+" : ""}{fmt(totalDayChg)}
                     </Typography>
                     <Typography sx={{ fontSize: "0.65rem", fontWeight: 600, color: totalDayChg >= 0 ? heroSuccess : heroError, opacity: 0.8 }}>
@@ -469,7 +469,7 @@ function WatchlistDetail() {
                             <Avatar sx={{ width: 28, height: 28, bgcolor: alpha(tc, 0.12), color: tc, fontSize: "0.6rem" }}>
                               {TYPE_ICONS[type] || <MoreHorizRoundedIcon sx={{ fontSize: 16 }} />}
                             </Avatar>
-                            <Typography sx={{ fontWeight: 700, fontSize: "0.95rem" }} noWrap>
+                            <Typography sx={{ fontWeight: 700, fontSize: { xs: "0.85rem", sm: "0.95rem" } }} noWrap>
                               {TYPE_LABELS[type as AccountType] || type}
                             </Typography>
                             <Typography variant="caption" sx={{ color: colors.gray400 }}>
@@ -480,7 +480,7 @@ function WatchlistDetail() {
                             <Typography sx={{ fontWeight: 750, fontSize: "1rem", letterSpacing: "-0.02em" }}>
                               {fmt(groupTotal)}
                             </Typography>
-                            <Stack direction="row" spacing={1}>
+                            <Stack direction="row" spacing={0.5}>
                               {groupXirr != null && (
                                 <Typography sx={{ fontSize: 10, fontWeight: 600, color: groupXirr >= 0 ? colors.success : colors.error, display: "flex", alignItems: "center", gap: 0.4 }}>
                                   <Box component="span" sx={{ fontSize: 8, fontWeight: 700, bgcolor: alpha(groupXirr >= 0 ? colors.success : colors.error, 0.12), px: 0.5, py: 0.1, borderRadius: 0.5 }}>XIRR</Box>
@@ -527,7 +527,7 @@ function WatchlistDetail() {
           variant={isMobile ? "circular" : "extended"}
           sx={{
             position: "fixed",
-            bottom: 24,
+            bottom: { xs: "calc(24px + env(safe-area-inset-bottom, 0px))", sm: 24 },
             right: { xs: 16, sm: 24 },
             bgcolor: isAll ? colors.brand : colors.accent,
             color: colors.pureWhite,

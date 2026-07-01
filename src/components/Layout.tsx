@@ -299,28 +299,34 @@ function Layout({ children }: { children: ReactNode }) {
         {!isDesktop && (
           <Box sx={{
             display: "flex", alignItems: "center",
-            px: 2, py: 1.5,
+            px: 1.5, py: 1,
+            pt: "calc(8px + env(safe-area-inset-top, 0px))",
             borderBottom: `1px solid ${colors.gray200}`,
-            bgcolor: colors.white,
+            bgcolor: alpha(colors.white, 0.85),
             position: "sticky", top: 0, zIndex: 1100,
             backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
           }}>
-            <IconButton onClick={() => setDrawerOpen(true)} sx={{ mr: 1 }}>
-              <MenuIcon />
+            <IconButton onClick={() => setDrawerOpen(true)} size="small" sx={{ mr: 0.5, p: 1 }}>
+              <MenuIcon sx={{ fontSize: 22 }} />
             </IconButton>
             <Box
               component="img"
               src="/favicon.svg"
               alt="Net Worth"
-              sx={{ width: 28, height: 28, borderRadius: 1.5, mr: 1 }}
+              sx={{ width: 26, height: 26, borderRadius: 1.5, mr: 0.75 }}
             />
-            <Typography sx={{ fontWeight: 700, fontSize: "1rem", letterSpacing: "-0.02em" }}>
+            <Typography sx={{ fontWeight: 700, fontSize: "0.95rem", letterSpacing: "-0.02em" }}>
               Net Worth
             </Typography>
           </Box>
         )}
 
-        <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 960, mx: "auto" }}>
+        <Box sx={{
+          px: { xs: 1.5, sm: 3 }, py: { xs: 2, sm: 3 },
+          pb: { xs: "calc(16px + env(safe-area-inset-bottom, 0px))", sm: 3 },
+          maxWidth: 960, mx: "auto",
+        }}>
           {children}
         </Box>
       </Box>

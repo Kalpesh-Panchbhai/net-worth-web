@@ -207,7 +207,7 @@ function Transactions() {
                 return (
                   <Box key={t.id} sx={{
                     display: "flex", alignItems: "center", gap: 2,
-                    px: { xs: 2, sm: 3 }, py: 1.5,
+                    px: { xs: 1.5, sm: 3 }, py: 1.5,
                     borderTop: i > 0 ? `1px solid ${theme.palette.divider}` : "none",
                     transition: "background .15s", "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.04) },
                   }}>
@@ -276,7 +276,7 @@ function Transactions() {
       </Dialog>
 
       {isMobile && selectedHoldingId && (
-        <Fab onClick={() => { if (!canAddTxn) { showToast("A transaction already exists for today. Try again tomorrow.", "warning"); return; } setCreateOpen(true); }} sx={{ position: "fixed", bottom: 80, right: 20, bgcolor: colors.brand, color: colors.pureWhite, boxShadow: `0 4px 20px ${alpha(colors.brand, 0.4)}`, "&:hover": { bgcolor: colors.brandDark, boxShadow: `0 6px 28px ${alpha(colors.brand, 0.5)}` } }} aria-label="Add transaction">
+        <Fab onClick={() => { if (!canAddTxn) { showToast("A transaction already exists for today. Try again tomorrow.", "warning"); return; } setCreateOpen(true); }} sx={{ position: "fixed", bottom: { xs: "calc(80px + env(safe-area-inset-bottom, 0px))", sm: 80 }, right: 20, bgcolor: colors.brand, color: colors.pureWhite, boxShadow: `0 4px 20px ${alpha(colors.brand, 0.4)}`, "&:hover": { bgcolor: colors.brandDark, boxShadow: `0 6px 28px ${alpha(colors.brand, 0.5)}` } }} aria-label="Add transaction">
           <AddIcon />
         </Fab>
       )}
