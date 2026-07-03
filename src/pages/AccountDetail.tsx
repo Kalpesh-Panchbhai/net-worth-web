@@ -1239,7 +1239,7 @@ function AccountDetail() {
       </Dialog>
 
       {/* FAB — hidden for inactive accounts */}
-      {account && account.isActive && (
+      {account && account.isActive && !isZerodhaKite && (
         <Fab onClick={() => { if (isBroker) { setCreateHoldingOpen(true); } else if (!canAddTxn) { showToast("A transaction already exists for today. Try again tomorrow.", "warning"); } else { setCreateTxnOpen(true); } }}
           variant={isMobile ? "circular" : "extended"}
           sx={{
