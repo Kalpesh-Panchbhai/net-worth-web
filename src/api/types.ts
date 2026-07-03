@@ -142,5 +142,17 @@ export interface SyncMfPreview {
 
 export interface SyncMfConfirmResult {
   inserted: number;
-  txnDate: string;
+}
+
+export interface StockSyncPreview {
+  invested: number;
+  value: number;
+  holdingCount: number;
+  alreadySynced: boolean;
+  date: string;
+}
+
+export interface StockSyncConfirmResult {
+  synced: boolean;
+  date: string;
 }

@@ -22,6 +22,7 @@ import {
   getAccountWatchlists, getWatchlists, linkWatchlistAccount, unlinkWatchlistAccount,
   invalidateCache, searchSymbol,
   getSyncMfLoginUrl, getSyncMfPreview, confirmSyncMf,
+  getStockSyncPreview, confirmStockSync,
 } from "../api/client";
 import type { YahooQuote } from "../api/client";
 import Chip from "@mui/material/Chip";
@@ -38,7 +39,7 @@ import XirrBadge from "../components/XirrBadge";
 import { computeXirr } from "../utils/xirr";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
-import type { AccountSummary, HoldingSummary, Transaction, WatchlistSummary, SyncMfDiff } from "../api/types";
+import type { AccountSummary, HoldingSummary, Transaction, WatchlistSummary, SyncMfDiff, StockSyncPreview } from "../api/types";
 import SyncIcon from "@mui/icons-material/Sync";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
@@ -115,8 +116,16 @@ function AccountDetail() {
   const [syncDiffs, setSyncDiffs] = useState<SyncMfDiff[]>([]);
   const [syncConfirming, setSyncConfirming] = useState(false);
 
+  // Sync Stocks (Kite)
+  const [stockSyncDialogOpen, setStockSyncDialogOpen] = useState(false);
+  const [stockSyncLoading, setStockSyncLoading] = useState(false);
+  const [stockSyncPreview, setStockSyncPreview] = useState<StockSyncPreview | null>(null);
+  const [stockSyncConfirming, setStockSyncConfirming] = useState(false);
+  const [stockAlreadySynced, setStockAlreadySynced] = useState(false);
+
   const isBroker = account?.type === "BROKER";
   const isZerodhaCoin = account?.name === "Zerodha Coin";
+  const isZerodhaKite = account?.name === "Zerodha Kite";
   const showInvested = isBroker || (account?.needsDailyData ?? false);
   const numAccountId = Number(accountId);
 
@@ -175,6 +184,13 @@ function AccountDetail() {
   useEffect(() => { loadAccountWatchlists(); }, [loadAccountWatchlists]);
   useEffect(() => { if (account) { if (isBroker) { loadHoldings(); loadBrokerTransactions(); } else loadTransactions(); } }, [account, isBroker, loadHoldings, loadTransactions, loadBrokerTransactions]);
   useEffect(() => { if (account && !showInvested) setXirrLoading(false); }, [account, showInvested]);
+
+  // Check if stock sync already done for today
+  useEffect(() => {
+    if (isZerodhaKite && transactions.length > 0) {
+      setStockAlreadySynced(transactions[0].txnDate === todayStr);
+    }
+  }, [isZerodhaKite, transactions, todayStr]);
 
   // Debounced Yahoo Finance search
   useEffect(() => {
@@ -394,6 +410,84 @@ function AccountDetail() {
     }
   };
 
+  // Stock Sync handlers
+  const handleStockSync = async () => {
+    setStockSyncLoading(true);
+    setStockSyncPreview(null);
+    setStockAlreadySynced(false);
+    try {
+      const preview = await getStockSyncPreview(numAccountId);
+      if (preview.alreadySynced) {
+        setStockAlreadySynced(true);
+        showToast("Already synced for today", "info");
+        return;
+      }
+      setStockSyncPreview(preview);
+      setStockSyncDialogOpen(true);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to fetch preview";
+      if (msg.includes("Not logged in") || msg.includes("expired") || msg.includes("login")) {
+        try {
+          const callbackUrl = `${window.location.origin}/kite-callback`;
+          const { loginUrl } = await getSyncMfLoginUrl(callbackUrl);
+          const popup = window.open(loginUrl, "kite-login", "width=600,height=700");
+          const onMessage = (event: MessageEvent) => {
+            if (event.data?.type === "kite-auth-success") {
+              window.removeEventListener("message", onMessage);
+              popup?.close();
+              handleStockSyncAfterLogin();
+            }
+          };
+          window.addEventListener("message", onMessage);
+          const checkClosed = setInterval(() => {
+            if (popup?.closed) { clearInterval(checkClosed); window.removeEventListener("message", onMessage); setStockSyncLoading(false); }
+          }, 1000);
+        } catch { showToast("Failed to initiate Kite login", "error"); }
+      } else {
+        showToast(msg, "error");
+      }
+    } finally {
+      setStockSyncLoading(false);
+    }
+  };
+
+  const handleStockSyncAfterLogin = async () => {
+    setStockSyncLoading(true);
+    try {
+      const preview = await getStockSyncPreview(numAccountId);
+      if (preview.alreadySynced) {
+        setStockAlreadySynced(true);
+        showToast("Already synced for today", "info");
+        return;
+      }
+      setStockSyncPreview(preview);
+      setStockSyncDialogOpen(true);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Preview failed after login", "error");
+    } finally {
+      setStockSyncLoading(false);
+    }
+  };
+
+  const handleConfirmStockSync = async () => {
+    if (!stockSyncPreview) return;
+    setStockSyncConfirming(true);
+    try {
+      await confirmStockSync(numAccountId, stockSyncPreview.invested, stockSyncPreview.value);
+      showToast("Stock portfolio synced successfully");
+      setStockSyncDialogOpen(false);
+      setStockSyncPreview(null);
+      setStockAlreadySynced(true);
+      invalidateCache("transactions"); invalidateCache("accounts");
+      loadAccount();
+      loadTransactions();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Sync failed", "error");
+    } finally {
+      setStockSyncConfirming(false);
+    }
+  };
+
   if (error && !account && !loading) return <ErrorState message={error} onRetry={loadAccount} />;
 
   const acctGain = account ? account.currentDayValue - account.invested : 0;
@@ -451,6 +545,16 @@ function AccountDetail() {
                       size="small"
                       onClick={handleSyncMf}
                       sx={{ fontWeight: 600, fontSize: "0.7rem", cursor: "pointer", bgcolor: alpha(colors.accent, 0.1), color: colors.accent, "&:hover": { bgcolor: alpha(colors.accent, 0.18) } }}
+                    />
+                  )}
+                  {isZerodhaKite && account.isActive && (
+                    <Chip
+                      icon={stockSyncLoading ? <CircularProgress size={14} /> : <SyncIcon sx={{ fontSize: 14 }} />}
+                      label="Sync Stocks"
+                      size="small"
+                      disabled={stockAlreadySynced || stockSyncLoading}
+                      onClick={stockAlreadySynced ? () => showToast("Already synced for today", "info") : handleStockSync}
+                      sx={{ fontWeight: 600, fontSize: "0.7rem", cursor: stockAlreadySynced ? "default" : "pointer", bgcolor: alpha(colors.accent, 0.1), color: colors.accent, "&:hover": { bgcolor: stockAlreadySynced ? alpha(colors.accent, 0.1) : alpha(colors.accent, 0.18) }, "&.Mui-disabled": { opacity: 0.6 } }}
                     />
                   )}
                   <XirrBadge value={acctXirr} size="lg" />
@@ -1088,6 +1192,51 @@ function AccountDetail() {
         </Dialog>
         );
       })()}
+
+      {/* Stock Sync Dialog */}
+      <Dialog open={stockSyncDialogOpen} onClose={() => { if (!stockSyncConfirming) setStockSyncDialogOpen(false); }} fullWidth maxWidth="xs">
+        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1, pb: 0 }}>
+          <SyncIcon sx={{ color: colors.accent }} /> Sync Stock Portfolio
+        </DialogTitle>
+        <DialogContent sx={{ pt: "16px !important" }}>
+          {stockSyncPreview && (
+            <Stack spacing={2}>
+              <Typography sx={{ fontSize: "0.8rem", color: colors.gray400 }}>
+                {stockSyncPreview.holdingCount} stock{stockSyncPreview.holdingCount !== 1 ? "s" : ""} found in Kite · {stockSyncPreview.date}
+              </Typography>
+              <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
+                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, textAlign: "center" }}>
+                  <Typography sx={{ fontSize: "0.65rem", fontWeight: 600, color: colors.gray400, textTransform: "uppercase", letterSpacing: "0.05em", mb: 0.5 }}>Invested</Typography>
+                  <Typography sx={{ fontSize: "1.1rem", fontWeight: 700 }}>{fmt(stockSyncPreview.invested)}</Typography>
+                </Paper>
+                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, textAlign: "center" }}>
+                  <Typography sx={{ fontSize: "0.65rem", fontWeight: 600, color: colors.gray400, textTransform: "uppercase", letterSpacing: "0.05em", mb: 0.5 }}>Current Value</Typography>
+                  <Typography sx={{ fontSize: "1.1rem", fontWeight: 700 }}>{fmt(stockSyncPreview.value)}</Typography>
+                </Paper>
+              </Box>
+              {stockSyncPreview.value - stockSyncPreview.invested !== 0 && (
+                <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, textAlign: "center", bgcolor: (stockSyncPreview.value - stockSyncPreview.invested) > 0 ? alpha(colors.success, 0.06) : alpha(colors.error, 0.06) }}>
+                  <Typography sx={{ fontSize: "0.75rem", fontWeight: 600, color: (stockSyncPreview.value - stockSyncPreview.invested) > 0 ? colors.success : colors.error }}>
+                    P&L: {fmt(stockSyncPreview.value - stockSyncPreview.invested)} ({((stockSyncPreview.value - stockSyncPreview.invested) / stockSyncPreview.invested * 100).toFixed(2)}%)
+                  </Typography>
+                </Paper>
+              )}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={() => setStockSyncDialogOpen(false)} disabled={stockSyncConfirming} sx={{ borderRadius: 2 }}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleConfirmStockSync}
+            disabled={stockSyncConfirming}
+            startIcon={stockSyncConfirming ? <CircularProgress size={16} /> : <SyncIcon />}
+            sx={{ borderRadius: 2, px: 3 }}
+          >
+            {stockSyncConfirming ? "Syncing..." : "Sync"}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* FAB — hidden for inactive accounts */}
       {account && account.isActive && (

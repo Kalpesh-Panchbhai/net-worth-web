@@ -17,6 +17,8 @@ import type {
   WatchlistAccountLink,
   SyncMfPreview,
   SyncMfConfirmResult,
+  StockSyncPreview,
+  StockSyncConfirmResult,
 } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://kfgx37r84g.execute-api.ap-south-1.amazonaws.com/prod";
@@ -336,5 +338,16 @@ export function confirmSyncMf(accountId: number, diffs: SyncMfPreview["diffs"]) 
   return request<SyncMfConfirmResult>("/sync-mf?mode=confirm", {
     method: "POST",
     body: JSON.stringify({ accountId, diffs }),
+  });
+}
+
+export function getStockSyncPreview(accountId: number) {
+  return request<StockSyncPreview>(`/sync-mf?mode=stock-preview&accountId=${accountId}`);
+}
+
+export function confirmStockSync(accountId: number, invested: number, value: number) {
+  return request<StockSyncConfirmResult>("/sync-mf?mode=stock-confirm", {
+    method: "POST",
+    body: JSON.stringify({ accountId, invested, value }),
   });
 }
