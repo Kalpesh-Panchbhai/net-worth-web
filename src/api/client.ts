@@ -15,6 +15,8 @@ import type {
   IncomeSource,
   IncomeTag,
   WatchlistAccountLink,
+  SyncMfPreview,
+  SyncMfConfirmResult,
 } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://kfgx37r84g.execute-api.ap-south-1.amazonaws.com/prod";
@@ -312,4 +314,27 @@ export function updateIncome(id: number, data: {
 
 export function deleteIncome(id: number) {
   return request<void>(`/incomes/${id}`, { method: "DELETE" });
+}
+
+// Sync MF (Kite Connect)
+export function getSyncMfLoginUrl(redirectUrl: string) {
+  return request<{ loginUrl: string }>(`/sync-mf?mode=login&redirectUrl=${encodeURIComponent(redirectUrl)}`);
+}
+
+export function syncMfCallback(requestToken: string) {
+  return request<{ status: string }>("/sync-mf?mode=callback", {
+    method: "POST",
+    body: JSON.stringify({ requestToken }),
+  });
+}
+
+export function getSyncMfPreview(accountId: number) {
+  return request<SyncMfPreview>(`/sync-mf?mode=preview&accountId=${accountId}`);
+}
+
+export function confirmSyncMf(accountId: number, diffs: SyncMfPreview["diffs"]) {
+  return request<SyncMfConfirmResult>("/sync-mf?mode=confirm", {
+    method: "POST",
+    body: JSON.stringify({ accountId, diffs }),
+  });
 }

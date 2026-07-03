@@ -118,3 +118,29 @@ export interface IncomeTag {
   name: string;
   isDefault: boolean;
 }
+
+export interface SyncMfDiff {
+  fund: string;
+  isin: string;
+  yahooSymbol: string;
+  holdingId: number | null;
+  holdingName: string | null;
+  kiteUnits: number;
+  kiteInvested: number;
+  dbUnits: number;
+  dbInvested: number;
+  unitsDiff: number;
+  investedDiff: number;
+  status: "CHANGED" | "NEW" | "UNCHANGED";
+  txnDate?: string; // per-holding transaction date (YYYY-MM-DD)
+}
+
+export interface SyncMfPreview {
+  diffs: SyncMfDiff[];
+  accountId: number;
+}
+
+export interface SyncMfConfirmResult {
+  inserted: number;
+  txnDate: string;
+}

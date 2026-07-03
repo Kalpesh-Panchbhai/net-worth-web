@@ -11,6 +11,7 @@ import Incomes from "./pages/Incomes";
 import IncomeSources from "./pages/IncomeSources";
 import IncomeTags from "./pages/IncomeTags";
 import Login from "./pages/Login";
+import KiteCallback from "./pages/KiteCallback";
 import Layout from "./components/Layout";
 import { UserProvider, useUser } from "./context/UserContext";
 
@@ -68,9 +69,10 @@ function AuthGate() {
 
 function App() {
   return (
-    <UserProvider>
-      <AuthGate />
-    </UserProvider>
+    <Routes>
+      <Route path="/kite-callback" element={<KiteCallback />} />
+      <Route path="/*" element={<UserProvider><AuthGate /></UserProvider>} />
+    </Routes>
   );
 }
 

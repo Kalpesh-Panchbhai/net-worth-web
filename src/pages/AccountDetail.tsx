@@ -21,6 +21,7 @@ import {
   getTransactions, createTransaction, deleteTransaction,
   getAccountWatchlists, getWatchlists, linkWatchlistAccount, unlinkWatchlistAccount,
   invalidateCache, searchSymbol,
+  getSyncMfLoginUrl, getSyncMfPreview, confirmSyncMf,
 } from "../api/client";
 import type { YahooQuote } from "../api/client";
 import Chip from "@mui/material/Chip";
@@ -37,7 +38,11 @@ import XirrBadge from "../components/XirrBadge";
 import { computeXirr } from "../utils/xirr";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
-import type { AccountSummary, HoldingSummary, Transaction, WatchlistSummary } from "../api/types";
+import type { AccountSummary, HoldingSummary, Transaction, WatchlistSummary, SyncMfDiff } from "../api/types";
+import SyncIcon from "@mui/icons-material/Sync";
+import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
+import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
+import FiberNewRoundedIcon from "@mui/icons-material/FiberNewRounded";
 
 const TYPE_LABELS: Record<string, string> = {
   BROKER: "Broker", SAVINGS: "Savings", CREDIT_CARD: "Credit Card", LOAN: "Loan", OTHER: "Other",
@@ -104,7 +109,14 @@ function AccountDetail() {
   const [linkedWlIds, setLinkedWlIds] = useState<Set<number>>(new Set());
   const [wlDialogLoading, setWlDialogLoading] = useState(false);
 
+  // Sync MF (Kite)
+  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
+  const [syncLoading, setSyncLoading] = useState(false);
+  const [syncDiffs, setSyncDiffs] = useState<SyncMfDiff[]>([]);
+  const [syncConfirming, setSyncConfirming] = useState(false);
+
   const isBroker = account?.type === "BROKER";
+  const isZerodhaCoin = account?.name === "Zerodha Coin";
   const showInvested = isBroker || (account?.needsDailyData ?? false);
   const numAccountId = Number(accountId);
 
@@ -299,6 +311,89 @@ function AccountDetail() {
     loadAccountWatchlists();
   };
 
+  // Sync MF handlers
+  const updateDiffDate = (isin: string, date: string) => {
+    setSyncDiffs(prev => prev.map(d => d.isin === isin ? { ...d, txnDate: date } : d));
+  };
+
+  const handleSyncMf = async () => {
+    setSyncDialogOpen(true);
+    setSyncLoading(true);
+    setSyncDiffs([]);
+    try {
+      const result = await getSyncMfPreview(numAccountId);
+      setSyncDiffs(result.diffs.map(d => ({ ...d, txnDate: d.txnDate || todayStr })));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to fetch preview";
+      if (msg.includes("Not logged in") || msg.includes("expired") || msg.includes("login")) {
+        // Need to login to Kite first
+        try {
+          const callbackUrl = `${window.location.origin}/kite-callback`;
+          const { loginUrl } = await getSyncMfLoginUrl(callbackUrl);
+          const popup = window.open(loginUrl, "kite-login", "width=600,height=700");
+
+          const onMessage = (event: MessageEvent) => {
+            if (event.data?.type === "kite-auth-success") {
+              window.removeEventListener("message", onMessage);
+              popup?.close();
+              // Retry preview after successful login
+              handleSyncMfAfterLogin();
+            }
+          };
+          window.addEventListener("message", onMessage);
+
+          // Also handle popup close without success
+          const checkClosed = setInterval(() => {
+            if (popup?.closed) {
+              clearInterval(checkClosed);
+              window.removeEventListener("message", onMessage);
+            }
+          }, 500);
+        } catch (loginErr) {
+          showToast(loginErr instanceof Error ? loginErr.message : "Failed to get login URL", "error");
+          setSyncDialogOpen(false);
+        }
+      } else {
+        showToast(msg, "error");
+        setSyncDialogOpen(false);
+      }
+    } finally {
+      setSyncLoading(false);
+    }
+  };
+
+  const handleSyncMfAfterLogin = async () => {
+    setSyncLoading(true);
+    try {
+      const result = await getSyncMfPreview(numAccountId);
+      setSyncDiffs(result.diffs.map(d => ({ ...d, txnDate: d.txnDate || todayStr })));
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Preview failed after login", "error");
+      setSyncDialogOpen(false);
+    } finally {
+      setSyncLoading(false);
+    }
+  };
+
+  const handleConfirmSync = async () => {
+    const toSync = syncDiffs.filter(d => d.status !== "UNCHANGED");
+    if (toSync.length === 0) return;
+    setSyncConfirming(true);
+    try {
+      const result = await confirmSyncMf(numAccountId, toSync);
+      showToast(`Synced ${result.inserted} holding(s) successfully`);
+      setSyncDialogOpen(false);
+      setSyncDiffs([]);
+      invalidateCache("holdings"); invalidateCache("transactions"); invalidateCache("accounts");
+      loadAccount();
+      if (isBroker) { loadHoldings(); loadBrokerTransactions(); } else { loadTransactions(); }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Sync failed", "error");
+    } finally {
+      setSyncConfirming(false);
+    }
+  };
+
   if (error && !account && !loading) return <ErrorState message={error} onRetry={loadAccount} />;
 
   const acctGain = account ? account.currentDayValue - account.invested : 0;
@@ -349,6 +444,15 @@ function AccountDetail() {
                     </Box>
                   )}
                   <Box sx={{ flex: 1 }} />
+                  {isZerodhaCoin && account.isActive && (
+                    <Chip
+                      icon={<SyncIcon sx={{ fontSize: 14 }} />}
+                      label="Sync MF"
+                      size="small"
+                      onClick={handleSyncMf}
+                      sx={{ fontWeight: 600, fontSize: "0.7rem", cursor: "pointer", bgcolor: alpha(colors.accent, 0.1), color: colors.accent, "&:hover": { bgcolor: alpha(colors.accent, 0.18) } }}
+                    />
+                  )}
                   <XirrBadge value={acctXirr} size="lg" />
                 </Stack>
                 <Typography sx={{ fontSize: { xs: "1.1rem", sm: "1.25rem" }, fontWeight: 700, mb: 1.5, color: heroText }}>
@@ -817,6 +921,173 @@ function AccountDetail() {
           <Button variant="contained" onClick={closeWlDialog}>Done</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Sync MF Dialog */}
+      {(() => {
+        const allSynced = syncDiffs.length > 0 && syncDiffs.every(d => d.status === "UNCHANGED");
+        const changedDiffs = syncDiffs.filter(d => d.status !== "UNCHANGED");
+        const unchangedDiffs = syncDiffs.filter(d => d.status === "UNCHANGED");
+        const isDark = theme.palette.mode === "dark";
+        return (
+        <Dialog open={syncDialogOpen} onClose={() => { if (!syncConfirming) setSyncDialogOpen(false); }} fullScreen={isMobile} fullWidth maxWidth="sm">
+          <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1, pb: 0 }}>
+            <SyncIcon sx={{ color: colors.accent }} /> Sync MF Holdings
+          </DialogTitle>
+          <DialogContent sx={{ pt: "12px !important" }}>
+            {syncLoading ? (
+              <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", py: 6, gap: 2 }}>
+                <CircularProgress size={40} />
+                <Typography fontWeight={600}>Fetching from Kite...</Typography>
+                <Typography variant="body2" color="text.secondary">Comparing with your database</Typography>
+              </Box>
+            ) : syncDiffs.length === 0 ? (
+              <Box sx={{ textAlign: "center", py: 4 }}>
+                <SyncIcon sx={{ fontSize: 40, color: colors.gray300, mb: 1 }} />
+                <Typography fontWeight={600}>No data available</Typography>
+                <Typography variant="body2" color="text.secondary">Try again or log in to Kite first.</Typography>
+              </Box>
+            ) : allSynced ? (
+              /* ── All in sync: clean success state ── */
+              <Box sx={{ textAlign: "center", pt: 2, pb: 1 }}>
+                <CheckCircleRoundedIcon sx={{ fontSize: 56, color: colors.success, mb: 1 }} />
+                <Typography variant="h6" fontWeight={700} sx={{ mb: 0.5 }}>All in Sync</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                  {syncDiffs.length} mutual fund holding{syncDiffs.length !== 1 ? "s" : ""} match between Kite and your database
+                </Typography>
+                <Stack spacing={0.5}>
+                  {syncDiffs.map(d => (
+                    <Box key={d.isin} sx={{ display: "flex", alignItems: "center", gap: 1.5, px: 2, py: 1, borderRadius: 2, bgcolor: alpha(colors.success, isDark ? 0.06 : 0.04) }}>
+                      <CheckCircleRoundedIcon sx={{ fontSize: 16, color: colors.success }} />
+                      <Typography sx={{ fontSize: "0.85rem", fontWeight: 500, flex: 1 }}>{d.holdingName || d.fund}</Typography>
+                      <Typography sx={{ fontSize: "0.75rem", color: colors.gray400, fontFamily: "monospace" }}>{fmtUnits(d.kiteUnits)} units</Typography>
+                    </Box>
+                  ))}
+                </Stack>
+              </Box>
+            ) : (
+              /* ── Changes detected ── */
+              <>
+                <Box sx={{ px: 2, py: 1.5, borderRadius: 2, bgcolor: alpha(colors.accent, isDark ? 0.08 : 0.05), mb: 2 }}>
+                  <Typography sx={{ fontSize: "0.8rem", fontWeight: 600 }}>
+                    {changedDiffs.length} change{changedDiffs.length !== 1 ? "s" : ""} detected
+                    {unchangedDiffs.length > 0 && <Typography component="span" sx={{ fontSize: "0.8rem", color: colors.gray400 }}> &middot; {unchangedDiffs.length} in sync</Typography>}
+                  </Typography>
+                  <Typography sx={{ fontSize: "0.7rem", color: colors.gray400, mt: 0.25 }}>
+                    Changes will be applied as transactions for the selected dates
+                  </Typography>
+                </Box>
+
+                <Stack spacing={1.5}>
+                  {changedDiffs.map(d => (
+                    <Paper key={d.isin} variant="outlined" sx={{ p: 2, borderRadius: 2.5, borderColor: d.status === "NEW" ? alpha(colors.accent, 0.3) : alpha(colors.warning || "#FFA726", 0.3) }}>
+                      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+                        {d.status === "NEW" ? (
+                          <FiberNewRoundedIcon sx={{ fontSize: 18, color: colors.accent }} />
+                        ) : (
+                          <SyncIcon sx={{ fontSize: 16, color: colors.warning || "#FFA726" }} />
+                        )}
+                        <Typography sx={{ fontSize: "0.85rem", fontWeight: 650, flex: 1 }}>{d.holdingName || d.fund}</Typography>
+                        <Chip
+                          label={d.status}
+                          size="small"
+                          sx={{
+                            fontWeight: 700, fontSize: "0.6rem", height: 20,
+                            bgcolor: d.status === "NEW" ? alpha(colors.accent, 0.1) : alpha(colors.warning || "#FFA726", 0.1),
+                            color: d.status === "NEW" ? colors.accent : colors.warning || "#FFA726",
+                          }}
+                        />
+                      </Stack>
+                      <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5 }}>
+                        {/* Units */}
+                        <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: isDark ? alpha(colors.pureWhite, 0.04) : colors.gray100 }}>
+                          <Typography sx={{ fontSize: "0.6rem", fontWeight: 600, color: colors.gray400, textTransform: "uppercase", letterSpacing: "0.05em", mb: 0.5 }}>Units</Typography>
+                          {d.status === "NEW" ? (
+                            <Typography sx={{ fontSize: "0.9rem", fontWeight: 700 }}>{fmtUnits(d.kiteUnits)}</Typography>
+                          ) : (
+                            <Stack direction="row" alignItems="center" spacing={0.5}>
+                              <Typography sx={{ fontSize: "0.85rem", fontWeight: 600, color: colors.gray400 }}>{fmtUnits(d.dbUnits)}</Typography>
+                              <ArrowForwardRoundedIcon sx={{ fontSize: 12, color: colors.gray400 }} />
+                              <Typography sx={{ fontSize: "0.85rem", fontWeight: 700 }}>{fmtUnits(d.kiteUnits)}</Typography>
+                            </Stack>
+                          )}
+                          {d.unitsDiff !== 0 && (
+                            <Typography sx={{ fontSize: "0.7rem", fontWeight: 600, mt: 0.25, color: d.unitsDiff > 0 ? colors.success : colors.error }}>
+                              {d.unitsDiff > 0 ? "+" : ""}{fmtUnits(d.unitsDiff)}
+                            </Typography>
+                          )}
+                        </Box>
+                        {/* Invested */}
+                        <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: isDark ? alpha(colors.pureWhite, 0.04) : colors.gray100 }}>
+                          <Typography sx={{ fontSize: "0.6rem", fontWeight: 600, color: colors.gray400, textTransform: "uppercase", letterSpacing: "0.05em", mb: 0.5 }}>Invested</Typography>
+                          {d.status === "NEW" ? (
+                            <Typography sx={{ fontSize: "0.9rem", fontWeight: 700 }}>{fmt(d.kiteInvested)}</Typography>
+                          ) : (
+                            <Stack direction="row" alignItems="center" spacing={0.5}>
+                              <Typography sx={{ fontSize: "0.85rem", fontWeight: 600, color: colors.gray400 }}>{fmt(d.dbInvested)}</Typography>
+                              <ArrowForwardRoundedIcon sx={{ fontSize: 12, color: colors.gray400 }} />
+                              <Typography sx={{ fontSize: "0.85rem", fontWeight: 700 }}>{fmt(d.kiteInvested)}</Typography>
+                            </Stack>
+                          )}
+                          {d.investedDiff !== 0 && (
+                            <Typography sx={{ fontSize: "0.7rem", fontWeight: 600, mt: 0.25, color: d.investedDiff > 0 ? colors.success : colors.error }}>
+                              {d.investedDiff > 0 ? "+" : ""}{fmt(d.investedDiff)}
+                            </Typography>
+                          )}
+                        </Box>
+                      </Box>
+                      {/* Per-holding transaction date */}
+                      <TextField
+                        label="Transaction Date"
+                        type="date"
+                        value={d.txnDate || todayStr}
+                        onChange={e => updateDiffDate(d.isin, e.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                        inputProps={{ max: todayStr }}
+                        size="small"
+                        sx={{ mt: 1.5 }}
+                        fullWidth
+                      />
+                    </Paper>
+                  ))}
+
+                  {/* Unchanged holdings - collapsed */}
+                  {unchangedDiffs.length > 0 && (
+                    <Box sx={{ mt: 0.5 }}>
+                      <Typography sx={{ fontSize: "0.7rem", fontWeight: 600, color: colors.gray400, textTransform: "uppercase", letterSpacing: "0.05em", mb: 0.75 }}>In Sync</Typography>
+                      <Stack spacing={0.5}>
+                        {unchangedDiffs.map(d => (
+                          <Box key={d.isin} sx={{ display: "flex", alignItems: "center", gap: 1, px: 1.5, py: 0.75, borderRadius: 1.5, bgcolor: isDark ? alpha(colors.pureWhite, 0.03) : alpha(colors.gray100, 0.7) }}>
+                            <CheckCircleRoundedIcon sx={{ fontSize: 14, color: colors.success, opacity: 0.7 }} />
+                            <Typography sx={{ fontSize: "0.78rem", fontWeight: 500, color: colors.gray500, flex: 1 }}>{d.holdingName || d.fund}</Typography>
+                            <Typography sx={{ fontSize: "0.7rem", color: colors.gray400, fontFamily: "monospace" }}>{fmtUnits(d.kiteUnits)}</Typography>
+                          </Box>
+                        ))}
+                      </Stack>
+                    </Box>
+                  )}
+                </Stack>
+              </>
+            )}
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2.5 }}>
+            <Button onClick={() => setSyncDialogOpen(false)} disabled={syncConfirming} sx={{ borderRadius: 2 }}>
+              {allSynced ? "Done" : "Cancel"}
+            </Button>
+            {changedDiffs.length > 0 && (
+              <Button
+                variant="contained"
+                onClick={handleConfirmSync}
+                disabled={syncConfirming || syncLoading}
+                startIcon={syncConfirming ? <CircularProgress size={16} /> : <SyncIcon />}
+                sx={{ borderRadius: 2, px: 3 }}
+              >
+                {syncConfirming ? "Syncing..." : `Sync ${changedDiffs.length} Change${changedDiffs.length !== 1 ? "s" : ""}`}
+              </Button>
+            )}
+          </DialogActions>
+        </Dialog>
+        );
+      })()}
 
       {/* FAB — hidden for inactive accounts */}
       {account && account.isActive && (
