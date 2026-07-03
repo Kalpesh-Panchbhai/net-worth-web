@@ -185,13 +185,6 @@ function AccountDetail() {
   useEffect(() => { if (account) { if (isBroker) { loadHoldings(); loadBrokerTransactions(); } else loadTransactions(); } }, [account, isBroker, loadHoldings, loadTransactions, loadBrokerTransactions]);
   useEffect(() => { if (account && !showInvested) setXirrLoading(false); }, [account, showInvested]);
 
-  // Check if stock sync already done for today
-  useEffect(() => {
-    if (isZerodhaKite && transactions.length > 0) {
-      setStockAlreadySynced(transactions[0].txnDate === todayStr);
-    }
-  }, [isZerodhaKite, transactions, todayStr]);
-
   // Debounced Yahoo Finance search
   useEffect(() => {
     const q = holdingSearch.trim();
@@ -248,6 +241,13 @@ function AccountDetail() {
   const todayStr = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, "0")}-${String(_now.getDate()).padStart(2, "0")}`;
   const minTxnDate = lastTxnDate ? (() => { const d = new Date(lastTxnDate + "T00:00:00"); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })() : "";
   const canAddTxn = !minTxnDate || minTxnDate <= todayStr;
+
+  // Check if stock sync already done for today
+  useEffect(() => {
+    if (isZerodhaKite && transactions.length > 0) {
+      setStockAlreadySynced(transactions[0].txnDate === todayStr);
+    }
+  }, [isZerodhaKite, transactions, todayStr]);
 
   const handleCreateTxn = async () => {
     if (!txnDate || !txnValue || (showInvested && !txnInvested) || !defaultHoldingId) return;
