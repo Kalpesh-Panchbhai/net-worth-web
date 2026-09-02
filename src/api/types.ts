@@ -11,6 +11,7 @@ export interface ApiError {
 export interface User {
   id: number;
   externalUserId: string;
+  preferredCurrency: string;
 }
 
 export interface WatchlistSummary {
@@ -103,6 +104,11 @@ export interface Income {
   taxPaid: number;
   currency: string;
   creditedDate: string;
+  // Display values converted to the user's preferred currency at the credited date.
+  // Present on read responses; may be absent if FX lookup failed.
+  convertedNetAmount?: number;
+  convertedTaxPaid?: number;
+  convertedCurrency?: string;
 }
 
 export interface IncomeSource {

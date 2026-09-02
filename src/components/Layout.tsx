@@ -4,6 +4,7 @@ import {
   Box, Typography, Avatar, ToggleButtonGroup, ToggleButton,
   Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText,
   IconButton, Divider, Dialog, DialogTitle, DialogContent, DialogActions, Button,
+  TextField, MenuItem,
   useMediaQuery, useTheme,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
@@ -25,6 +26,7 @@ import { deleteUser, invalidateCache, refreshData } from "../api/client";
 import { useToast } from "../context/ToastContext";
 import { useColorMode, useTokens } from "../context/ColorModeContext";
 import type { ColorModePref } from "../context/ColorModeContext";
+import { CURRENCIES } from "../constants";
 
 const SIDEBAR_W = 252;
 
@@ -46,7 +48,7 @@ function Layout({ children }: { children: ReactNode }) {
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up("md"));
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const { firebaseUser, userId, logout } = useUser();
+  const { firebaseUser, userId, logout, preferredCurrency, setPreferredCurrency } = useUser();
   const { showToast } = useToast();
   const { preference, setPreference } = useColorMode();
   const { colors } = useTokens();
@@ -65,6 +67,15 @@ function Layout({ children }: { children: ReactNode }) {
       showToast("Failed to refresh data. Please try again.", "error");
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  const handleCurrencyChange = async (currency: string) => {
+    try {
+      await setPreferredCurrency(currency);
+      showToast(`Display currency set to ${currency}`, "success");
+    } catch {
+      showToast("Failed to update currency. Please try again.", "error");
     }
   };
 
@@ -192,6 +203,28 @@ function Layout({ children }: { children: ReactNode }) {
         </Button>
         <Typography sx={{ fontSize: "0.6rem", color: colors.gray400, textAlign: "center", mt: 0.5 }}>
           Sync latest prices & balances
+        </Typography>
+      </Box>
+
+      {/* Display currency */}
+      <Box sx={{ px: 1, mb: 1.5 }}>
+        <Typography variant="overline" sx={{ px: 1, mb: 0.75, display: "block", fontSize: "0.6rem", color: colors.gray400 }}>
+          Display Currency
+        </Typography>
+        <TextField
+          select
+          size="small"
+          fullWidth
+          value={preferredCurrency}
+          onChange={(e) => handleCurrencyChange(e.target.value)}
+          sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2.5 } }}
+        >
+          {CURRENCIES.map((c) => (
+            <MenuItem key={c} value={c}>{c}</MenuItem>
+          ))}
+        </TextField>
+        <Typography sx={{ fontSize: "0.6rem", color: colors.gray400, mt: 0.5, px: 1 }}>
+          Amounts are shown converted to this currency
         </Typography>
       </Box>
 

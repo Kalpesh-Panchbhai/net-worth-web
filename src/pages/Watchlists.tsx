@@ -27,13 +27,7 @@ import { useToast } from "../context/ToastContext";
 import { computeXirr } from "../utils/xirr";
 import XirrBadge from "../components/XirrBadge";
 import type { WatchlistSummary, Transaction } from "../api/types";
-
-function fmt(v: number, currency = "INR"): string {
-  const hasDecimals = v % 1 !== 0;
-  const abs = Math.abs(v);
-  const formatted = new Intl.NumberFormat("en-IN", { style: "currency", currency, minimumFractionDigits: hasDecimals ? 2 : 0, maximumFractionDigits: hasDecimals ? 2 : 0 }).format(abs);
-  return v < 0 ? `-${formatted}` : formatted;
-}
+import { formatCurrency as fmt } from "../utils/format";
 
 function Watchlists() {
   const { userId } = useUser();

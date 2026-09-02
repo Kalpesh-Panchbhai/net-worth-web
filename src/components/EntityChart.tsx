@@ -9,6 +9,7 @@ import TrendingDownRoundedIcon from "@mui/icons-material/TrendingDownRounded";
 import { useTokens } from "../context/ColorModeContext";
 import { getChartData } from "../api/client";
 import type { ChartDataPoint, EntityType, TimePeriod, Transaction } from "../api/types";
+import { formatCurrency as fmtCurrency } from "../utils/format";
 
 const PERIODS: { value: TimePeriod; label: string }[] = [
   { value: "1M", label: "1M" },
@@ -27,13 +28,6 @@ interface EntityChartProps {
   currency?: string;
   showInvested?: boolean;
   transactions?: Transaction[];
-}
-
-function fmtCurrency(v: number, currency = "INR") {
-  const hasDecimals = v % 1 !== 0;
-  const abs = Math.abs(v);
-  const formatted = new Intl.NumberFormat("en-IN", { style: "currency", currency, minimumFractionDigits: hasDecimals ? 2 : 0, maximumFractionDigits: hasDecimals ? 2 : 0 }).format(abs);
-  return v < 0 ? `-${formatted}` : formatted;
 }
 
 function spansMultipleYears(data: ChartDataPoint[]): boolean {

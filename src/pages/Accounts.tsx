@@ -32,6 +32,7 @@ import { EmptyState, ErrorState, ListSkeleton, FadeIn } from "../components/shar
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
 import type { AccountSummary, AccountType } from "../api/types";
+import { formatCurrency as fmt } from "../utils/format";
 const ACCOUNT_TYPES: AccountType[] = ["BROKER", "SAVINGS", "CREDIT_CARD", "LOAN", "OTHER"];
 const TYPE_LABELS: Record<AccountType, string> = {
   BROKER: "Broker", SAVINGS: "Savings", CREDIT_CARD: "Credit Card", LOAN: "Loan", OTHER: "Other",
@@ -43,13 +44,6 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
   LOAN: <AccountBalanceRoundedIcon sx={{ fontSize: 20 }} />,
   OTHER: <MoreHorizRoundedIcon sx={{ fontSize: 20 }} />,
 };
-
-function fmt(v: number, currency = "INR"): string {
-  const hasDecimals = v % 1 !== 0;
-  const abs = Math.abs(v);
-  const formatted = new Intl.NumberFormat("en-IN", { style: "currency", currency, minimumFractionDigits: hasDecimals ? 2 : 0, maximumFractionDigits: hasDecimals ? 2 : 0 }).format(abs);
-  return v < 0 ? `-${formatted}` : formatted;
-}
 
 function Accounts() {
   const { userId } = useUser();

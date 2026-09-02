@@ -40,6 +40,7 @@ import { computeXirr } from "../utils/xirr";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
 import type { AccountSummary, HoldingSummary, Transaction, WatchlistSummary, SyncMfDiff, StockSyncPreview } from "../api/types";
+import { formatCurrency as fmt, formatUnits as fmtUnits } from "../utils/format";
 import SyncIcon from "@mui/icons-material/Sync";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
@@ -48,17 +49,6 @@ import FiberNewRoundedIcon from "@mui/icons-material/FiberNewRounded";
 const TYPE_LABELS: Record<string, string> = {
   BROKER: "Broker", SAVINGS: "Savings", CREDIT_CARD: "Credit Card", LOAN: "Loan", OTHER: "Other",
 };
-
-function fmt(v: number, currency = "INR"): string {
-  const hasDecimals = v % 1 !== 0;
-  const abs = Math.abs(v);
-  const formatted = new Intl.NumberFormat("en-IN", { style: "currency", currency, minimumFractionDigits: hasDecimals ? 2 : 0, maximumFractionDigits: hasDecimals ? 2 : 0 }).format(abs);
-  return v < 0 ? `-${formatted}` : formatted;
-}
-
-function fmtUnits(v: number): string {
-  return v.toFixed(3);
-}
 
 function parseTxnDate(dateStr: string) {
   const d = new Date(dateStr + "T00:00:00");

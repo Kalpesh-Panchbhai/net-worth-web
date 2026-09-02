@@ -17,17 +17,7 @@ import { PageHeader, EmptyState, ErrorState, ListSkeleton, MetricCard, MetricSke
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
 import type { AccountSummary, HoldingSummary, Transaction } from "../api/types";
-
-function fmt(v: number, currency = "INR"): string {
-  const hasDecimals = v % 1 !== 0;
-  const abs = Math.abs(v);
-  const formatted = new Intl.NumberFormat("en-IN", { style: "currency", currency, minimumFractionDigits: hasDecimals ? 2 : 0, maximumFractionDigits: hasDecimals ? 2 : 0 }).format(abs);
-  return v < 0 ? `-${formatted}` : formatted;
-}
-
-function fmtUnits(v: number): string {
-  return v.toFixed(3);
-}
+import { formatCurrency as fmt, formatUnits as fmtUnits } from "../utils/format";
 
 function Transactions() {
   const { userId } = useUser();

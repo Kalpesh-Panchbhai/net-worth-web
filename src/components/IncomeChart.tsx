@@ -3,6 +3,7 @@ import type { TooltipProps } from "recharts";
 import { Box, Typography, Stack } from "@mui/material";
 import { useTheme, useMediaQuery } from "@mui/material";
 import { useTokens } from "../context/ColorModeContext";
+import { formatCurrency as fmtCurrency } from "../utils/format";
 
 export interface IncomeChartPoint {
   label: string;
@@ -13,17 +14,6 @@ export interface IncomeChartPoint {
 interface IncomeChartProps {
   data: IncomeChartPoint[];
   currency?: string;
-}
-
-function fmtCurrency(v: number, currency = "INR") {
-  const hasDecimals = v % 1 !== 0;
-  const abs = Math.abs(v);
-  const formatted = new Intl.NumberFormat("en-IN", {
-    style: "currency", currency,
-    minimumFractionDigits: hasDecimals ? 2 : 0,
-    maximumFractionDigits: hasDecimals ? 2 : 0,
-  }).format(abs);
-  return v < 0 ? `-${formatted}` : formatted;
 }
 
 // Custom bar shape that grows from bottom with a staggered left-to-right delay

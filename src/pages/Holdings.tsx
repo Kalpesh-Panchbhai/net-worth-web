@@ -17,16 +17,10 @@ import { PageHeader, EmptyState, ErrorState, ListSkeleton, MetricCard, MetricSke
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
 import type { AccountSummary, HoldingSummary } from "../api/types";
+import { formatCurrency, formatUnits as fmtUnits } from "../utils/format";
 
-function fmt(v: number, currency = "INR"): string {
-  const abs = Math.abs(v);
-  const formatted = new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 0 }).format(abs);
-  return v < 0 ? `-${formatted}` : formatted;
-}
-
-function fmtUnits(v: number): string {
-  return v.toFixed(3);
-}
+// Holdings summaries are shown as whole numbers (no decimals).
+const fmt = (v: number, currency?: string) => formatCurrency(v, currency, { maxDecimals: 0 });
 
 function Holdings() {
   const { userId } = useUser();

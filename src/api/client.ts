@@ -107,6 +107,13 @@ export function ensureUser(externalUserId: string) {
   });
 }
 
+export function updateUserPreferredCurrency(id: number, preferredCurrency: string) {
+  return request<User>(`/users/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ preferredCurrency }),
+  });
+}
+
 export function deleteUser(id: number) {
   return request<void>(`/users/${id}`, { method: "DELETE" });
 }

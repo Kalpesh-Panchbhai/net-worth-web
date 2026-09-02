@@ -16,15 +16,9 @@ import { getWatchlists, getChartData, getIncomes, getAccounts, getTransactions }
 import { useUser } from "../context/UserContext";
 import { computeXirr } from "../utils/xirr";
 import type { WatchlistSummary, ChartDataPoint, TimePeriod, Income, Transaction } from "../api/types";
+import { formatCurrency as fmt } from "../utils/format";
 
 const TIME_PERIODS: TimePeriod[] = ["1M", "3M", "6M", "1Y", "2Y", "5Y", "ALL"];
-
-function fmt(v: number): string {
-  const hasDecimals = v % 1 !== 0;
-  const abs = Math.abs(v);
-  const formatted = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: hasDecimals ? 2 : 0, maximumFractionDigits: hasDecimals ? 2 : 0 }).format(abs);
-  return v < 0 ? `-${formatted}` : formatted;
-}
 
 function Dashboard() {
   const { userId, loading: userLoading } = useUser();

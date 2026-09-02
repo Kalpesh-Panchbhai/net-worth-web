@@ -35,6 +35,7 @@ import { useToast } from "../context/ToastContext";
 import { computeXirr } from "../utils/xirr";
 import XirrBadge from "../components/XirrBadge";
 import type { WatchlistSummary, AccountSummary, AccountType, Transaction } from "../api/types";
+import { formatCurrency as fmt } from "../utils/format";
 
 const TYPE_LABELS: Record<string, string> = {
   BROKER: "Broker", SAVINGS: "Savings", CREDIT_CARD: "Credit Card", LOAN: "Loan", OTHER: "Other",
@@ -46,13 +47,6 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
   LOAN: <AccountBalanceRoundedIcon sx={{ fontSize: 18 }} />,
   OTHER: <MoreHorizRoundedIcon sx={{ fontSize: 18 }} />,
 };
-
-function fmt(v: number, currency = "INR"): string {
-  const hasDecimals = v % 1 !== 0;
-  const abs = Math.abs(v);
-  const formatted = new Intl.NumberFormat("en-IN", { style: "currency", currency, minimumFractionDigits: hasDecimals ? 2 : 0, maximumFractionDigits: hasDecimals ? 2 : 0 }).format(abs);
-  return v < 0 ? `-${formatted}` : formatted;
-}
 
 function WatchlistDetail() {
   const { watchlistId } = useParams<{ watchlistId: string }>();

@@ -5,6 +5,7 @@ import { alpha } from "@mui/material/styles";
 import SavingsOutlinedIcon from "@mui/icons-material/SavingsOutlined";
 import { useTokens } from "../context/ColorModeContext";
 import type { ChartDataPoint } from "../api/types";
+import { formatCurrency } from "../utils/format";
 
 interface EnrichedDataPoint extends ChartDataPoint {
   savingsRate?: number | null;
@@ -14,11 +15,8 @@ interface NetWorthChartProps {
   data: EnrichedDataPoint[];
 }
 
-const fmtCurrency = (v: number) => {
-  const abs = Math.abs(v);
-  const formatted = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(abs);
-  return v < 0 ? `-${formatted}` : formatted;
-};
+// Net worth is displayed in INR as whole numbers (no decimals).
+const fmtCurrency = (v: number) => formatCurrency(v, "INR", { maxDecimals: 0 });
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function CustomTooltip({ active, payload, label, colors, shadow }: any) {

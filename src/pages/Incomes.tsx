@@ -29,16 +29,16 @@ import {
 import { ListSkeleton, EmptyState, ErrorState, TintedChip, FadeIn } from "../components/shared";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
+import { CURRENCIES } from "../constants";
+import { formatCurrency as fmt } from "../utils/format";
 import type { Income, IncomeSource, IncomeTag } from "../api/types";
 
 type Grouping = "month" | "source" | "tag" | "year" | "fy";
 
-function fmt(v: number, currency = "INR"): string {
-  const hasDecimals = v % 1 !== 0;
-  const abs = Math.abs(v);
-  const formatted = new Intl.NumberFormat("en-IN", { style: "currency", currency, minimumFractionDigits: hasDecimals ? 2 : 0, maximumFractionDigits: hasDecimals ? 2 : 0 }).format(abs);
-  return v < 0 ? `-${formatted}` : formatted;
-}
+// Display amounts in the user's preferred currency (converted by the backend),
+// falling back to the raw amount if a conversion isn't available.
+const dispNet = (i: Income) => i.convertedNetAmount ?? i.netAmount;
+const dispTax = (i: Income) => i.convertedTaxPaid ?? i.taxPaid;
 function parseCreditDate(d: string) {
   const dt = new Date(d + "T00:00:00");
   return {
@@ -64,7 +64,7 @@ function Incomes() {
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const { colors, gradients } = useTokens();
   const { showToast } = useToast();
-  const { userId } = useUser();
+  const { userId, preferredCurrency } = useUser();
   const [incomes, setIncomes] = useState<Income[]>([]);
   const [sources, setSources] = useState<IncomeSource[]>([]);
   const [tags, setTags] = useState<IncomeTag[]>([]);
@@ -101,7 +101,8 @@ function Incomes() {
       setSources(src); setTags(tg);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to load"); }
     finally { setLoading(false); }
-  }, [userId]);
+    // preferredCurrency is a dependency so incomes refetch (with new conversion) when it changes.
+  }, [userId, preferredCurrency]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -161,9 +162,9 @@ function Incomes() {
     return Array.from(groups.entries()).map(([title, items]) => ({ title, items }));
   }, [filtered, grouping, sourceLookup, tagLookup]);
 
-  const totalAll = useMemo(() => filtered.reduce((s, i) => s + i.netAmount + i.taxPaid, 0), [filtered]);
-  const totalNet = useMemo(() => filtered.reduce((s, i) => s + i.netAmount, 0), [filtered]);
-  const totalTax = useMemo(() => filtered.reduce((s, i) => s + i.taxPaid, 0), [filtered]);
+  const totalAll = useMemo(() => filtered.reduce((s, i) => s + dispNet(i) + dispTax(i), 0), [filtered]);
+  const totalNet = useMemo(() => filtered.reduce((s, i) => s + dispNet(i), 0), [filtered]);
+  const totalTax = useMemo(() => filtered.reduce((s, i) => s + dispTax(i), 0), [filtered]);
   const netPct = totalAll > 0 ? (totalNet / totalAll) * 100 : 0;
 
   const chartData = useMemo(() => {
@@ -185,7 +186,7 @@ function Incomes() {
         case "tag": key = tagLookup.get(inc.incomeTagId) ?? "Unknown"; sortKey = key; break;
       }
       const prev = map.get(key) || { sortKey, net: 0, tax: 0 };
-      map.set(key, { sortKey, net: prev.net + inc.netAmount, tax: prev.tax + inc.taxPaid });
+      map.set(key, { sortKey, net: prev.net + dispNet(inc), tax: prev.tax + dispTax(inc) });
     }
     return Array.from(map.entries())
       .sort(([, a], [, b]) => a.sortKey.localeCompare(b.sortKey))
@@ -196,7 +197,7 @@ function Incomes() {
     setEditIncome(null);
     setFormSourceId(sources.find((s) => s.isDefault)?.id ?? "");
     setFormTagId(tags.find((t) => t.isDefault)?.id ?? "");
-    setFormNet(""); setFormTax(""); setFormCurrency("INR");
+    setFormNet(""); setFormTax(""); setFormCurrency(preferredCurrency || "INR");
     setFormDate(new Date().toISOString().slice(0, 10));
     setDialogOpen(true);
   };
@@ -219,7 +220,9 @@ function Incomes() {
     };
     const prev = incomes;
     if (editIncome) {
-      const updated = { ...editIncome, ...payload };
+      // Drop stale converted values so the optimistic row reflects the edited raw
+      // amount until the server responds with fresh conversions.
+      const updated: Income = { ...editIncome, ...payload, convertedNetAmount: undefined, convertedTaxPaid: undefined, convertedCurrency: undefined };
       setIncomes(list => list.map(i => i.id === editIncome.id ? updated : i).sort((a, b) => b.creditedDate.localeCompare(a.creditedDate)));
       setDialogOpen(false);
       try {
@@ -250,8 +253,8 @@ function Incomes() {
 
   const handleDelete = async () => {
     if (!deleteConfirm) return;
-    const { id, netAmount, currency } = deleteConfirm;
-    const amt = fmt(netAmount, currency);
+    const { id } = deleteConfirm;
+    const amt = fmt(dispNet(deleteConfirm), deleteConfirm.convertedCurrency ?? preferredCurrency);
     const prev = incomes;
     setIncomes(list => list.filter(i => i.id !== id));
     setDeleteConfirm(null);
@@ -288,18 +291,18 @@ function Incomes() {
                 Total Income
               </Typography>
               <Typography sx={{ fontSize: { xs: "1.75rem", sm: "2.25rem" }, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.1 }}>
-                {fmt(totalAll)}
+                {fmt(totalAll, preferredCurrency)}
               </Typography>
             </Box>
 
             <Stack direction="row" spacing={1.5} sx={{ mt: 2, position: "relative", zIndex: 1 }} flexWrap="wrap" useFlexGap>
               <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, px: { xs: 1, sm: 1.5 }, py: 0.5, borderRadius: 2, bgcolor: alpha(colors.pureWhite, 0.15), fontSize: { xs: "0.7rem", sm: "0.78rem" }, fontWeight: 600 }}>
                 <TrendingUpIcon sx={{ fontSize: 14 }} />
-                Net: {fmt(totalNet)} ({netPct.toFixed(1)}%)
+                Net: {fmt(totalNet, preferredCurrency)} ({netPct.toFixed(1)}%)
               </Box>
               <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, px: { xs: 1, sm: 1.5 }, py: 0.5, borderRadius: 2, bgcolor: alpha(colors.pureWhite, 0.12), fontSize: { xs: "0.7rem", sm: "0.78rem" }, fontWeight: 600 }}>
                 <AccountBalanceRoundedIcon sx={{ fontSize: 14 }} />
-                Tax: {fmt(totalTax)} ({totalAll > 0 ? ((totalTax / totalAll) * 100).toFixed(1) : "0.0"}%)
+                Tax: {fmt(totalTax, preferredCurrency)} ({totalAll > 0 ? ((totalTax / totalAll) * 100).toFixed(1) : "0.0"}%)
               </Box>
             </Stack>
           </Paper>
@@ -443,7 +446,7 @@ function Incomes() {
             </Typography>
             {chartData.length >= 2 ? (
               <Box sx={{ mx: { xs: -1, sm: 0 } }}>
-                <IncomeChart data={chartData} />
+                <IncomeChart data={chartData} currency={preferredCurrency} />
               </Box>
             ) : (
               <EmptyState
@@ -468,8 +471,8 @@ function Incomes() {
         </Paper>
       ) : (
         sections.map((section, si) => {
-          const sNet = section.items.reduce((s, i) => s + i.netAmount, 0);
-          const sTax = section.items.reduce((s, i) => s + i.taxPaid, 0);
+          const sNet = section.items.reduce((s, i) => s + dispNet(i), 0);
+          const sTax = section.items.reduce((s, i) => s + dispTax(i), 0);
           const sTotal = sNet + sTax;
           return (
             <FadeIn key={section.title} delay={si * 40}>
@@ -494,10 +497,10 @@ function Incomes() {
                     <Typography sx={{ fontWeight: 700, fontSize: "0.95rem" }} noWrap>{section.title}</Typography>
                   </Box>
                   <Stack alignItems="flex-end" spacing={0.25}>
-                    <Typography sx={{ fontWeight: 750, fontSize: "1rem", letterSpacing: "-0.02em" }}>{fmt(sTotal)}</Typography>
+                    <Typography sx={{ fontWeight: 750, fontSize: "1rem", letterSpacing: "-0.02em" }}>{fmt(sTotal, preferredCurrency)}</Typography>
                     <Stack direction="row" spacing={0.25} sx={{ flexWrap: "wrap" }}>
-                      <TintedChip label={`Net ${fmt(sNet)} (${sTotal > 0 ? ((sNet / sTotal) * 100).toFixed(1) : "0.0"}%)`} color={colors.success} size="small" />
-                      {sTax > 0 && <TintedChip label={`Tax ${fmt(sTax)} (${sTotal > 0 ? ((sTax / sTotal) * 100).toFixed(1) : "0.0"}%)`} color={colors.error} size="small" />}
+                      <TintedChip label={`Net ${fmt(sNet, preferredCurrency)} (${sTotal > 0 ? ((sNet / sTotal) * 100).toFixed(1) : "0.0"}%)`} color={colors.success} size="small" />
+                      {sTax > 0 && <TintedChip label={`Tax ${fmt(sTax, preferredCurrency)} (${sTotal > 0 ? ((sTax / sTotal) * 100).toFixed(1) : "0.0"}%)`} color={colors.error} size="small" />}
                     </Stack>
                   </Stack>
                 </Box>
@@ -505,7 +508,10 @@ function Incomes() {
                 {/* Income rows as timeline cards */}
                 <Collapse in={!collapsed[section.title]}>
                 {section.items.map((income, i) => {
-                  const gross = income.netAmount + income.taxPaid;
+                  const iNet = dispNet(income);
+                  const iTax = dispTax(income);
+                  const gross = iNet + iTax;
+                  const iCcy = income.convertedCurrency ?? preferredCurrency;
                   const dt = parseCreditDate(income.creditedDate);
                   return (
                     <Box key={income.id} sx={{
@@ -547,7 +553,7 @@ function Incomes() {
                               <Box>
                                 <Typography variant="caption" sx={{ color: colors.gray400, display: "block", lineHeight: 1 }}>Net</Typography>
                                 <Typography sx={{ fontSize: { xs: "0.85rem", sm: "0.95rem" }, fontWeight: 650, mt: 0.25, color: colors.success }}>
-                                  {fmt(income.netAmount, income.currency)} ({gross > 0 ? ((income.netAmount / gross) * 100).toFixed(1) : "0.0"}%)
+                                  {fmt(iNet, iCcy)} ({gross > 0 ? ((iNet / gross) * 100).toFixed(1) : "0.0"}%)
                                 </Typography>
                               </Box>
                               {income.taxPaid > 0 && (
@@ -556,7 +562,7 @@ function Incomes() {
                                   <Box>
                                     <Typography variant="caption" sx={{ color: colors.gray400, display: "block", lineHeight: 1 }}>Tax</Typography>
                                     <Typography sx={{ fontSize: { xs: "0.85rem", sm: "0.95rem" }, fontWeight: 650, mt: 0.25, color: colors.error }}>
-                                      {fmt(income.taxPaid, income.currency)} ({gross > 0 ? ((income.taxPaid / gross) * 100).toFixed(1) : "0.0"}%)
+                                      {fmt(iTax, iCcy)} ({gross > 0 ? ((iTax / gross) * 100).toFixed(1) : "0.0"}%)
                                     </Typography>
                                   </Box>
                                 </>
@@ -573,7 +579,7 @@ function Incomes() {
                               </IconButton>
                             </Stack>
                             <Typography sx={{ fontSize: "1.1rem", fontWeight: 750, letterSpacing: "-0.02em" }}>
-                              {fmt(gross, income.currency)}
+                              {fmt(gross, iCcy)}
                             </Typography>
                           </Stack>
                         </Stack>
@@ -632,7 +638,7 @@ function Incomes() {
             <Grid size={5}>
               <TextField select label="Currency" value={formCurrency}
                 onChange={(e) => setFormCurrency(e.target.value)} fullWidth>
-                {["INR", "USD", "EUR", "GBP", "CAD", "AUD", "SGD", "JPY"].map((c) => (
+                {CURRENCIES.map((c) => (
                   <MenuItem key={c} value={c}>{c}</MenuItem>
                 ))}
               </TextField>
