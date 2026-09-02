@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
 import { Box, Typography, useTheme, useMediaQuery } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import SavingsOutlinedIcon from "@mui/icons-material/SavingsOutlined";
 import { useTokens } from "../context/ColorModeContext";
 import type { ChartDataPoint } from "../api/types";
-import { formatCurrency } from "../utils/format";
+import { formatCurrency, formatCurrencyCompact } from "../utils/format";
 
 interface EnrichedDataPoint extends ChartDataPoint {
   savingsRate?: number | null;
@@ -13,13 +13,14 @@ interface EnrichedDataPoint extends ChartDataPoint {
 
 interface NetWorthChartProps {
   data: EnrichedDataPoint[];
+  currency?: string;
 }
 
-// Net worth is displayed in INR as whole numbers (no decimals).
-const fmtCurrency = (v: number) => formatCurrency(v, "INR", { maxDecimals: 0 });
+// Net worth is displayed as whole numbers (no decimals) in the given display currency.
+const fmtCurrency = (v: number, currency?: string) => formatCurrency(v, currency, { maxDecimals: 0 });
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-function CustomTooltip({ active, payload, label, colors, shadow }: any) {
+function CustomTooltip({ active, payload, label, colors, shadow, currency }: any) {
   if (!active || !payload?.length) return null;
   const value = payload.find((p: any) => p.dataKey === "value")?.value;
   const invested = payload.find((p: any) => p.dataKey === "invested")?.value;
@@ -35,13 +36,13 @@ function CustomTooltip({ active, payload, label, colors, shadow }: any) {
       {value != null && (
         <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, mb: 0.5 }}>
           <Typography sx={{ fontSize: 12, color: colors.gray500 }}>Value</Typography>
-          <Typography sx={{ fontSize: 12, fontWeight: 700, color: colors.brand }}>{fmtCurrency(value)}</Typography>
+          <Typography sx={{ fontSize: 12, fontWeight: 700, color: colors.brand }}>{fmtCurrency(value, currency)}</Typography>
         </Box>
       )}
       {invested != null && (
         <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, mb: 0.5 }}>
           <Typography sx={{ fontSize: 12, color: colors.gray500 }}>Invested</Typography>
-          <Typography sx={{ fontSize: 12, fontWeight: 600, color: colors.warning }}>{fmtCurrency(invested)}</Typography>
+          <Typography sx={{ fontSize: 12, fontWeight: 600, color: colors.warning }}>{fmtCurrency(invested, currency)}</Typography>
         </Box>
       )}
       {sr != null && (
@@ -64,12 +65,16 @@ function CustomTooltip({ active, payload, label, colors, shadow }: any) {
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-function NetWorthChart({ data }: NetWorthChartProps) {
+function NetWorthChart({ data, currency }: NetWorthChartProps) {
   const theme = useTheme();
   const compact = useMediaQuery(theme.breakpoints.down("sm"));
   const { colors, shadow } = useTokens();
 
-  const hasSavings = data.some((d) => d.savingsRate != null);
+  // The series carries the currency its own amounts were converted into; the prop is only a
+  // fallback for an empty series.
+  const chartCurrency = data[0]?.displayCurrency ?? currency;
+
+  const hasSavings = useMemo(() => data.some((d) => d.savingsRate != null), [data]);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [showCount, setShowCount] = useState<Record<string, number>>({});
   const toggle = (key: string) => {
@@ -85,20 +90,23 @@ function NetWorthChart({ data }: NetWorthChartProps) {
     });
   };
 
-  // Compute savings Y-axis max and gradient thresholds
-  const savMax = (() => {
-    const m = Math.max(...data.map((d) => d.savingsRate ?? 0));
-    return Math.ceil(Math.max(m, 100) / 10) * 10;
-  })();
+  // Compute savings Y-axis max and gradient thresholds.
   // Offsets are from top (y1=0=max, y2=1=0), so threshold at value V → offset = 1 - V/max
   // Add smooth transition bands around thresholds
-  const band = 0.06; // 6% blend zone on each side
-  const sav50 = Math.min(1 - 50 / savMax, 1);
-  const sav25 = Math.min(1 - 25 / savMax, 1);
-  const sav50a = Math.max(sav50 - band, 0);
-  const sav50b = Math.min(sav50 + band, 1);
-  const sav25a = Math.max(sav25 - band, sav50b);
-  const sav25b = Math.min(sav25 + band, 1);
+  const { sav50a, sav50b, sav25a, sav25b } = useMemo(() => {
+    const m = Math.max(...data.map((d) => d.savingsRate ?? 0));
+    const savMax = Math.ceil(Math.max(m, 100) / 10) * 10;
+    const band = 0.06; // 6% blend zone on each side
+    const sav50 = Math.min(1 - 50 / savMax, 1);
+    const sav25 = Math.min(1 - 25 / savMax, 1);
+    const upper50 = Math.min(sav50 + band, 1);
+    return {
+      sav50a: Math.max(sav50 - band, 0),
+      sav50b: upper50,
+      sav25a: Math.max(sav25 - band, upper50),
+      sav25b: Math.min(sav25 + band, 1),
+    };
+  }, [data]);
 
   return (
     <ResponsiveContainer width="100%" height={compact ? 240 : 340}>
@@ -137,12 +145,7 @@ function NetWorthChart({ data }: NetWorthChartProps) {
           yAxisId="left"
           tickLine={false} axisLine={false} width={compact ? 40 : 52}
           tick={{ fontSize: compact ? 10 : 11, fill: colors.gray400 }}
-          tickFormatter={(v: number) => {
-            if (Math.abs(v) >= 1e7) return `${(v / 1e7).toFixed(1)}Cr`;
-            if (Math.abs(v) >= 1e5) return `${(v / 1e5).toFixed(1)}L`;
-            if (Math.abs(v) >= 1e3) return `${(v / 1e3).toFixed(0)}K`;
-            return String(v);
-          }}
+          tickFormatter={(v: number) => formatCurrencyCompact(v, chartCurrency)}
         />
         {hasSavings && (
           <YAxis
@@ -154,7 +157,7 @@ function NetWorthChart({ data }: NetWorthChartProps) {
           />
         )}
         <Tooltip
-          content={<CustomTooltip colors={colors} shadow={shadow} />}
+          content={<CustomTooltip colors={colors} shadow={shadow} currency={chartCurrency} />}
           cursor={{ stroke: colors.gray200, strokeDasharray: "4 4" }}
         />
         <Legend
@@ -214,4 +217,4 @@ function NetWorthChart({ data }: NetWorthChartProps) {
   );
 }
 
-export default NetWorthChart;
+export default memo(NetWorthChart);

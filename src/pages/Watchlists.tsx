@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Box, Paper, Typography, TextField, Button,
@@ -18,19 +18,17 @@ import AllInclusiveRoundedIcon from "@mui/icons-material/AllInclusiveRounded";
 import { useUser } from "../context/UserContext";
 import {
   getWatchlists, createWatchlist, updateWatchlist, deleteWatchlist,
-  getWatchlistAccounts, getTransactions,
   invalidateCache,
 } from "../api/client";
 import { EmptyState, ErrorState, ListSkeleton, FadeIn } from "../components/shared";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
-import { computeXirr } from "../utils/xirr";
 import XirrBadge from "../components/XirrBadge";
-import type { WatchlistSummary, Transaction } from "../api/types";
+import type { WatchlistSummary } from "../api/types";
 import { formatCurrency as fmt } from "../utils/format";
 
 function Watchlists() {
-  const { userId } = useUser();
+  const { userId, preferredCurrency, dataVersion, refreshAll } = useUser();
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -39,8 +37,6 @@ function Watchlists() {
   const [watchlists, setWatchlists] = useState<WatchlistSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [xirrByWatchlist, setXirrByWatchlist] = useState<Map<number, number | null>>(new Map());
-  const [xirrLoading, setXirrLoading] = useState(true);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
@@ -49,62 +45,40 @@ function Watchlists() {
   const [deleteConfirm, setDeleteConfirm] = useState<WatchlistSummary | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const load = useCallback(async () => {
-    if (!userId) return;
-    try { setLoading(true); setError(null); setWatchlists(await getWatchlists(userId)); }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to load"); }
-    finally { setLoading(false); }
-  }, [userId]);
-
-  useEffect(() => { load(); }, [load]);
-
-  // Compute XIRR per watchlist (fetch linked accounts + their txns)
+  // Re-runs on `dataVersion` so a display-currency change or a refresh refetches in place.
   useEffect(() => {
-    if (watchlists.length === 0) return;
+    if (!userId) return;
     let cancelled = false;
-    setXirrLoading(true);
     (async () => {
-      const results = await Promise.all(
-        watchlists.map(async w => {
-          try {
-            const accs = await getWatchlistAccounts(w.id);
-            const eligible = accs.filter(a => a.type === "BROKER" || a.needsDailyData);
-            if (eligible.length === 0) return [w.id, null] as const;
-            const txnsPer = await Promise.all(
-              eligible.map(async a => ({ a, txns: await getTransactions({ accountId: a.id }).catch(() => [] as Transaction[]) }))
-            );
-            const allTxns: Transaction[] = [];
-            let totalCurrent = 0;
-            for (const { a, txns } of txnsPer) {
-              if (txns.length > 0) { allTxns.push(...txns); totalCurrent += a.currentDayValue; }
-            }
-            return [w.id, allTxns.length > 0 ? computeXirr(allTxns, totalCurrent) : null] as const;
-          } catch { return [w.id, null] as const; }
-        })
-      );
-      if (cancelled) return;
-      setXirrByWatchlist(prev => {
-        const next = new Map(prev);
-        for (const [id, x] of results) next.set(id, x);
-        return next;
-      });
-      setXirrLoading(false);
+      try {
+        setLoading(true); setError(null);
+        const data = await getWatchlists(userId);
+        if (!cancelled) setWatchlists(data);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
     return () => { cancelled = true; };
-  }, [watchlists]);
+  }, [userId, dataVersion]);
 
   const handleCreate = async () => {
     if (!userId || !newName.trim()) return;
     const trimmed = newName.trim();
     const prev = watchlists;
     const tempId = -Date.now();
-    const optimistic: WatchlistSummary = { id: tempId, userId, name: trimmed, currentDayValue: 0, previousDayValue: 0, invested: 0 };
+    const optimistic: WatchlistSummary = {
+      id: tempId, userId, name: trimmed,
+      currentDayValue: 0, previousDayValue: 0, invested: 0, gain: 0, dayChange: 0,
+      xirr: null, displayCurrency: preferredCurrency,
+    };
     setWatchlists(w => [...w, optimistic]);
     setCreateOpen(false); setNewName("");
     try {
       const created = await createWatchlist(userId, trimmed);
       setWatchlists(w => w.map(wl => wl.id === tempId ? { ...optimistic, ...created } : wl));
-      invalidateCache("watchlists");
+      invalidateCache("/watchlists", "/account-watchlists");
       showToast(`Watchlist "${trimmed}" created`);
     } catch (err) {
       setWatchlists(prev);
@@ -120,7 +94,7 @@ function Watchlists() {
     setEditWl(null);
     try {
       await updateWatchlist(editWl.id, name);
-      invalidateCache("watchlists");
+      invalidateCache("/watchlists", "/account-watchlists");
       showToast(`Watchlist "${name}" updated`);
     } catch (err) {
       setWatchlists(prev);
@@ -136,7 +110,7 @@ function Watchlists() {
     setDeleteConfirm(null);
     try {
       await deleteWatchlist(id);
-      invalidateCache("watchlists");
+      invalidateCache("/watchlists", "/account-watchlists");
       showToast(`Watchlist "${name}" deleted`);
     } catch (err) {
       setWatchlists(prev);
@@ -144,18 +118,25 @@ function Watchlists() {
     }
   };
 
-  // Filter and sort
-  const q = searchQuery.toLowerCase().trim();
-  const filtered = (q
-    ? watchlists.filter(w => w.name.toLowerCase().includes(q))
-    : watchlists
-  ).sort((a, b) => {
-    if (a.name === "All") return -1;
-    if (b.name === "All") return 1;
-    return a.name.localeCompare(b.name);
-  });
+  // Filter and sort. Copy before sorting: the un-filtered branch hands back the state array itself.
+  const filtered = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    const matches = q ? watchlists.filter(w => w.name.toLowerCase().includes(q)) : watchlists;
+    return [...matches].sort((a, b) => {
+      if (a.name === "All") return -1;
+      if (b.name === "All") return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [watchlists, searchQuery]);
 
-  if (error && watchlists.length === 0 && !loading) return <ErrorState message={error} onRetry={load} />;
+  if (error && watchlists.length === 0 && !loading) return <ErrorState message={error} onRetry={refreshAll} />;
+
+  const isDark = theme.palette.mode === "dark";
+  const cardMuted = isDark ? alpha(colors.pureWhite, 0.5) : colors.gray400;
+  const cardSubtle = isDark ? alpha(colors.pureWhite, 0.08) : colors.gray100;
+  const cardInvested = isDark ? "#60A5FA" : colors.brand;
+  const cardSuccess = isDark ? "#34D399" : colors.success;
+  const cardError = isDark ? "#F87171" : colors.error;
 
   return (
     <Stack spacing={{ xs: 2.5, sm: 3 }}>
@@ -171,7 +152,7 @@ function Watchlists() {
         </Stack>
       )}
 
-      {loading || xirrLoading ? <ListSkeleton rows={3} /> : watchlists.length === 0 ? (
+      {loading ? <ListSkeleton rows={3} /> : watchlists.length === 0 ? (
         <Paper>
           <EmptyState
             icon={<VisibilityOutlinedIcon />}
@@ -188,18 +169,10 @@ function Watchlists() {
         <FadeIn delay={100}>
           <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gridAutoRows: "1fr", gap: 2 }}>
             {filtered.map((w, i) => {
-              const gain = w.currentDayValue - w.invested;
-              const gainPct = w.invested > 0 ? (gain / w.invested) * 100 : 0;
-              const dayChg = w.currentDayValue - w.previousDayValue;
-              const dayPct = w.previousDayValue > 0 ? (dayChg / w.previousDayValue) * 100 : 0;
+              const gainPct = w.invested > 0 ? (w.gain / w.invested) * 100 : 0;
+              const dayPct = w.previousDayValue > 0 ? (w.dayChange / w.previousDayValue) * 100 : 0;
               const isAll = w.name === "All";
-              const isDark = theme.palette.mode === "dark";
-              const cardMuted = isDark ? alpha(colors.pureWhite, 0.5) : colors.gray400;
-              const cardSubtle = isDark ? alpha(colors.pureWhite, 0.08) : colors.gray100;
               const accentColor = isAll ? colors.brand : colors.accent;
-              const cardInvested = isDark ? "#60A5FA" : colors.brand;
-              const cardSuccess = isDark ? "#34D399" : colors.success;
-              const cardError = isDark ? "#F87171" : colors.error;
               return (
                 <FadeIn key={w.id} delay={i * 40}>
                   <Paper
@@ -224,7 +197,7 @@ function Watchlists() {
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography sx={{ fontWeight: 650, fontSize: "0.9rem", lineHeight: 1.3 }} noWrap>{w.name}</Typography>
                       </Box>
-                      <XirrBadge value={xirrByWatchlist.get(w.id) ?? null} size="sm" />
+                      <XirrBadge value={w.xirr} size="sm" />
                       {!isAll && (
                         <Stack direction="row" spacing={0} onClick={e => e.stopPropagation()}>
                           <IconButton size="small" onClick={() => { setEditWl(w); setEditName(w.name); }} sx={{ color: colors.brand, opacity: 0.6, "&:hover": { opacity: 1, bgcolor: alpha(colors.brand, 0.08) } }}>
@@ -242,7 +215,7 @@ function Watchlists() {
                         Value
                       </Typography>
                       <Typography sx={{ fontSize: "1.25rem", fontWeight: 750, letterSpacing: "-0.02em" }}>
-                        {fmt(w.currentDayValue)}
+                        {fmt(w.currentDayValue, w.displayCurrency)}
                       </Typography>
                     </Box>
 
@@ -253,32 +226,32 @@ function Watchlists() {
                             Invested
                           </Typography>
                           <Typography noWrap sx={{ fontSize: "0.8rem", fontWeight: 700, color: cardInvested }}>
-                            {fmt(w.invested)}
+                            {fmt(w.invested, w.displayCurrency)}
                           </Typography>
                         </Box>
                       )}
                       {w.invested > 0 && (
-                        <Box sx={{ flex: 1, minWidth: { xs: 70, sm: 80 }, p: 1, borderRadius: 1.5, bgcolor: alpha(gain >= 0 ? cardSuccess : cardError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
+                        <Box sx={{ flex: 1, minWidth: { xs: 70, sm: 80 }, p: 1, borderRadius: 1.5, bgcolor: alpha(w.gain >= 0 ? cardSuccess : cardError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
                           <Typography sx={{ fontSize: "0.6rem", fontWeight: 500, color: cardMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
                             P&L
                           </Typography>
-                          <Typography noWrap sx={{ fontSize: "0.8rem", fontWeight: 700, color: gain >= 0 ? cardSuccess : cardError }}>
-                            {gain >= 0 ? "+" : ""}{fmt(gain)}
+                          <Typography noWrap sx={{ fontSize: "0.8rem", fontWeight: 700, color: w.gain >= 0 ? cardSuccess : cardError }}>
+                            {w.gain >= 0 ? "+" : ""}{fmt(w.gain, w.displayCurrency)}
                           </Typography>
-                          <Typography sx={{ fontSize: "0.65rem", fontWeight: 600, color: gain >= 0 ? cardSuccess : cardError, opacity: 0.8 }}>
-                            {gain >= 0 ? "+" : ""}{gainPct.toFixed(1)}%
+                          <Typography sx={{ fontSize: "0.65rem", fontWeight: 600, color: w.gain >= 0 ? cardSuccess : cardError, opacity: 0.8 }}>
+                            {w.gain >= 0 ? "+" : ""}{gainPct.toFixed(1)}%
                           </Typography>
                         </Box>
                       )}
-                      <Box sx={{ flex: 1, minWidth: { xs: 70, sm: 80 }, p: 1, borderRadius: 1.5, bgcolor: alpha(dayChg >= 0 ? cardSuccess : cardError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
+                      <Box sx={{ flex: 1, minWidth: { xs: 70, sm: 80 }, p: 1, borderRadius: 1.5, bgcolor: alpha(w.dayChange >= 0 ? cardSuccess : cardError, isDark ? 0.1 : 0.06), overflow: "hidden" }}>
                         <Typography sx={{ fontSize: "0.6rem", fontWeight: 500, color: cardMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
                           Today
                         </Typography>
-                        <Typography noWrap sx={{ fontSize: "0.8rem", fontWeight: 700, color: dayChg >= 0 ? cardSuccess : cardError }}>
-                          {dayChg >= 0 ? "+" : ""}{fmt(dayChg)}
+                        <Typography noWrap sx={{ fontSize: "0.8rem", fontWeight: 700, color: w.dayChange >= 0 ? cardSuccess : cardError }}>
+                          {w.dayChange >= 0 ? "+" : ""}{fmt(w.dayChange, w.displayCurrency)}
                         </Typography>
-                        <Typography sx={{ fontSize: "0.65rem", fontWeight: 600, color: dayChg >= 0 ? cardSuccess : cardError, opacity: 0.8 }}>
-                          {dayChg >= 0 ? "+" : ""}{dayPct.toFixed(2)}%
+                        <Typography sx={{ fontSize: "0.65rem", fontWeight: 600, color: w.dayChange >= 0 ? cardSuccess : cardError, opacity: 0.8 }}>
+                          {w.dayChange >= 0 ? "+" : ""}{dayPct.toFixed(2)}%
                         </Typography>
                       </Box>
                     </Stack>

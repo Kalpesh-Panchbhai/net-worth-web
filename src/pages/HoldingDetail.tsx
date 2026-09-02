@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   Box, Paper, Typography, TextField, Button, MenuItem, Avatar,
@@ -15,12 +15,11 @@ import PauseCircleOutlineIcon from "@mui/icons-material/PauseCircleOutline";
 import { useUser } from "../context/UserContext";
 import {
   getAccounts, getHoldings, getTransactions, createTransaction, deleteTransaction,
-  invalidateCache,
+  invalidateMoneyCaches,
 } from "../api/client";
 import { EmptyState, ErrorState, ListSkeleton, FadeIn } from "../components/shared";
 import EntityChart from "../components/EntityChart";
 import XirrBadge from "../components/XirrBadge";
-import { computeXirr } from "../utils/xirr";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
 import type { AccountSummary, HoldingSummary, Transaction } from "../api/types";
@@ -39,7 +38,7 @@ function parseTxnDate(dateStr: string) {
 function HoldingDetail() {
   const { accountId, holdingId } = useParams<{ accountId: string; holdingId: string }>();
   const navigate = useNavigate();
-  const { userId } = useUser();
+  const { userId, dataVersion, refreshAll } = useUser();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const { colors, shadow } = useTokens();
@@ -49,7 +48,6 @@ function HoldingDetail() {
   const [holding, setHolding] = useState<HoldingSummary | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
-  const [txnLoading, setTxnLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Create transaction
@@ -64,30 +62,33 @@ function HoldingDetail() {
   const numAccountId = Number(accountId);
   const numHoldingId = Number(holdingId);
 
-  const loadContext = useCallback(async () => {
+  // Transactions only need the holding id from the URL, so all three requests go out together
+  // instead of waiting for the holding summary to come back first.
+  const load = useCallback(async (isActive: () => boolean = () => true) => {
     if (!userId || !accountId || !holdingId) return;
     try {
       setLoading(true); setError(null);
-      const [accounts, holdings] = await Promise.all([getAccounts(userId), getHoldings(numAccountId)]);
+      const [accounts, holdings, txns] = await Promise.all([
+        getAccounts(userId),
+        getHoldings(numAccountId),
+        getTransactions({ holdingId: numHoldingId }),
+      ]);
+      if (!isActive()) return;
       const foundAccount = accounts.find(a => a.id === numAccountId);
       const foundHolding = holdings.find(h => h.id === numHoldingId);
       if (foundAccount) setAccount(foundAccount); else setError("Account not found");
       if (foundHolding) setHolding(foundHolding); else setError("Holding not found");
-    } catch (err) { setError(err instanceof Error ? err.message : "Failed to load"); }
-    finally { setLoading(false); }
-  }, [userId, accountId, holdingId]);
+      setTransactions(txns);
+    } catch (err) { if (isActive()) setError(err instanceof Error ? err.message : "Failed to load"); }
+    finally { if (isActive()) setLoading(false); }
+  }, [userId, accountId, holdingId, numAccountId, numHoldingId, dataVersion]);
 
-  const loadTransactions = useCallback(async () => {
-    if (!numHoldingId) return;
-    try { setTxnLoading(true); setTransactions(await getTransactions({ holdingId: numHoldingId })); }
-    catch (err) { showToast(err instanceof Error ? err.message : "Failed to load transactions", "error"); }
-    finally { setTxnLoading(false); }
-  }, [numHoldingId]);
+  useEffect(() => {
+    let cancelled = false;
+    load(() => !cancelled);
+    return () => { cancelled = true; };
+  }, [load]);
 
-  useEffect(() => { loadContext(); }, [loadContext]);
-  useEffect(() => { if (holding) loadTransactions(); }, [holding, loadTransactions]);
-
-  const currency = account?.currency || "INR";
 
   // Last transaction date (newest first) — used to restrict date input
   const lastTxnDate = transactions.length > 0 ? transactions[0].txnDate : "";
@@ -97,25 +98,36 @@ function HoldingDetail() {
   const canAddTxn = !minDate || minDate <= today;
 
   const handleCreate = async () => {
-    if (!txnDate || !txnInvested || !txnValue) return;
-    let invested = parseFloat(parseFloat(txnInvested).toFixed(2));
-    let value = parseFloat(parseFloat(txnValue).toFixed(3));
-    // Add mode: add to last transaction's cumulative values
-    if (txnMode === "add" && transactions.length > 0) {
-      const last = transactions[0];
-      invested = parseFloat((last.invested + invested).toFixed(2));
-      value = parseFloat((last.value + value).toFixed(3));
-    }
+    if (!account || !holding || !txnDate || !txnInvested || !txnValue) return;
+    // Send exactly what was typed, in the account's own currency, and let the server do the
+    // running total for "add" mode. Adding to the previous row here would add the entered native
+    // amount to a cumulative figure the API already converted into the display currency, and that
+    // mixed number would be stored as the native cost basis.
+    const invested = parseFloat(parseFloat(txnInvested).toFixed(2));
+    const value = parseFloat(parseFloat(txnValue).toFixed(3));
     const date = txnDate;
     const prev = transactions;
     const tempId = -Date.now();
-    const optimistic: Transaction = { id: tempId, accountId: numAccountId, holdingId: numHoldingId, txnDate: date, invested, value };
+    const last = transactions[0];
+    const optimisticInvested = txnMode === "add" && last ? invested + last.invested : invested;
+    const optimisticValue = txnMode === "add" && last ? value + last.value : value;
+    // Optimistic only: the placeholder mirrors the row the server will return. The server's own
+    // sum is authoritative and replaces this as soon as the response lands.
+    const optimistic: Transaction = {
+      id: tempId, accountId: numAccountId, holdingId: numHoldingId, txnDate: date,
+      invested: optimisticInvested, value: optimisticValue,
+      displayCurrency: last?.displayCurrency ?? account.currency,
+      valueInUnits: holding.unitsAreShares,
+    };
     setTransactions(t => [optimistic, ...t]);
     setCreateOpen(false); setTxnDate(""); setTxnInvested(""); setTxnValue(""); setTxnMode("add");
     try {
-      const created = await createTransaction({ accountId: numAccountId, holdingId: numHoldingId, txnDate: date, invested, value, mode: "update" });
-      setTransactions(t => t.map(txn => txn.id === tempId ? created : txn));
-      invalidateCache("transactions");
+      await createTransaction({ accountId: numAccountId, holdingId: numHoldingId, txnDate: date, invested, value, mode: txnMode });
+      invalidateMoneyCaches();
+      // Refetch rather than splicing the response in: the created row is echoed in the account's
+      // NATIVE currency and carries no converted deltas, so dropping it into a converted list
+      // would show a wrong amount for the newest row and every figure derived from it.
+      refreshAll();
       showToast(`Transaction on ${date} created`);
     } catch (err) {
       setTransactions(prev);
@@ -131,7 +143,7 @@ function HoldingDetail() {
     setDeleteConfirm(null);
     try {
       await deleteTransaction(id);
-      invalidateCache("transactions");
+      invalidateMoneyCaches();
       showToast(`Transaction on ${date} deleted`);
     } catch (err) {
       setTransactions(prev);
@@ -139,13 +151,32 @@ function HoldingDetail() {
     }
   };
 
-  if (error && !account && !loading) return <ErrorState message={error} onRetry={loadContext} />;
+  // Per-transaction batch P&L: the units bought or sold, marked to the holding's current price per
+  // unit, less what was invested at the time. Both sides are in the holding's displayCurrency now,
+  // which is the only reason the subtraction is meaningful.
+  const timeline = useMemo(() => {
+    const pricePerUnit = holding && holding.units > 0 ? holding.currentDayValue / holding.units : 0;
+    return transactions.map((t, i) => {
+      const prev = i < transactions.length - 1 ? transactions[i + 1] : null;
+      // Server-converted, each at its own transaction date. Subtracting the cumulative
+      // amounts here would bury the FX drift between the two dates in the difference.
+      const delta = t.valueDelta ?? t.value - (prev?.value ?? 0);
+      const investedDelta = t.investedDelta ?? t.invested - (prev?.invested ?? 0);
+      const batchPL = delta * pricePerUnit - investedDelta;
+      return {
+        t, delta, investedDelta, batchPL,
+        batchPLPct: investedDelta > 0 ? (batchPL / investedDelta) * 100 : 0,
+        dt: parseTxnDate(t.txnDate),
+      };
+    });
+  }, [transactions, holding]);
 
-  const holdingGain = holding ? holding.currentDayValue - holding.invested : 0;
+  const holdingGain = holding?.gain ?? 0;
   const holdingGainPct = holding && holding.invested > 0 ? (holdingGain / holding.invested) * 100 : 0;
-  const holdingXirr = holding && transactions.length > 0 ? computeXirr(transactions, holding.currentDayValue) : null;
-  const holdingDayChg = holding ? holding.currentDayValue - holding.previousDayValue : 0;
+  const holdingDayChg = holding?.dayChange ?? 0;
   const holdingDayPct = holding && holding.previousDayValue > 0 ? (holdingDayChg / holding.previousDayValue) * 100 : 0;
+
+  if (error && !account && !loading) return <ErrorState message={error} onRetry={() => load()} />;
 
   return (
     <Stack spacing={{ xs: 2.5, sm: 3 }}>
@@ -160,7 +191,7 @@ function HoldingDetail() {
         <Typography color="text.primary">{holding?.name || "..."}</Typography>
       </Breadcrumbs>
 
-      {loading || txnLoading ? <ListSkeleton rows={3} /> : holding && (
+      {loading ? <ListSkeleton rows={3} /> : holding && (
         <>
           {/* ── Holding Hero Card ── */}
           <FadeIn>
@@ -191,7 +222,7 @@ function HoldingDetail() {
                       </Typography>
                       <Stack direction="row" spacing={0.75} alignItems="center">
                         <Typography sx={{ fontSize: "0.7rem", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: heroMuted }}>
-                          {holding.symbol} · {fmtUnits(holding.units)} units
+                          {holding.symbol} · {holding.unitsAreShares ? `${fmtUnits(holding.units)} units` : fmt(holding.units, account?.currency)}
                         </Typography>
                         {account && !account.isActive && (
                           <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.4, px: 1, py: 0.2, borderRadius: 1.5, bgcolor: heroSubtle, fontSize: "0.6rem", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: heroMuted }}>
@@ -200,7 +231,7 @@ function HoldingDetail() {
                         )}
                       </Stack>
                     </Box>
-                    <XirrBadge value={holdingXirr} size="lg" />
+                    <XirrBadge value={holding.xirr} size="lg" />
                   </Stack>
 
                   <Box sx={{ px: 2, py: 1.5, borderRadius: 2, bgcolor: heroSubtle, display: "inline-block" }}>
@@ -208,7 +239,7 @@ function HoldingDetail() {
                       Current Value
                     </Typography>
                     <Typography sx={{ fontSize: { xs: "1.75rem", sm: "2.25rem" }, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.1, color: heroText }}>
-                      {fmt(holding.currentDayValue, currency)}
+                      {fmt(holding.currentDayValue, holding.displayCurrency)}
                     </Typography>
                   </Box>
 
@@ -218,7 +249,7 @@ function HoldingDetail() {
                         Invested
                       </Typography>
                       <Typography sx={{ fontSize: "0.95rem", fontWeight: 700, color: heroInvested }}>
-                        {fmt(holding.invested, currency)}
+                        {fmt(holding.invested, holding.displayCurrency)}
                       </Typography>
                     </Box>
                     {holding.invested > 0 && (
@@ -227,7 +258,7 @@ function HoldingDetail() {
                           Total P&L
                         </Typography>
                         <Typography noWrap sx={{ fontSize: { xs: "0.75rem", sm: "0.95rem" }, fontWeight: 700, color: holdingGain >= 0 ? heroSuccess : heroError }}>
-                          {holdingGain >= 0 ? "+" : ""}{fmt(holdingGain, currency)}
+                          {holdingGain >= 0 ? "+" : ""}{fmt(holdingGain, holding.displayCurrency)}
                         </Typography>
                         <Typography sx={{ fontSize: { xs: "0.6rem", sm: "0.65rem" }, fontWeight: 600, color: holdingGain >= 0 ? heroSuccess : heroError, opacity: 0.8 }}>
                           {holdingGainPct >= 0 ? "+" : ""}{holdingGainPct.toFixed(1)}%
@@ -239,7 +270,7 @@ function HoldingDetail() {
                         Today
                       </Typography>
                       <Typography noWrap sx={{ fontSize: { xs: "0.75rem", sm: "0.95rem" }, fontWeight: 700, color: holdingDayChg >= 0 ? heroSuccess : heroError }}>
-                        {holdingDayChg >= 0 ? "+" : ""}{fmt(holdingDayChg, currency)}
+                        {holdingDayChg >= 0 ? "+" : ""}{fmt(holdingDayChg, holding.displayCurrency)}
                       </Typography>
                       <Typography sx={{ fontSize: { xs: "0.6rem", sm: "0.65rem" }, fontWeight: 600, color: holdingDayChg >= 0 ? heroSuccess : heroError, opacity: 0.8 }}>
                         {holdingDayPct >= 0 ? "+" : ""}{holdingDayPct.toFixed(1)}%
@@ -254,11 +285,11 @@ function HoldingDetail() {
 
           {/* ── Chart ── */}
           <FadeIn delay={80}>
-            <EntityChart entityType="holding" entityId={numHoldingId} accentColor={colors.brand} currency={currency} showInvested={true} transactions={transactions} />
+            <EntityChart entityType="holding" entityId={numHoldingId} accentColor={colors.brand} currency={holding.displayCurrency} showInvested={true} transactions={transactions} />
           </FadeIn>
 
           {/* ── Transaction timeline ── */}
-          {txnLoading ? <ListSkeleton rows={4} /> : transactions.length === 0 ? (
+          {transactions.length === 0 ? (
             <Paper>
               <EmptyState
                 icon={<ReceiptOutlinedIcon />}
@@ -273,19 +304,9 @@ function HoldingDetail() {
                 {transactions.length} transaction{transactions.length !== 1 ? "s" : ""}
               </Typography>
               <Stack spacing={0}>
-                {transactions.map((t, i) => {
-                  const dt = parseTxnDate(t.txnDate);
-                  const prevValue = i < transactions.length - 1 ? transactions[i + 1].value : 0;
-                  const prevInvested = i < transactions.length - 1 ? transactions[i + 1].invested : 0;
-                  const delta = t.value - prevValue;
-                  const investedDelta = t.invested - prevInvested;
+                {timeline.map(({ t, dt, delta, investedDelta, batchPL, batchPLPct }, i) => {
                   const isAdd = delta >= 0;
                   const unitColor = isAdd ? colors.success : colors.error;
-                  // Per-transaction P&L
-                  const pricePerUnit = holding.units > 0 ? holding.currentDayValue / holding.units : 0;
-                  const currentValueOfBatch = delta * pricePerUnit;
-                  const batchPL = currentValueOfBatch - investedDelta;
-                  const batchPLPct = investedDelta > 0 ? (batchPL / investedDelta) * 100 : 0;
                   const plColor = batchPL >= 0 ? colors.success : colors.error;
                   return (
                     <FadeIn key={t.id} delay={i * 30}>
@@ -335,21 +356,21 @@ function HoldingDetail() {
                               {/* Invested: delta + total */}
                               <Stack direction="row" spacing={0.75} alignItems="baseline" sx={{ mt: 0.75, flexWrap: "wrap" }}>
                                 <Typography sx={{ fontSize: "1.05rem", fontWeight: 700 }}>
-                                  {investedDelta >= 0 ? "+" : ""}{fmt(investedDelta, currency)}
+                                  {investedDelta >= 0 ? "+" : ""}{fmt(investedDelta, t.displayCurrency)}
                                 </Typography>
                                 <Typography sx={{ fontSize: { xs: "0.7rem", sm: "0.78rem" }, color: colors.gray400 }}>
-                                  → Total: {fmt(t.invested, currency)}
+                                  → Total: {fmt(t.invested, t.displayCurrency)}
                                 </Typography>
                               </Stack>
 
                               {/* Units: delta + total */}
                               <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.5 }}>
                                 <Typography sx={{ fontSize: "0.8rem", fontWeight: 650, color: unitColor }}>
-                                  {isAdd ? "+" : ""}{fmtUnits(delta)} units
+                                  {isAdd ? "+" : ""}{t.valueInUnits ? `${fmtUnits(delta)} units` : fmt(delta, t.displayCurrency)}
                                 </Typography>
                                 <Typography sx={{ fontSize: "0.7rem", color: colors.gray400 }}>→</Typography>
                                 <Typography sx={{ fontSize: "0.8rem", fontWeight: 600, color: colors.gray500 }}>
-                                  Total: {fmtUnits(t.value)} units
+                                  Total: {t.valueInUnits ? `${fmtUnits(t.value)} units` : fmt(t.value, t.displayCurrency)}
                                 </Typography>
                               </Stack>
 
@@ -357,7 +378,7 @@ function HoldingDetail() {
                               {investedDelta > 0 && delta > 0 && (
                                 <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.75, px: 1.25, py: 0.5, borderRadius: 1.5, bgcolor: alpha(plColor, 0.06), display: "inline-flex", alignSelf: "flex-start" }}>
                                   <Typography sx={{ fontSize: { xs: "0.7rem", sm: "0.75rem" }, fontWeight: 600, color: plColor }}>
-                                    P&L: {batchPL >= 0 ? "+" : ""}{fmt(batchPL, currency)}
+                                    P&L: {batchPL >= 0 ? "+" : ""}{fmt(batchPL, holding.displayCurrency)}
                                   </Typography>
                                   <Typography sx={{ fontSize: { xs: "0.65rem", sm: "0.7rem" }, fontWeight: 600, color: plColor, opacity: 0.8 }}>
                                     ({batchPLPct >= 0 ? "+" : ""}{batchPLPct.toFixed(1)}%)
@@ -390,7 +411,7 @@ function HoldingDetail() {
               <MenuItem value="update">Update</MenuItem>
             </TextField>
             <TextField label="Units" type="number" inputMode="decimal" value={txnValue} onChange={e => setTxnValue(e.target.value)} inputProps={{ step: "0.001" }} helperText={txnMode === "add" ? "Units to add" : "Total units (overwrites)"} fullWidth />
-            <TextField label="Invested" type="number" inputMode="decimal" value={txnInvested} onChange={e => setTxnInvested(e.target.value)} inputProps={{ step: "0.01" }} helperText={txnMode === "add" ? "Amount to add" : "Total invested (overwrites)"} fullWidth />
+            <TextField label={`Invested (${account?.currency ?? ""})`} type="number" inputMode="decimal" value={txnInvested} onChange={e => setTxnInvested(e.target.value)} inputProps={{ step: "0.01" }} helperText={txnMode === "add" ? "Amount to add" : "Total invested (overwrites)"} fullWidth />
             <TextField label="Date" type="date" value={txnDate} onChange={e => { const v = e.target.value; if (v && ((minDate && v < minDate) || v > today)) return; setTxnDate(v); }} error={!!txnDate && ((!!minDate && txnDate < minDate) || txnDate > today)} helperText={minDate ? `Select between ${minDate} and ${today}` : `Up to ${today}`} InputLabelProps={{ shrink: true }} inputProps={{ min: minDate || undefined, max: today }} fullWidth />
           </Stack>
         </DialogContent>

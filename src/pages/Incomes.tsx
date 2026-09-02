@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   Box, Paper, Typography, Chip, Collapse,
   ToggleButtonGroup, ToggleButton, Fab, IconButton,
@@ -24,21 +24,25 @@ import IncomeChart from "../components/IncomeChart";
 import { useUser } from "../context/UserContext";
 import {
   getIncomes, getIncomeSources, getIncomeTags,
-  createIncome, updateIncome, deleteIncome, invalidateCache,
+  createIncome, updateIncome, deleteIncome, invalidateMoneyCaches,
 } from "../api/client";
 import { ListSkeleton, EmptyState, ErrorState, TintedChip, FadeIn } from "../components/shared";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
-import { CURRENCIES } from "../constants";
+import { CURRENCIES, DEFAULT_CURRENCY } from "../constants";
 import { formatCurrency as fmt } from "../utils/format";
 import type { Income, IncomeSource, IncomeTag } from "../api/types";
 
 type Grouping = "month" | "source" | "tag" | "year" | "fy";
 
-// Display amounts in the user's preferred currency (converted by the backend),
-// falling back to the raw amount if a conversion isn't available.
-const dispNet = (i: Income) => i.convertedNetAmount ?? i.netAmount;
-const dispTax = (i: Income) => i.convertedTaxPaid ?? i.taxPaid;
+/**
+ * A row held in local state, which may be an optimistic insert or edit. The backend converts at
+ * the credited date's FX rate, which the client cannot reproduce, so a row entered in a currency
+ * other than the one the page totals in is flagged pending and shows no amount — rather than a
+ * native amount under a converted-currency label — until the server answers.
+ */
+type IncomeRow = Income & { pending?: boolean };
+
 function parseCreditDate(d: string) {
   const dt = new Date(d + "T00:00:00");
   return {
@@ -64,8 +68,8 @@ function Incomes() {
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const { colors, gradients } = useTokens();
   const { showToast } = useToast();
-  const { userId, preferredCurrency } = useUser();
-  const [incomes, setIncomes] = useState<Income[]>([]);
+  const { userId, preferredCurrency, dataVersion } = useUser();
+  const [incomes, setIncomes] = useState<IncomeRow[]>([]);
   const [sources, setSources] = useState<IncomeSource[]>([]);
   const [tags, setTags] = useState<IncomeTag[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,72 +85,104 @@ function Incomes() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editIncome, setEditIncome] = useState<Income | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Income | null>(null);
+  // The currency an entry was last recorded in — the natural default for the next one, and
+  // unrelated to the currency the page displays totals in.
+  const lastEntryCurrency = useRef(DEFAULT_CURRENCY);
 
   const [formSourceId, setFormSourceId] = useState<number | "">("");
   const [formTagId, setFormTagId] = useState<number | "">("");
   const [formNet, setFormNet] = useState("");
   const [formTax, setFormTax] = useState("");
-  const [formCurrency, setFormCurrency] = useState("INR");
+  const [formCurrency, setFormCurrency] = useState(DEFAULT_CURRENCY);
   const [formDate, setFormDate] = useState("");
 
   const sourceLookup = useMemo(() => new Map(sources.map((s) => [s.id, s.name])), [sources]);
   const tagLookup = useMemo(() => new Map(tags.map((t) => [t.id, t.name])), [tags]);
 
+  // Bumped by every load and by the effect's cleanup, so a response that arrives after a newer
+  // load started (or after unmount) is dropped instead of overwriting fresher state.
+  const requestId = useRef(0);
+
   const load = useCallback(async () => {
     if (!userId) return;
+    const id = ++requestId.current;
     try {
       setLoading(true); setError(null);
       const [inc, src, tg] = await Promise.all([getIncomes(userId), getIncomeSources(userId), getIncomeTags(userId)]);
+      if (id !== requestId.current) return;
       setIncomes(inc.sort((a, b) => b.creditedDate.localeCompare(a.creditedDate)));
       setSources(src); setTags(tg);
-    } catch (err) { setError(err instanceof Error ? err.message : "Failed to load"); }
-    finally { setLoading(false); }
-    // preferredCurrency is a dependency so incomes refetch (with new conversion) when it changes.
-  }, [userId, preferredCurrency]);
+    } catch (err) { if (id === requestId.current) setError(err instanceof Error ? err.message : "Failed to load"); }
+    finally { if (id === requestId.current) setLoading(false); }
+    // dataVersion is a dependency so incomes refetch (with new conversions) after a
+    // display-currency change or a refresh.
+  }, [userId, dataVersion]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    return () => { requestId.current++; };
+  }, [load]);
 
   const activeFilterCount = [filterSources, filterTags, filterYears, filterFYs].filter((a) => a.length > 0).length;
 
-  // Each filter's options are derived from data filtered by all OTHER active filters
-  const applyFilters = useCallback((data: Income[], skipFilter?: "source" | "tag" | "year" | "fy") => {
-    return data.filter((inc) => {
-      if (skipFilter !== "source" && filterSources.length && !filterSources.includes(inc.incomeSourceId)) return false;
-      if (skipFilter !== "tag" && filterTags.length && !filterTags.includes(inc.incomeTagId)) return false;
-      if (skipFilter !== "year" && filterYears.length && !filterYears.includes(yearKey(inc.creditedDate))) return false;
-      if (skipFilter !== "fy" && filterFYs.length && !filterFYs.includes(fyKey(inc.creditedDate))) return false;
-      return true;
-    });
-  }, [filterSources, filterTags, filterYears, filterFYs]);
+  // Each filter's options are derived from data filtered by all OTHER active filters, so one pass
+  // over the incomes decides all five sets at once: the filtered rows plus the four option lists.
+  const filterView = useMemo(() => {
+    const rows: IncomeRow[] = [];
+    const sourceIds = new Set<number>();
+    const tagIds = new Set<number>();
+    const yearKeys = new Set<string>();
+    const fyKeys = new Set<string>();
+    for (const inc of incomes) {
+      const year = yearKey(inc.creditedDate);
+      const fy = fyKey(inc.creditedDate);
+      const okSource = !filterSources.length || filterSources.includes(inc.incomeSourceId);
+      const okTag = !filterTags.length || filterTags.includes(inc.incomeTagId);
+      const okYear = !filterYears.length || filterYears.includes(year);
+      const okFY = !filterFYs.length || filterFYs.includes(fy);
+      if (okTag && okYear && okFY) sourceIds.add(inc.incomeSourceId);
+      if (okSource && okYear && okFY) tagIds.add(inc.incomeTagId);
+      if (okSource && okTag && okFY) yearKeys.add(year);
+      if (okSource && okTag && okYear) fyKeys.add(fy);
+      if (okSource && okTag && okYear && okFY) rows.push(inc);
+    }
+    return {
+      rows, sourceIds, tagIds,
+      years: [...yearKeys].sort().reverse(),
+      fys: [...fyKeys].sort().reverse(),
+    };
+  }, [incomes, filterSources, filterTags, filterYears, filterFYs]);
 
-  const filtered = useMemo(() => applyFilters(incomes), [applyFilters, incomes]);
+  const { rows: filtered, years, fys } = filterView;
 
-  const availableSources = useMemo(() => {
-    const data = applyFilters(incomes, "source");
-    return sources.filter((s) => data.some((i) => i.incomeSourceId === s.id));
-  }, [applyFilters, incomes, sources]);
+  const availableSources = useMemo(
+    () => sources.filter((s) => filterView.sourceIds.has(s.id)),
+    [sources, filterView],
+  );
 
-  const availableTags = useMemo(() => {
-    const data = applyFilters(incomes, "tag");
-    return tags.filter((t) => data.some((i) => i.incomeTagId === t.id));
-  }, [applyFilters, incomes, tags]);
-
-  const years = useMemo(() => {
-    const data = applyFilters(incomes, "year");
-    return [...new Set(data.map((i) => yearKey(i.creditedDate)))].sort().reverse();
-  }, [applyFilters, incomes]);
-
-  const fys = useMemo(() => {
-    const data = applyFilters(incomes, "fy");
-    return [...new Set(data.map((i) => fyKey(i.creditedDate)))].sort().reverse();
-  }, [applyFilters, incomes]);
+  const availableTags = useMemo(
+    () => tags.filter((t) => filterView.tagIds.has(t.id)),
+    [tags, filterView],
+  );
 
   const clearFilters = () => {
     setFilterSources([]); setFilterTags([]); setFilterYears([]); setFilterFYs([]);
   };
 
+  // The currency the page totals in: whichever convertedCurrency most rows carry. A row whose FX
+  // lookup failed keeps its own native currency, and such a row is excluded from every total
+  // rather than added into one labelled with a different currency.
+  const displayCcy = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const inc of incomes) counts.set(inc.convertedCurrency, (counts.get(inc.convertedCurrency) ?? 0) + 1);
+    let best = preferredCurrency;
+    let most = 0;
+    for (const [code, n] of counts) if (n > most) { best = code; most = n; }
+    return best;
+  }, [incomes, preferredCurrency]);
+
   const sections = useMemo(() => {
-    const groups = new Map<string, Income[]>();
+    const groups = new Map<string, IncomeRow[]>();
     for (const inc of filtered) {
       let key: string;
       switch (grouping) {
@@ -159,13 +195,27 @@ function Incomes() {
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(inc);
     }
-    return Array.from(groups.entries()).map(([title, items]) => ({ title, items }));
-  }, [filtered, grouping, sourceLookup, tagLookup]);
+    return Array.from(groups.entries()).map(([title, items]) => {
+      let net = 0, tax = 0;
+      for (const inc of items) {
+        if (inc.convertedCurrency !== displayCcy) continue;
+        net += inc.convertedNetAmount;
+        tax += inc.convertedTaxPaid;
+      }
+      return { title, items, net, tax, total: net + tax };
+    });
+  }, [filtered, grouping, sourceLookup, tagLookup, displayCcy]);
 
-  const totalAll = useMemo(() => filtered.reduce((s, i) => s + dispNet(i) + dispTax(i), 0), [filtered]);
-  const totalNet = useMemo(() => filtered.reduce((s, i) => s + dispNet(i), 0), [filtered]);
-  const totalTax = useMemo(() => filtered.reduce((s, i) => s + dispTax(i), 0), [filtered]);
-  const netPct = totalAll > 0 ? (totalNet / totalAll) * 100 : 0;
+  const totals = useMemo(() => {
+    let net = 0, tax = 0;
+    for (const inc of filtered) {
+      if (inc.convertedCurrency !== displayCcy) continue;
+      net += inc.convertedNetAmount;
+      tax += inc.convertedTaxPaid;
+    }
+    return { net, tax, all: net + tax };
+  }, [filtered, displayCcy]);
+  const netPct = totals.all > 0 ? (totals.net / totals.all) * 100 : 0;
 
   const chartData = useMemo(() => {
     const map = new Map<string, { sortKey: string; net: number; tax: number }>();
@@ -186,7 +236,7 @@ function Incomes() {
         case "tag": key = tagLookup.get(inc.incomeTagId) ?? "Unknown"; sortKey = key; break;
       }
       const prev = map.get(key) || { sortKey, net: 0, tax: 0 };
-      map.set(key, { sortKey, net: prev.net + dispNet(inc), tax: prev.tax + dispTax(inc) });
+      map.set(key, { sortKey, net: prev.net + inc.convertedNetAmount, tax: prev.tax + inc.convertedTaxPaid });
     }
     return Array.from(map.entries())
       .sort(([, a], [, b]) => a.sortKey.localeCompare(b.sortKey))
@@ -197,7 +247,8 @@ function Incomes() {
     setEditIncome(null);
     setFormSourceId(sources.find((s) => s.isDefault)?.id ?? "");
     setFormTagId(tags.find((t) => t.isDefault)?.id ?? "");
-    setFormNet(""); setFormTax(""); setFormCurrency(preferredCurrency || "INR");
+    // The currency an income was paid in, not the one it is displayed in.
+    setFormNet(""); setFormTax(""); setFormCurrency(lastEntryCurrency.current);
     setFormDate(new Date().toISOString().slice(0, 10));
     setDialogOpen(true);
   };
@@ -218,17 +269,26 @@ function Incomes() {
       netAmount: parseFloat(formNet), taxPaid: formTax ? parseFloat(formTax) : 0,
       currency: formCurrency, creditedDate: formDate,
     };
+    // No conversion is needed when the entry currency is already the displayed one, so the
+    // optimistic row can carry the entered amounts; otherwise it waits for the server's rate.
+    const converted = payload.currency === displayCcy;
+    const optimisticAmounts = {
+      convertedNetAmount: converted ? payload.netAmount : 0,
+      convertedTaxPaid: converted ? payload.taxPaid : 0,
+      convertedGrossAmount: converted ? payload.netAmount + payload.taxPaid : 0,
+      convertedCurrency: displayCcy,
+      pending: !converted,
+    };
+    lastEntryCurrency.current = payload.currency;
     const prev = incomes;
     if (editIncome) {
-      // Drop stale converted values so the optimistic row reflects the edited raw
-      // amount until the server responds with fresh conversions.
-      const updated: Income = { ...editIncome, ...payload, convertedNetAmount: undefined, convertedTaxPaid: undefined, convertedCurrency: undefined };
+      const updated: IncomeRow = { ...editIncome, ...payload, ...optimisticAmounts };
       setIncomes(list => list.map(i => i.id === editIncome.id ? updated : i).sort((a, b) => b.creditedDate.localeCompare(a.creditedDate)));
       setDialogOpen(false);
       try {
         const server = await updateIncome(editIncome.id, payload);
         setIncomes(list => list.map(i => i.id === editIncome.id ? server : i).sort((a, b) => b.creditedDate.localeCompare(a.creditedDate)));
-        invalidateCache("incomes");
+        invalidateMoneyCaches();
         showToast("Income updated");
       } catch (err) {
         setIncomes(prev);
@@ -236,13 +296,13 @@ function Incomes() {
       }
     } else {
       const tempId = -Date.now();
-      const optimistic: Income = { id: tempId, userId, ...payload };
+      const optimistic: IncomeRow = { id: tempId, userId, ...payload, ...optimisticAmounts };
       setIncomes(list => [optimistic, ...list].sort((a, b) => b.creditedDate.localeCompare(a.creditedDate)));
       setDialogOpen(false);
       try {
         const created = await createIncome({ userId, ...payload });
         setIncomes(list => list.map(i => i.id === tempId ? created : i));
-        invalidateCache("incomes");
+        invalidateMoneyCaches();
         showToast(`Income of ${formCurrency} ${formNet} created`);
       } catch (err) {
         setIncomes(prev);
@@ -254,13 +314,13 @@ function Incomes() {
   const handleDelete = async () => {
     if (!deleteConfirm) return;
     const { id } = deleteConfirm;
-    const amt = fmt(dispNet(deleteConfirm), deleteConfirm.convertedCurrency ?? preferredCurrency);
+    const amt = fmt(deleteConfirm.convertedNetAmount, deleteConfirm.convertedCurrency);
     const prev = incomes;
     setIncomes(list => list.filter(i => i.id !== id));
     setDeleteConfirm(null);
     try {
       await deleteIncome(id);
-      invalidateCache("incomes");
+      invalidateMoneyCaches();
       showToast(`Income of ${amt} deleted`);
     } catch (err) {
       setIncomes(prev);
@@ -291,18 +351,18 @@ function Incomes() {
                 Total Income
               </Typography>
               <Typography sx={{ fontSize: { xs: "1.75rem", sm: "2.25rem" }, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.1 }}>
-                {fmt(totalAll, preferredCurrency)}
+                {fmt(totals.all, displayCcy)}
               </Typography>
             </Box>
 
             <Stack direction="row" spacing={1.5} sx={{ mt: 2, position: "relative", zIndex: 1 }} flexWrap="wrap" useFlexGap>
               <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, px: { xs: 1, sm: 1.5 }, py: 0.5, borderRadius: 2, bgcolor: alpha(colors.pureWhite, 0.15), fontSize: { xs: "0.7rem", sm: "0.78rem" }, fontWeight: 600 }}>
                 <TrendingUpIcon sx={{ fontSize: 14 }} />
-                Net: {fmt(totalNet, preferredCurrency)} ({netPct.toFixed(1)}%)
+                Net: {fmt(totals.net, displayCcy)} ({netPct.toFixed(1)}%)
               </Box>
               <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, px: { xs: 1, sm: 1.5 }, py: 0.5, borderRadius: 2, bgcolor: alpha(colors.pureWhite, 0.12), fontSize: { xs: "0.7rem", sm: "0.78rem" }, fontWeight: 600 }}>
                 <AccountBalanceRoundedIcon sx={{ fontSize: 14 }} />
-                Tax: {fmt(totalTax, preferredCurrency)} ({totalAll > 0 ? ((totalTax / totalAll) * 100).toFixed(1) : "0.0"}%)
+                Tax: {fmt(totals.tax, displayCcy)} ({totals.all > 0 ? ((totals.tax / totals.all) * 100).toFixed(1) : "0.0"}%)
               </Box>
             </Stack>
           </Paper>
@@ -446,7 +506,7 @@ function Incomes() {
             </Typography>
             {chartData.length >= 2 ? (
               <Box sx={{ mx: { xs: -1, sm: 0 } }}>
-                <IncomeChart data={chartData} currency={preferredCurrency} />
+                <IncomeChart data={chartData} currency={displayCcy} />
               </Box>
             ) : (
               <EmptyState
@@ -471,9 +531,7 @@ function Incomes() {
         </Paper>
       ) : (
         sections.map((section, si) => {
-          const sNet = section.items.reduce((s, i) => s + dispNet(i), 0);
-          const sTax = section.items.reduce((s, i) => s + dispTax(i), 0);
-          const sTotal = sNet + sTax;
+          const { net: sNet, tax: sTax, total: sTotal } = section;
           return (
             <FadeIn key={section.title} delay={si * 40}>
               <Paper sx={{ borderRadius: 3, overflow: "hidden", border: `1px solid ${colors.gray200}` }} elevation={0}>
@@ -497,10 +555,10 @@ function Incomes() {
                     <Typography sx={{ fontWeight: 700, fontSize: "0.95rem" }} noWrap>{section.title}</Typography>
                   </Box>
                   <Stack alignItems="flex-end" spacing={0.25}>
-                    <Typography sx={{ fontWeight: 750, fontSize: "1rem", letterSpacing: "-0.02em" }}>{fmt(sTotal, preferredCurrency)}</Typography>
+                    <Typography sx={{ fontWeight: 750, fontSize: "1rem", letterSpacing: "-0.02em" }}>{fmt(sTotal, displayCcy)}</Typography>
                     <Stack direction="row" spacing={0.25} sx={{ flexWrap: "wrap" }}>
-                      <TintedChip label={`Net ${fmt(sNet, preferredCurrency)} (${sTotal > 0 ? ((sNet / sTotal) * 100).toFixed(1) : "0.0"}%)`} color={colors.success} size="small" />
-                      {sTax > 0 && <TintedChip label={`Tax ${fmt(sTax, preferredCurrency)} (${sTotal > 0 ? ((sTax / sTotal) * 100).toFixed(1) : "0.0"}%)`} color={colors.error} size="small" />}
+                      <TintedChip label={`Net ${fmt(sNet, displayCcy)} (${sTotal > 0 ? ((sNet / sTotal) * 100).toFixed(1) : "0.0"}%)`} color={colors.success} size="small" />
+                      {sTax > 0 && <TintedChip label={`Tax ${fmt(sTax, displayCcy)} (${sTotal > 0 ? ((sTax / sTotal) * 100).toFixed(1) : "0.0"}%)`} color={colors.error} size="small" />}
                     </Stack>
                   </Stack>
                 </Box>
@@ -508,10 +566,10 @@ function Incomes() {
                 {/* Income rows as timeline cards */}
                 <Collapse in={!collapsed[section.title]}>
                 {section.items.map((income, i) => {
-                  const iNet = dispNet(income);
-                  const iTax = dispTax(income);
-                  const gross = iNet + iTax;
-                  const iCcy = income.convertedCurrency ?? preferredCurrency;
+                  const iNet = income.convertedNetAmount;
+                  const iTax = income.convertedTaxPaid;
+                  const gross = income.convertedGrossAmount;
+                  const iCcy = income.convertedCurrency;
                   const dt = parseCreditDate(income.creditedDate);
                   return (
                     <Box key={income.id} sx={{
@@ -553,10 +611,11 @@ function Incomes() {
                               <Box>
                                 <Typography variant="caption" sx={{ color: colors.gray400, display: "block", lineHeight: 1 }}>Net</Typography>
                                 <Typography sx={{ fontSize: { xs: "0.85rem", sm: "0.95rem" }, fontWeight: 650, mt: 0.25, color: colors.success }}>
-                                  {fmt(iNet, iCcy)} ({gross > 0 ? ((iNet / gross) * 100).toFixed(1) : "0.0"}%)
+                                  {/* An optimistic row awaiting the server's conversion has no amount to show yet. */}
+                                  {income.pending ? "…" : `${fmt(iNet, iCcy)} (${gross > 0 ? ((iNet / gross) * 100).toFixed(1) : "0.0"}%)`}
                                 </Typography>
                               </Box>
-                              {income.taxPaid > 0 && (
+                              {iTax > 0 && (
                                 <>
                                   <Box sx={{ color: colors.gray300, display: "flex", alignItems: "center" }}>+</Box>
                                   <Box>
@@ -579,7 +638,7 @@ function Incomes() {
                               </IconButton>
                             </Stack>
                             <Typography sx={{ fontSize: "1.1rem", fontWeight: 750, letterSpacing: "-0.02em" }}>
-                              {fmt(gross, iCcy)}
+                              {income.pending ? "…" : fmt(gross, iCcy)}
                             </Typography>
                           </Stack>
                         </Stack>

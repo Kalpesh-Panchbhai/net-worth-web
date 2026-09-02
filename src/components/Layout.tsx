@@ -48,21 +48,22 @@ function Layout({ children }: { children: ReactNode }) {
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up("md"));
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const { firebaseUser, userId, logout, preferredCurrency, setPreferredCurrency } = useUser();
+  const { firebaseUser, userId, logout, preferredCurrency, setPreferredCurrency, refreshAll } = useUser();
   const { showToast } = useToast();
   const { preference, setPreference } = useColorMode();
   const { colors } = useTokens();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [savingCurrency, setSavingCurrency] = useState(false);
 
   const handleRefresh = async () => {
     try {
       setRefreshing(true);
       const result = await refreshData();
-      invalidateCache();
       showToast(`Data refreshed in ${(result.durationMs / 1000).toFixed(1)}s`, "success");
-      window.location.reload();
+      // Drops the cached money responses and makes the mounted page refetch in place.
+      refreshAll();
     } catch {
       showToast("Failed to refresh data. Please try again.", "error");
     } finally {
@@ -72,10 +73,13 @@ function Layout({ children }: { children: ReactNode }) {
 
   const handleCurrencyChange = async (currency: string) => {
     try {
+      setSavingCurrency(true);
       await setPreferredCurrency(currency);
       showToast(`Display currency set to ${currency}`, "success");
     } catch {
       showToast("Failed to update currency. Please try again.", "error");
+    } finally {
+      setSavingCurrency(false);
     }
   };
 
@@ -216,6 +220,7 @@ function Layout({ children }: { children: ReactNode }) {
           size="small"
           fullWidth
           value={preferredCurrency}
+          disabled={savingCurrency}
           onChange={(e) => handleCurrencyChange(e.target.value)}
           sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2.5 } }}
         >
@@ -224,7 +229,7 @@ function Layout({ children }: { children: ReactNode }) {
           ))}
         </TextField>
         <Typography sx={{ fontSize: "0.6rem", color: colors.gray400, mt: 0.5, px: 1 }}>
-          Amounts are shown converted to this currency
+          {savingCurrency ? "Converting amounts…" : "Amounts are shown converted to this currency"}
         </Typography>
       </Box>
 

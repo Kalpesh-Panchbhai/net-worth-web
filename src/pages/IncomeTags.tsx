@@ -52,7 +52,7 @@ function IncomeTags() {
     try {
       const created = await createIncomeTag(userId, trimmed, isDefault);
       setTags(t => t.map(tag => tag.id === tempId ? created : tag));
-      invalidateCache("income-tags");
+      invalidateCache("/income-tags");
       showToast(`Tag "${trimmed}" created`);
     } catch (err) {
       setTags(prev);
@@ -65,7 +65,7 @@ function IncomeTags() {
     setTags(t => t.map(tag => ({ ...tag, isDefault: tag.id === id })));
     try {
       await setDefaultIncomeTag(id);
-      invalidateCache("income-tags");
+      invalidateCache("/income-tags");
       showToast(`"${name}" set as default tag`);
     } catch (err) {
       setTags(prev);

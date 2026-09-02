@@ -1,9 +1,10 @@
+import { memo } from "react";
 import { ResponsiveContainer, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
 import type { TooltipProps } from "recharts";
 import { Box, Typography, Stack } from "@mui/material";
 import { useTheme, useMediaQuery } from "@mui/material";
 import { useTokens } from "../context/ColorModeContext";
-import { formatCurrency as fmtCurrency } from "../utils/format";
+import { formatCurrency as fmtCurrency, formatCurrencyCompact } from "../utils/format";
 
 export interface IncomeChartPoint {
   label: string;
@@ -98,7 +99,7 @@ function IncomeChart({ data, currency }: IncomeChartProps) {
         <YAxis
           tickLine={false} axisLine={false} width={compact ? 40 : 52}
           tick={{ fontSize: compact ? 10 : 11, fill: colors.gray400 }}
-          tickFormatter={(v: number) => new Intl.NumberFormat("en-IN", { notation: "compact" }).format(v)}
+          tickFormatter={(v: number) => formatCurrencyCompact(v, currency)}
         />
         <Tooltip
           cursor={<CustomCursor stroke={colors.gray200} />}
@@ -166,4 +167,5 @@ function IncomeChart({ data, currency }: IncomeChartProps) {
   );
 }
 
-export default IncomeChart;
+// The page re-renders on every filter and grouping change; the chart only needs to follow its data.
+export default memo(IncomeChart);

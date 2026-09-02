@@ -52,7 +52,7 @@ function IncomeSources() {
     try {
       const created = await createIncomeSource(userId, trimmed, isDefault);
       setSources(s => s.map(src => src.id === tempId ? created : src));
-      invalidateCache("income-sources");
+      invalidateCache("/income-sources");
       showToast(`Source "${trimmed}" created`);
     } catch (err) {
       setSources(prev);
@@ -65,7 +65,7 @@ function IncomeSources() {
     setSources(s => s.map(src => ({ ...src, isDefault: src.id === id })));
     try {
       await setDefaultIncomeSource(id);
-      invalidateCache("income-sources");
+      invalidateCache("/income-sources");
       showToast(`"${name}" set as default source`);
     } catch (err) {
       setSources(prev);

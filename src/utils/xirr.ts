@@ -1,4 +1,4 @@
-import type { Transaction } from "../api/types";
+import type { AccountSummary, Transaction } from "../api/types";
 
 export interface CashFlow {
   date: Date;
@@ -64,6 +64,33 @@ export function xirr(input: CashFlow[]): number | null {
     if (fm * fLo < 0) hi = mid; else lo = mid;
   }
   return (lo + hi) / 2;
+}
+
+/**
+ * Money-weighted return for a group of accounts, from the cash flows the backend ships on each
+ * summary. Flows are pooled and closed with the group's combined current value — a group's IRR is
+ * the IRR of its pooled flows, so it cannot be recovered from the members' own `xirr` values by
+ * any weighted average.
+ *
+ * Only accounts whose amounts share `currency` contribute; a member left in its own native
+ * currency because no FX rate resolved would otherwise pull the pooled figure off. Returns null
+ * when no member has flows.
+ */
+export function pooledXirr(
+  accounts: Array<Pick<AccountSummary, "cashFlows" | "currentDayValue" | "displayCurrency">>,
+  currency: string,
+): number | null {
+  const flows: CashFlow[] = [];
+  let currentValue = 0;
+  for (const a of accounts) {
+    if (a.displayCurrency !== currency) continue;
+    if (!a.cashFlows?.length) continue;
+    for (const f of a.cashFlows) flows.push({ date: new Date(`${f.date}T00:00:00Z`), amount: f.amount });
+    currentValue += a.currentDayValue;
+  }
+  if (flows.length === 0) return null;
+  if (currentValue > 0) flows.push({ date: new Date(), amount: currentValue });
+  return xirr(flows);
 }
 
 // Build cashflows from transactions (cumulative invested per holding) + current value.

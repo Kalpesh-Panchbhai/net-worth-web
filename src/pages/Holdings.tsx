@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Box, Paper, Typography, TextField, Button,
   Dialog, DialogTitle, DialogContent, DialogActions,
@@ -11,7 +11,7 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ShowChartIcon from "@mui/icons-material/ShowChart";
 import { useUser } from "../context/UserContext";
 import {
-  getAccounts, getHoldings, createHolding, deleteHolding, invalidateCache,
+  getAccounts, getHoldings, createHolding, deleteHolding, invalidateMoneyCaches,
 } from "../api/client";
 import { PageHeader, EmptyState, ErrorState, ListSkeleton, MetricCard, MetricSkeleton, TintedChip, FadeIn } from "../components/shared";
 import { useTokens } from "../context/ColorModeContext";
@@ -23,7 +23,7 @@ import { formatCurrency, formatUnits as fmtUnits } from "../utils/format";
 const fmt = (v: number, currency?: string) => formatCurrency(v, currency, { maxDecimals: 0 });
 
 function Holdings() {
-  const { userId } = useUser();
+  const { userId, preferredCurrency, dataVersion } = useUser();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const { colors } = useTokens();
@@ -42,25 +42,62 @@ function Holdings() {
   // Delete confirm
   const [deleteConfirm, setDeleteConfirm] = useState<HoldingSummary | null>(null);
 
-  const loadAccounts = useCallback(async () => {
+  const loadAccounts = useCallback(async (isActive: () => boolean = () => true) => {
     if (!userId) return;
-    try { setLoading(true); setError(null); const a = await getAccounts(userId); setAccounts(a); if (a.length > 0 && selectedAccountId === "") setSelectedAccountId(a[0].id); }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to load accounts"); }
-    finally { setLoading(false); }
-  }, [userId]);
+    try {
+      setLoading(true); setError(null);
+      const a = await getAccounts(userId);
+      if (!isActive()) return;
+      setAccounts(a);
+      // A reload must not move the user off the account they picked.
+      if (a.length > 0) setSelectedAccountId(prev => prev === "" ? a[0].id : prev);
+    }
+    catch (err) { if (isActive()) setError(err instanceof Error ? err.message : "Failed to load accounts"); }
+    finally { if (isActive()) setLoading(false); }
+  }, [userId, dataVersion]);
 
-  const loadHoldings = useCallback(async () => {
+  const loadHoldings = useCallback(async (isActive: () => boolean = () => true) => {
     if (!selectedAccountId) { setHoldings([]); return; }
-    try { setHoldingsLoading(true); setError(null); setHoldings(await getHoldings(selectedAccountId as number)); }
-    catch (err) { showToast(err instanceof Error ? err.message : "Failed to load holdings", "error"); }
-    finally { setHoldingsLoading(false); }
-  }, [selectedAccountId]);
+    try {
+      setHoldingsLoading(true); setError(null);
+      const h = await getHoldings(selectedAccountId as number);
+      if (isActive()) setHoldings(h);
+    }
+    catch (err) { if (isActive()) showToast(err instanceof Error ? err.message : "Failed to load holdings", "error"); }
+    finally { if (isActive()) setHoldingsLoading(false); }
+  }, [selectedAccountId, dataVersion]);
 
-  useEffect(() => { loadAccounts(); }, [loadAccounts]);
-  useEffect(() => { loadHoldings(); }, [loadHoldings]);
+  useEffect(() => {
+    let cancelled = false;
+    loadAccounts(() => !cancelled);
+    return () => { cancelled = true; };
+  }, [loadAccounts]);
 
-  const totalValue = holdings.reduce((s, h) => s + h.currentDayValue, 0);
-  const totalInvested = holdings.reduce((s, h) => s + h.invested, 0);
+  useEffect(() => {
+    let cancelled = false;
+    loadHoldings(() => !cancelled);
+    return () => { cancelled = true; };
+  }, [loadHoldings]);
+
+  const selectedAccount = useMemo(
+    () => accounts.find(a => a.id === selectedAccountId),
+    [accounts, selectedAccountId],
+  );
+  const accountCurrency = selectedAccount?.currency;
+
+  // One pass for both totals. Only rows sharing the label being rendered are summed: a row left
+  // in its own native currency because no FX rate resolved must not be added into a total shown
+  // in the display currency.
+  const { totalValue, totalInvested, rowCurrency } = useMemo(() => {
+    const currency = holdings[0]?.displayCurrency ?? preferredCurrency;
+    let value = 0, invested = 0;
+    for (const h of holdings) {
+      if (h.displayCurrency !== currency) continue;
+      value += h.currentDayValue;
+      invested += h.invested;
+    }
+    return { totalValue: value, totalInvested: invested, rowCurrency: currency };
+  }, [holdings, preferredCurrency]);
 
   const handleCreate = async () => {
     if (!selectedAccountId || !newName.trim() || !newSymbol.trim()) return;
@@ -69,13 +106,13 @@ function Holdings() {
     const accountId = selectedAccountId as number;
     const prev = holdings;
     const tempId = -Date.now();
-    const optimistic: HoldingSummary = { id: tempId, accountId, name: trimmed, symbol, units: 0, currentDayValue: 0, previousDayValue: 0, invested: 0 };
+    const optimistic: HoldingSummary = { id: tempId, accountId, name: trimmed, symbol, units: 0, unitsAreShares: selectedAccount?.type === "BROKER", currentDayValue: 0, previousDayValue: 0, invested: 0, gain: 0, dayChange: 0, xirr: null, displayCurrency: rowCurrency };
     setHoldings(h => [...h, optimistic]);
     setCreateOpen(false); setNewName(""); setNewSymbol("");
     try {
       const created = await createHolding({ accountId, name: trimmed, symbol });
       setHoldings(h => h.map(hld => hld.id === tempId ? { ...optimistic, ...created } : hld));
-      invalidateCache("holdings");
+      invalidateMoneyCaches();
       showToast(`Holding "${trimmed}" created`);
     } catch (err) {
       setHoldings(prev);
@@ -91,7 +128,7 @@ function Holdings() {
     setDeleteConfirm(null);
     try {
       await deleteHolding(id);
-      invalidateCache("holdings");
+      invalidateMoneyCaches();
       showToast(`Holding "${name}" deleted`);
     } catch (err) {
       setHoldings(prev);
@@ -99,7 +136,7 @@ function Holdings() {
     }
   };
 
-  if (error && accounts.length === 0 && !loading) return <ErrorState message={error} onRetry={loadAccounts} />;
+  if (error && accounts.length === 0 && !loading) return <ErrorState message={error} onRetry={() => loadAccounts()} />;
 
   return (
     <Stack spacing={{ xs: 2, sm: 3 }}>
@@ -125,8 +162,8 @@ function Holdings() {
         <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
           {holdingsLoading ? <><MetricSkeleton /><MetricSkeleton /></> : (
             <FadeIn>
-              <MetricCard label="Total Value" value={fmt(totalValue)} />
-              <MetricCard label="Invested" value={fmt(totalInvested)} accent={totalValue >= totalInvested ? colors.success : colors.error} />
+              <MetricCard label="Total Value" value={fmt(totalValue, rowCurrency)} />
+              <MetricCard label="Invested" value={fmt(totalInvested, rowCurrency)} accent={totalValue >= totalInvested ? colors.success : colors.error} />
             </FadeIn>
           )}
         </Box>
@@ -149,8 +186,7 @@ function Holdings() {
         <FadeIn delay={100}>
           <Paper variant="outlined" sx={{ borderRadius: 3, overflow: "hidden" }}>
             {holdings.map((h, i) => {
-              const gain = h.currentDayValue - h.invested;
-              const gainPct = h.invested > 0 ? (gain / h.invested) * 100 : 0;
+              const gainPct = h.invested > 0 ? (h.gain / h.invested) * 100 : 0;
               return (
                 <Box key={h.id} sx={{
                   display: "flex", alignItems: "center", gap: 2,
@@ -161,18 +197,18 @@ function Holdings() {
                 }}>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography variant="subtitle2" noWrap>{h.name}</Typography>
-                    <Typography variant="caption" color="text.secondary">{h.symbol} · {fmtUnits(h.units)} units</Typography>
+                    <Typography variant="caption" color="text.secondary">{h.symbol} · {h.unitsAreShares ? `${fmtUnits(h.units)} units` : fmt(h.units, accountCurrency)}</Typography>
                   </Box>
                   <Box sx={{ textAlign: "right", minWidth: { xs: 90, sm: 110 } }}>
-                    <Typography variant="subtitle2">{fmt(h.currentDayValue)}</Typography>
+                    <Typography variant="subtitle2">{fmt(h.currentDayValue, h.displayCurrency)}</Typography>
                     {h.invested > 0 && (
-                      <Typography variant="caption" sx={{ fontWeight: 600, color: gain >= 0 ? colors.success : colors.error }}>
-                        {gain >= 0 ? "+" : ""}{fmt(gain)}
+                      <Typography variant="caption" sx={{ fontWeight: 600, color: h.gain >= 0 ? colors.success : colors.error }}>
+                        {h.gain >= 0 ? "+" : ""}{fmt(h.gain, h.displayCurrency)}
                       </Typography>
                     )}
                     <TintedChip
-                      label={`${gain >= 0 ? "+" : ""}${gainPct.toFixed(1)}%`}
-                      color={gain >= 0 ? colors.success : colors.error}
+                      label={`${h.gain >= 0 ? "+" : ""}${gainPct.toFixed(1)}%`}
+                      color={h.gain >= 0 ? colors.success : colors.error}
                       size="small"
                     />
                   </Box>

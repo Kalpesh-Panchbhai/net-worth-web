@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Box, Typography, Button, Skeleton, Paper, Fade } from "@mui/material";
+import { Box, Typography, Button, Skeleton, Paper } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 
 // ─── Empty State ─────────────────────────────────────────────
@@ -146,10 +146,16 @@ export function TintedChip({ label, color, icon, size = "small" }: TintedChipPro
 }
 
 // ─── Fade In wrapper ─────────────────────────────────────────
+// A plain CSS animation rather than a MUI Fade: this wraps every row of every list, and a
+// Transition instance per row costs a mount-time reflow plus timers. The delay goes through an
+// inline style so a per-row value does not compile a new emotion class each time.
+const fadeInSx = {
+  animation: "fadeIn 400ms cubic-bezier(0.4, 0, 0.2, 1) both",
+  "@keyframes fadeIn": { from: { opacity: 0 }, to: { opacity: 1 } },
+};
+
 export function FadeIn({ children, delay = 0 }: { children: ReactNode; delay?: number }) {
   return (
-    <Fade in timeout={400} style={{ transitionDelay: `${delay}ms` }}>
-      <Box>{children}</Box>
-    </Fade>
+    <Box sx={fadeInSx} style={delay ? { animationDelay: `${delay}ms` } : undefined}>{children}</Box>
   );
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { memo, useState, useEffect, useMemo } from "react";
 import { Box, Paper, Typography, Stack, ToggleButton, ToggleButtonGroup, CircularProgress } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
@@ -7,9 +7,10 @@ import { useTheme, useMediaQuery } from "@mui/material";
 import TrendingUpRoundedIcon from "@mui/icons-material/TrendingUpRounded";
 import TrendingDownRoundedIcon from "@mui/icons-material/TrendingDownRounded";
 import { useTokens } from "../context/ColorModeContext";
+import { useUser } from "../context/UserContext";
 import { getChartData } from "../api/client";
 import type { ChartDataPoint, EntityType, TimePeriod, Transaction } from "../api/types";
-import { formatCurrency as fmtCurrency } from "../utils/format";
+import { formatCurrency as fmtCurrency, formatCurrencyCompact as fmtCompact, formatUnits as fmtUnits } from "../utils/format";
 
 const PERIODS: { value: TimePeriod; label: string }[] = [
   { value: "1M", label: "1M" },
@@ -25,9 +26,19 @@ interface EntityChartProps {
   entityType: EntityType;
   entityId: number;
   accentColor?: string;
-  currency?: string;
+  currency: string;
   showInvested?: boolean;
   transactions?: Transaction[];
+}
+
+interface TxnMarker {
+  investedDelta: number;
+  valueDelta: number;
+  valueInUnits: boolean;
+}
+
+function formatFullDate(dateStr: string) {
+  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
 function spansMultipleYears(data: ChartDataPoint[]): boolean {
@@ -99,7 +110,8 @@ function CustomTooltip({ active, payload, label, currency, accentColor, showInve
       {(() => {
         const dp = payload?.[0]?.payload;
         if (dp?.txnInvestedDelta == null) return null;
-        const isBuy = (dp.txnUnitsDelta ?? 0) >= 0;
+        const valueDelta = dp.txnValueDelta ?? 0;
+        const isBuy = valueDelta >= 0;
         const txnColor = isBuy ? colors.success : colors.error;
         return (
           <Box sx={{ px: 2.5, pb: 1 }}>
@@ -110,7 +122,9 @@ function CustomTooltip({ active, payload, label, currency, accentColor, showInve
             }}>
               <Typography sx={{ fontSize: 11, fontWeight: 800, color: txnColor }}>{isBuy ? "▲" : "▼"}</Typography>
               <Typography sx={{ fontSize: 11, fontWeight: 700, color: txnColor }}>
-                {isBuy ? "Bought" : "Sold"} {Math.abs(dp.txnUnitsDelta ?? 0).toFixed(3)} units
+                {isBuy ? "Bought" : "Sold"} {dp.txnValueInUnits
+                  ? `${fmtUnits(Math.abs(valueDelta))} units`
+                  : fmtCurrency(Math.abs(valueDelta), currency)}
               </Typography>
               <Typography sx={{ fontSize: 10, color: alpha(txnColor, 0.6) }}>·</Typography>
               <Typography sx={{ fontSize: 11, fontWeight: 600, color: colors.gray400 }}>
@@ -157,10 +171,11 @@ function CustomTooltip({ active, payload, label, currency, accentColor, showInve
   );
 }
 
-export default function EntityChart({ entityType, entityId, accentColor, currency = "INR", showInvested = true, transactions }: EntityChartProps) {
+function EntityChart({ entityType, entityId, accentColor, currency, showInvested = true, transactions }: EntityChartProps) {
   const theme = useTheme();
   const compact = useMediaQuery(theme.breakpoints.down("sm"));
   const { colors, shadow } = useTokens();
+  const { dataVersion } = useUser();
   const color = accentColor || colors.brand;
 
   const [period, setPeriod] = useState<TimePeriod>("1Y");
@@ -182,34 +197,43 @@ export default function EntityChart({ entityType, entityId, accentColor, currenc
     });
   };
 
-  const load = useCallback(async () => {
+  // Toggling periods quickly leaves several requests in flight; only the newest may paint.
+  useEffect(() => {
     if (!entityId) return;
-    try {
-      setLoading(true);
-      setError(false);
-      const result = await getChartData(entityType, entityId, period);
-      setData(result);
-    } catch {
-      setError(true);
-      setData([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [entityType, entityId, period]);
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoading(true);
+        setError(false);
+        const result = await getChartData(entityType, entityId, period);
+        if (!cancelled) setData(result);
+      } catch {
+        if (cancelled) return;
+        setError(true);
+        setData([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [entityType, entityId, period, dataVersion]);
 
-  useEffect(() => { load(); }, [load]);
+  // The series is converted server-side, so its own label wins over the ambient prop.
+  const seriesCurrency = data[0]?.displayCurrency ?? currency;
 
   // Build transaction markers: date → delta info
   const txnDateMap = useMemo(() => {
-    if (!transactions || transactions.length === 0) return new Map<string, { investedDelta: number; unitsDelta: number }>();
+    const map = new Map<string, TxnMarker>();
+    if (!transactions || transactions.length === 0) return map;
     const sorted = [...transactions].sort((a, b) => a.txnDate.localeCompare(b.txnDate));
-    const map = new Map<string, { investedDelta: number; unitsDelta: number }>();
     for (let i = 0; i < sorted.length; i++) {
       const t = sorted[i];
       const prev = i > 0 ? sorted[i - 1] : null;
       map.set(t.txnDate, {
-        investedDelta: prev ? t.invested - prev.invested : t.invested,
-        unitsDelta: prev ? t.value - prev.value : t.value,
+        // Server-converted, each at its own transaction date.
+        investedDelta: t.investedDelta ?? (prev ? t.invested - prev.invested : t.invested),
+        valueDelta: t.valueDelta ?? (prev ? t.value - prev.value : t.value),
+        valueInUnits: t.valueInUnits,
       });
     }
     return map;
@@ -220,12 +244,75 @@ export default function EntityChart({ entityType, entityId, accentColor, currenc
     if (txnDateMap.size === 0) return data;
     return data.map(d => {
       const txn = txnDateMap.get(d.date);
-      return txn ? { ...d, txnInvestedDelta: txn.investedDelta, txnUnitsDelta: txn.unitsDelta } : d;
+      return txn ? { ...d, txnInvestedDelta: txn.investedDelta, txnValueDelta: txn.valueDelta, txnValueInUnits: txn.valueInUnits } : d;
     });
   }, [data, txnDateMap]);
 
   const gradientId = `grad-${entityType}-${entityId}`;
   const gradientInvId = `grad-inv-${entityType}-${entityId}`;
+  const valStrokeId = `val-stroke-${entityType}-${entityId}`;
+  const valFillId = `val-fill-${entityType}-${entityId}`;
+
+  const multiYear = useMemo(() => spansMultipleYears(data), [data]);
+  const hasInvData = useMemo(() => showInvested && data.some(d => d.invested > 0), [data, showInvested]);
+
+  // Horizontal gradient stops for the value line: green where value >= invested, red below it.
+  const { strokeStops, fillStops } = useMemo(() => {
+    type GradStop = { offset: string; color: string; opacity?: number };
+    const strokeStops: GradStop[] = [];
+    const fillStops: GradStop[] = [];
+    if (!hasInvData) return { strokeStops, fillStops };
+
+    const n = data.length;
+    const span = Math.max(n - 1, 1);
+    // Smooth transition band: ~5% of chart width on each side of crossover
+    const band = Math.min(5, 100 / span);
+
+    // Walk points and find crossover offsets with smooth blending
+    for (let i = 0; i < n; i++) {
+      const d = data[i];
+      const pl = d.invested > 0 ? d.value - d.invested : 0;
+      const c = pl >= 0 ? colors.success : colors.error;
+      const pct = `${((i / span) * 100).toFixed(1)}%`;
+
+      if (i > 0) {
+        const prev = data[i - 1];
+        const prevPl = prev.invested > 0 ? prev.value - prev.invested : 0;
+        if ((prevPl >= 0) !== (pl >= 0)) {
+          const ratio = Math.abs(prevPl) / (Math.abs(prevPl) + Math.abs(pl));
+          const crossX = ((i - 1 + ratio) / span) * 100;
+          const before = Math.max(crossX - band, 0);
+          const after = Math.min(crossX + band, 100);
+          const prevC = prevPl >= 0 ? colors.success : colors.error;
+          strokeStops.push({ offset: `${before.toFixed(1)}%`, color: prevC });
+          strokeStops.push({ offset: `${after.toFixed(1)}%`, color: c });
+          fillStops.push({ offset: `${before.toFixed(1)}%`, color: prevC, opacity: 0.06 });
+          fillStops.push({ offset: `${after.toFixed(1)}%`, color: c, opacity: 0.06 });
+        }
+      }
+
+      if (i === 0 || i === n - 1) {
+        strokeStops.push({ offset: pct, color: c });
+        fillStops.push({ offset: pct, color: c, opacity: i === 0 ? 0.12 : 0 });
+      }
+    }
+    return { strokeStops, fillStops };
+  }, [data, hasInvData, colors.success, colors.error]);
+
+  // Best / worst P&L across the period
+  const plExtremes = useMemo(() => {
+    if (!showInvested || data.length < 2) return null;
+    const plPoints = data.filter(d => d.invested > 0).map(d => ({
+      date: d.date,
+      pl: d.value - d.invested,
+      plPct: (d.value - d.invested) / d.invested * 100,
+    }));
+    if (plPoints.length < 2) return null;
+    return {
+      best: plPoints.reduce((a, b) => b.plPct > a.plPct ? b : a),
+      worst: plPoints.reduce((a, b) => b.plPct < a.plPct ? b : a),
+    };
+  }, [data, showInvested]);
 
   return (
     <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3 }}>
@@ -270,248 +357,182 @@ export default function EntityChart({ entityType, entityId, accentColor, currenc
         <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", height: compact ? 200 : 300 }}>
           <Typography color="text.secondary" sx={{ fontSize: "0.85rem" }}>No data available for this period</Typography>
         </Box>
-      ) : (() => {
-        const multiYear = spansMultipleYears(data);
-
-        // Build horizontal gradient stops for value line: green where value >= invested, red where value < invested
-        const valStrokeId = `val-stroke-${entityType}-${entityId}`;
-        const valFillId = `val-fill-${entityType}-${entityId}`;
-        const hasInvData = showInvested && data.some(d => d.invested > 0);
-
-        type GradStop = { offset: string; color: string; opacity?: number };
-        const strokeStops: GradStop[] = [];
-        const fillStops: GradStop[] = [];
-
-        if (hasInvData) {
-          const n = data.length;
-          const span = Math.max(n - 1, 1);
-          // Smooth transition band: ~5% of chart width on each side of crossover
-          const band = Math.min(5, 100 / span);
-
-          // Walk points and find crossover offsets with smooth blending
-          for (let i = 0; i < n; i++) {
-            const d = data[i];
-            const pl = d.invested > 0 ? d.value - d.invested : 0;
-            const c = pl >= 0 ? colors.success : colors.error;
-            const pct = `${((i / span) * 100).toFixed(1)}%`;
-
-            if (i > 0) {
-              const prev = data[i - 1];
-              const prevPl = prev.invested > 0 ? prev.value - prev.invested : 0;
-              if ((prevPl >= 0) !== (pl >= 0)) {
-                const ratio = Math.abs(prevPl) / (Math.abs(prevPl) + Math.abs(pl));
-                const crossX = ((i - 1 + ratio) / span) * 100;
-                const before = Math.max(crossX - band, 0);
-                const after = Math.min(crossX + band, 100);
-                const prevC = prevPl >= 0 ? colors.success : colors.error;
-                strokeStops.push({ offset: `${before.toFixed(1)}%`, color: prevC });
-                strokeStops.push({ offset: `${after.toFixed(1)}%`, color: c });
-                fillStops.push({ offset: `${before.toFixed(1)}%`, color: prevC, opacity: 0.06 });
-                fillStops.push({ offset: `${after.toFixed(1)}%`, color: c, opacity: 0.06 });
-              }
-            }
-
-            if (i === 0 || i === n - 1) {
-              strokeStops.push({ offset: pct, color: c });
-              fillStops.push({ offset: pct, color: c, opacity: i === 0 ? 0.12 : 0 });
-            }
-          }
-        }
-
-        return (
-          <ResponsiveContainer width="100%" height={compact ? 240 : 320}>
-            <AreaChart data={chartData} margin={{ top: 4, right: compact ? 4 : 8, left: compact ? -20 : 0, bottom: 0 }}>
-              <defs>
-                {hasInvData ? (
-                  <>
-                    <linearGradient id={valStrokeId} x1="0" y1="0" x2="1" y2="0">
-                      {strokeStops.map((s, i) => (
-                        <stop key={i} offset={s.offset} stopColor={s.color} />
-                      ))}
-                    </linearGradient>
-                    <linearGradient id={valFillId} x1="0" y1="0" x2="1" y2="0">
-                      {fillStops.map((s, i) => (
-                        <stop key={i} offset={s.offset} stopColor={s.color} stopOpacity={s.opacity} />
-                      ))}
-                    </linearGradient>
-                  </>
-                ) : (
-                  <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={color} stopOpacity={0.12} />
-                    <stop offset="100%" stopColor={color} stopOpacity={0} />
+      ) : (
+        <ResponsiveContainer width="100%" height={compact ? 240 : 320}>
+          <AreaChart data={chartData} margin={{ top: 4, right: compact ? 4 : 8, left: compact ? -20 : 0, bottom: 0 }}>
+            <defs>
+              {hasInvData ? (
+                <>
+                  <linearGradient id={valStrokeId} x1="0" y1="0" x2="1" y2="0">
+                    {strokeStops.map((s, i) => (
+                      <stop key={i} offset={s.offset} stopColor={s.color} />
+                    ))}
                   </linearGradient>
-                )}
-                {showInvested && (
-                  <linearGradient id={gradientInvId} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={colors.warning} stopOpacity={0.1} />
-                    <stop offset="100%" stopColor={colors.warning} stopOpacity={0} />
+                  <linearGradient id={valFillId} x1="0" y1="0" x2="1" y2="0">
+                    {fillStops.map((s, i) => (
+                      <stop key={i} offset={s.offset} stopColor={s.color} stopOpacity={s.opacity} />
+                    ))}
                   </linearGradient>
-                )}
-              </defs>
-              <CartesianGrid vertical={false} stroke={colors.gray100} />
-              <XAxis
-                dataKey="date" tickLine={false} axisLine={false}
-                tick={{ fontSize: compact ? 9 : 11, fill: colors.gray400 }}
-                tickFormatter={(dateStr: string) => formatDateLabel(dateStr, multiYear)}
-                interval={compact ? "preserveStartEnd" : undefined}
-              />
-              <YAxis
-                tickLine={false} axisLine={false} width={compact ? 40 : 52}
-                tick={{ fontSize: compact ? 9 : 11, fill: colors.gray400 }}
-                tickFormatter={(v: number) => {
-                  if (Math.abs(v) >= 1e7) return `${(v / 1e7).toFixed(1)}Cr`;
-                  if (Math.abs(v) >= 1e5) return `${(v / 1e5).toFixed(1)}L`;
-                  if (Math.abs(v) >= 1e3) return `${(v / 1e3).toFixed(0)}K`;
-                  return String(v);
-                }}
-              />
-              <Tooltip
-                content={<CustomTooltip currency={currency} accentColor={color} showInvested={showInvested} colors={colors} shadow={shadow} />}
-                cursor={{ stroke: colors.gray200, strokeDasharray: "4 4" }}
-              />
-              <Legend
-                iconSize={7}
-                wrapperStyle={{ fontSize: 12, paddingTop: 12, color: colors.gray500 }}
-                onClick={(e: { value?: string }) => { if (e.value) toggle(e.value); }}
-                formatter={(value: string) => (
-                  <span style={{ fontSize: 12, verticalAlign: "middle", opacity: hidden.has(value) ? 0.35 : 1, textDecoration: hidden.has(value) ? "line-through" : "none", cursor: "pointer" }}>{value}</span>
-                )}
-                payload={[
-                  { value: "Value", type: "circle" as const, color: hidden.has("Value") ? colors.gray300 : (hasInvData ? colors.success : color) },
-                  ...(showInvested ? [{ value: "Invested", type: "circle" as const, color: hidden.has("Invested") ? colors.gray300 : colors.warning }] : []),
-                ]}
-              />
-              <Area
-                key={`val-${showCount["Value"] ?? 0}`}
-                type="monotone" dataKey="value" name="Value"
-                stroke={hidden.has("Value") ? "transparent" : (hasInvData ? `url(#${valStrokeId})` : color)}
-                strokeWidth={hidden.has("Value") ? 0 : 2.5}
-                fill={hidden.has("Value") ? "transparent" : (hasInvData ? `url(#${valFillId})` : `url(#${gradientId})`)}
-                dot={!hidden.has("Value") && txnDateMap.size > 0
-                  ? (props: any) => {
-                    const { cx, cy, payload: dp } = props;
-                    if (cx == null || cy == null || dp?.txnInvestedDelta == null) return <g />;
-                    const isBuy = (dp.txnUnitsDelta ?? 0) >= 0;
-                    const mc = isBuy ? color : colors.error;
-                    return (
-                      <g>
-                        <circle cx={cx} cy={cy} r={10} fill="none" stroke={mc} strokeWidth={1.5} opacity={0.2} />
-                        <circle cx={cx} cy={cy} r={5} fill={mc} stroke={colors.white} strokeWidth={2.5} />
-                      </g>
-                    );
-                  }
-                  : false}
-                activeDot={hidden.has("Value") ? false : (hasInvData
-                  ? (props: { cx: number; cy: number; payload: ChartDataPoint }) => {
-                    const pl = props.payload.invested > 0 ? props.payload.value - props.payload.invested : 0;
-                    const c = pl >= 0 ? colors.success : colors.error;
-                    return <circle cx={props.cx} cy={props.cy} r={5} strokeWidth={2} stroke={colors.white} fill={c} />;
-                  }
-                  : { r: 5, strokeWidth: 2, stroke: colors.white, fill: color })}
-                isAnimationActive={!hidden.has("Value")} animationDuration={800} animationEasing="ease-out"
-              />
-              {showInvested && (
-                <Area
-                  key={`inv-${showCount["Invested"] ?? 0}`}
-                  type="monotone" dataKey="invested" name="Invested"
-                  stroke={hidden.has("Invested") ? "transparent" : colors.warning}
-                  strokeWidth={hidden.has("Invested") ? 0 : 1.5}
-                  strokeDasharray={hidden.has("Invested") ? undefined : "6 4"}
-                  fill={hidden.has("Invested") ? "transparent" : `url(#${gradientInvId})`}
-                  dot={false}
-                  activeDot={hidden.has("Invested") ? false : { r: 4, strokeWidth: 2, stroke: colors.white, fill: colors.warning }}
-                  isAnimationActive={!hidden.has("Invested")} animationDuration={800} animationEasing="ease-out" animationBegin={100}
-                />
+                </>
+              ) : (
+                <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={color} stopOpacity={0.12} />
+                  <stop offset="100%" stopColor={color} stopOpacity={0} />
+                </linearGradient>
               )}
-            </AreaChart>
-          </ResponsiveContainer>
-        );
-      })()}
+              {showInvested && (
+                <linearGradient id={gradientInvId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={colors.warning} stopOpacity={0.1} />
+                  <stop offset="100%" stopColor={colors.warning} stopOpacity={0} />
+                </linearGradient>
+              )}
+            </defs>
+            <CartesianGrid vertical={false} stroke={colors.gray100} />
+            <XAxis
+              dataKey="date" tickLine={false} axisLine={false}
+              tick={{ fontSize: compact ? 9 : 11, fill: colors.gray400 }}
+              tickFormatter={(dateStr: string) => formatDateLabel(dateStr, multiYear)}
+              interval={compact ? "preserveStartEnd" : undefined}
+            />
+            <YAxis
+              tickLine={false} axisLine={false} width={compact ? 40 : 52}
+              tick={{ fontSize: compact ? 9 : 11, fill: colors.gray400 }}
+              tickFormatter={(v: number) => fmtCompact(v, seriesCurrency)}
+            />
+            <Tooltip
+              content={<CustomTooltip currency={seriesCurrency} accentColor={color} showInvested={showInvested} colors={colors} shadow={shadow} />}
+              cursor={{ stroke: colors.gray200, strokeDasharray: "4 4" }}
+            />
+            <Legend
+              iconSize={7}
+              wrapperStyle={{ fontSize: 12, paddingTop: 12, color: colors.gray500 }}
+              onClick={(e: { value?: string }) => { if (e.value) toggle(e.value); }}
+              formatter={(value: string) => (
+                <span style={{ fontSize: 12, verticalAlign: "middle", opacity: hidden.has(value) ? 0.35 : 1, textDecoration: hidden.has(value) ? "line-through" : "none", cursor: "pointer" }}>{value}</span>
+              )}
+              payload={[
+                { value: "Value", type: "circle" as const, color: hidden.has("Value") ? colors.gray300 : (hasInvData ? colors.success : color) },
+                ...(showInvested ? [{ value: "Invested", type: "circle" as const, color: hidden.has("Invested") ? colors.gray300 : colors.warning }] : []),
+              ]}
+            />
+            <Area
+              key={`val-${showCount["Value"] ?? 0}`}
+              type="monotone" dataKey="value" name="Value"
+              stroke={hidden.has("Value") ? "transparent" : (hasInvData ? `url(#${valStrokeId})` : color)}
+              strokeWidth={hidden.has("Value") ? 0 : 2.5}
+              fill={hidden.has("Value") ? "transparent" : (hasInvData ? `url(#${valFillId})` : `url(#${gradientId})`)}
+              dot={!hidden.has("Value") && txnDateMap.size > 0
+                ? (props: any) => {
+                  const { cx, cy, payload: dp } = props;
+                  if (cx == null || cy == null || dp?.txnInvestedDelta == null) return <g />;
+                  const isBuy = (dp.txnValueDelta ?? 0) >= 0;
+                  const mc = isBuy ? color : colors.error;
+                  return (
+                    <g>
+                      <circle cx={cx} cy={cy} r={10} fill="none" stroke={mc} strokeWidth={1.5} opacity={0.2} />
+                      <circle cx={cx} cy={cy} r={5} fill={mc} stroke={colors.white} strokeWidth={2.5} />
+                    </g>
+                  );
+                }
+                : false}
+              activeDot={hidden.has("Value") ? false : (hasInvData
+                ? (props: { cx: number; cy: number; payload: ChartDataPoint }) => {
+                  const pl = props.payload.invested > 0 ? props.payload.value - props.payload.invested : 0;
+                  const c = pl >= 0 ? colors.success : colors.error;
+                  return <circle cx={props.cx} cy={props.cy} r={5} strokeWidth={2} stroke={colors.white} fill={c} />;
+                }
+                : { r: 5, strokeWidth: 2, stroke: colors.white, fill: color })}
+              isAnimationActive={!hidden.has("Value")} animationDuration={800} animationEasing="ease-out"
+            />
+            {showInvested && (
+              <Area
+                key={`inv-${showCount["Invested"] ?? 0}`}
+                type="monotone" dataKey="invested" name="Invested"
+                stroke={hidden.has("Invested") ? "transparent" : colors.warning}
+                strokeWidth={hidden.has("Invested") ? 0 : 1.5}
+                strokeDasharray={hidden.has("Invested") ? undefined : "6 4"}
+                fill={hidden.has("Invested") ? "transparent" : `url(#${gradientInvId})`}
+                dot={false}
+                activeDot={hidden.has("Invested") ? false : { r: 4, strokeWidth: 2, stroke: colors.white, fill: colors.warning }}
+                isAnimationActive={!hidden.has("Invested")} animationDuration={800} animationEasing="ease-out" animationBegin={100}
+              />
+            )}
+          </AreaChart>
+        </ResponsiveContainer>
+      )}
 
       {/* P&L High / Low strip */}
-      {!loading && !error && data.length > 1 && showInvested && (() => {
-        const plPoints = data.filter(d => d.invested > 0).map(d => ({
-          date: d.date,
-          pl: d.value - d.invested,
-          plPct: (d.value - d.invested) / d.invested * 100,
-        }));
-        if (plPoints.length < 2) return null;
-        const best = plPoints.reduce((a, b) => b.plPct > a.plPct ? b : a);
-        const worst = plPoints.reduce((a, b) => b.plPct < a.plPct ? b : a);
-        const fmtDate = (s: string) => {
-          const d = new Date(s + "T00:00:00");
-          return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-        };
-        return (
-          <Stack
-            direction={{ xs: "column", sm: "row" }}
-            spacing={1.5}
-            sx={{ mt: 2, pt: 2, borderTop: `1px solid ${colors.gray100}` }}
-          >
-            {/* Best P&L */}
+      {!loading && !error && plExtremes && (
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          spacing={1.5}
+          sx={{ mt: 2, pt: 2, borderTop: `1px solid ${colors.gray100}` }}
+        >
+          {/* Best P&L */}
+          <Box sx={{
+            flex: 1, display: "flex", alignItems: "center", gap: { xs: 1, sm: 1.5 },
+            px: { xs: 1.5, sm: 2 }, py: { xs: 1, sm: 1.5 }, borderRadius: 2.5,
+            bgcolor: alpha(colors.success, 0.06),
+            border: `1px solid ${alpha(colors.success, 0.12)}`,
+            overflow: "hidden",
+          }}>
             <Box sx={{
-              flex: 1, display: "flex", alignItems: "center", gap: { xs: 1, sm: 1.5 },
-              px: { xs: 1.5, sm: 2 }, py: { xs: 1, sm: 1.5 }, borderRadius: 2.5,
-              bgcolor: alpha(colors.success, 0.06),
-              border: `1px solid ${alpha(colors.success, 0.12)}`,
-              overflow: "hidden",
+              width: { xs: 30, sm: 36 }, height: { xs: 30, sm: 36 }, borderRadius: 2,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              bgcolor: alpha(colors.success, 0.12), flexShrink: 0,
             }}>
-              <Box sx={{
-                width: { xs: 30, sm: 36 }, height: { xs: 30, sm: 36 }, borderRadius: 2,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                bgcolor: alpha(colors.success, 0.12), flexShrink: 0,
-              }}>
-                <TrendingUpRoundedIcon sx={{ fontSize: { xs: 16, sm: 20 }, color: colors.success }} />
-              </Box>
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography sx={{ fontSize: { xs: 9, sm: 10 }, fontWeight: 600, color: colors.gray400, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                  Best P&L
-                </Typography>
-                <Typography noWrap sx={{ fontSize: { xs: 12, sm: 14 }, fontWeight: 750, color: colors.success, letterSpacing: "-0.01em" }}>
-                  {best.pl >= 0 ? "+" : ""}{fmtCurrency(best.pl, currency)} <Typography component="span" sx={{ fontSize: { xs: 9, sm: 11 }, fontWeight: 600 }}>({best.plPct >= 0 ? "+" : ""}{best.plPct.toFixed(2)}%)</Typography>
-                </Typography>
-                <Typography sx={{ fontSize: { xs: 9, sm: 11 }, fontWeight: 600, color: colors.gray400, display: { xs: "block", sm: "none" } }}>
-                  {fmtDate(best.date)}
-                </Typography>
-              </Box>
-              <Typography sx={{ fontSize: 11, fontWeight: 600, color: colors.gray400, whiteSpace: "nowrap", display: { xs: "none", sm: "block" } }}>
-                {fmtDate(best.date)}
+              <TrendingUpRoundedIcon sx={{ fontSize: { xs: 16, sm: 20 }, color: colors.success }} />
+            </Box>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography sx={{ fontSize: { xs: 9, sm: 10 }, fontWeight: 600, color: colors.gray400, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                Best P&L
+              </Typography>
+              <Typography noWrap sx={{ fontSize: { xs: 12, sm: 14 }, fontWeight: 750, color: colors.success, letterSpacing: "-0.01em" }}>
+                {plExtremes.best.pl >= 0 ? "+" : ""}{fmtCurrency(plExtremes.best.pl, seriesCurrency)} <Typography component="span" sx={{ fontSize: { xs: 9, sm: 11 }, fontWeight: 600 }}>({plExtremes.best.plPct >= 0 ? "+" : ""}{plExtremes.best.plPct.toFixed(2)}%)</Typography>
+              </Typography>
+              <Typography sx={{ fontSize: { xs: 9, sm: 11 }, fontWeight: 600, color: colors.gray400, display: { xs: "block", sm: "none" } }}>
+                {formatFullDate(plExtremes.best.date)}
               </Typography>
             </Box>
+            <Typography sx={{ fontSize: 11, fontWeight: 600, color: colors.gray400, whiteSpace: "nowrap", display: { xs: "none", sm: "block" } }}>
+              {formatFullDate(plExtremes.best.date)}
+            </Typography>
+          </Box>
 
-            {/* Worst P&L */}
+          {/* Worst P&L */}
+          <Box sx={{
+            flex: 1, display: "flex", alignItems: "center", gap: { xs: 1, sm: 1.5 },
+            px: { xs: 1.5, sm: 2 }, py: { xs: 1, sm: 1.5 }, borderRadius: 2.5,
+            bgcolor: alpha(colors.error, 0.06),
+            border: `1px solid ${alpha(colors.error, 0.12)}`,
+            overflow: "hidden",
+          }}>
             <Box sx={{
-              flex: 1, display: "flex", alignItems: "center", gap: { xs: 1, sm: 1.5 },
-              px: { xs: 1.5, sm: 2 }, py: { xs: 1, sm: 1.5 }, borderRadius: 2.5,
-              bgcolor: alpha(colors.error, 0.06),
-              border: `1px solid ${alpha(colors.error, 0.12)}`,
-              overflow: "hidden",
+              width: { xs: 30, sm: 36 }, height: { xs: 30, sm: 36 }, borderRadius: 2,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              bgcolor: alpha(colors.error, 0.12), flexShrink: 0,
             }}>
-              <Box sx={{
-                width: { xs: 30, sm: 36 }, height: { xs: 30, sm: 36 }, borderRadius: 2,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                bgcolor: alpha(colors.error, 0.12), flexShrink: 0,
-              }}>
-                <TrendingDownRoundedIcon sx={{ fontSize: { xs: 16, sm: 20 }, color: colors.error }} />
-              </Box>
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography sx={{ fontSize: { xs: 9, sm: 10 }, fontWeight: 600, color: colors.gray400, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                  Worst P&L
-                </Typography>
-                <Typography noWrap sx={{ fontSize: { xs: 12, sm: 14 }, fontWeight: 750, color: colors.error, letterSpacing: "-0.01em" }}>
-                  {worst.pl >= 0 ? "+" : ""}{fmtCurrency(worst.pl, currency)} <Typography component="span" sx={{ fontSize: { xs: 9, sm: 11 }, fontWeight: 600 }}>({worst.plPct >= 0 ? "+" : ""}{worst.plPct.toFixed(2)}%)</Typography>
-                </Typography>
-                <Typography sx={{ fontSize: { xs: 9, sm: 11 }, fontWeight: 600, color: colors.gray400, display: { xs: "block", sm: "none" } }}>
-                  {fmtDate(worst.date)}
-                </Typography>
-              </Box>
-              <Typography sx={{ fontSize: 11, fontWeight: 600, color: colors.gray400, whiteSpace: "nowrap", display: { xs: "none", sm: "block" } }}>
-                {fmtDate(worst.date)}
+              <TrendingDownRoundedIcon sx={{ fontSize: { xs: 16, sm: 20 }, color: colors.error }} />
+            </Box>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography sx={{ fontSize: { xs: 9, sm: 10 }, fontWeight: 600, color: colors.gray400, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                Worst P&L
+              </Typography>
+              <Typography noWrap sx={{ fontSize: { xs: 12, sm: 14 }, fontWeight: 750, color: colors.error, letterSpacing: "-0.01em" }}>
+                {plExtremes.worst.pl >= 0 ? "+" : ""}{fmtCurrency(plExtremes.worst.pl, seriesCurrency)} <Typography component="span" sx={{ fontSize: { xs: 9, sm: 11 }, fontWeight: 600 }}>({plExtremes.worst.plPct >= 0 ? "+" : ""}{plExtremes.worst.plPct.toFixed(2)}%)</Typography>
+              </Typography>
+              <Typography sx={{ fontSize: { xs: 9, sm: 11 }, fontWeight: 600, color: colors.gray400, display: { xs: "block", sm: "none" } }}>
+                {formatFullDate(plExtremes.worst.date)}
               </Typography>
             </Box>
-          </Stack>
-        );
-      })()}
+            <Typography sx={{ fontSize: 11, fontWeight: 600, color: colors.gray400, whiteSpace: "nowrap", display: { xs: "none", sm: "block" } }}>
+              {formatFullDate(plExtremes.worst.date)}
+            </Typography>
+          </Box>
+        </Stack>
+      )}
     </Paper>
   );
 }
+
+export default memo(EntityChart);
