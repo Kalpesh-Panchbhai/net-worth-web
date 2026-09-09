@@ -11,6 +11,7 @@ import { useUser } from "../context/UserContext";
 import { getChartData } from "../api/client";
 import type { ChartDataPoint, EntityType, TimePeriod, Transaction } from "../api/types";
 import { formatCurrency as fmtCurrency, formatCurrencyCompact as fmtCompact, formatUnits as fmtUnits } from "../utils/format";
+import { computeExtremes } from "../utils/chartExtremes";
 
 const PERIODS: { value: TimePeriod; label: string }[] = [
   { value: "1M", label: "1M" },
@@ -59,6 +60,7 @@ function CustomTooltip({ active, payload, label, currency, accentColor, showInve
   if (!active || !payload?.length) return null;
   const value = payload.find(p => p.dataKey === "value")?.value ?? 0;
   const invested = payload.find(p => p.dataKey === "invested")?.value ?? 0;
+  const xirr = payload[0]?.payload?.xirr as number | null | undefined;
   const pl = value - invested;
   const plPct = invested > 0 ? (pl / invested) * 100 : 0;
   const isGain = pl >= 0;
@@ -101,6 +103,19 @@ function CustomTooltip({ active, payload, label, currency, accentColor, showInve
             </Stack>
             <Typography sx={{ fontSize: 13.5, fontWeight: 750, color: colors.gray500, letterSpacing: "-0.01em" }}>
               {fmtCurrency(invested, currency)}
+            </Typography>
+          </Stack>
+        )}
+
+        {/* XIRR up to this date */}
+        {showInvested && xirr != null && isFinite(xirr) && (
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ py: 0.75 }}>
+            <Stack direction="row" spacing={0.75} alignItems="center">
+              <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: xirr >= 0 ? colors.success : colors.error }} />
+              <Typography sx={{ fontSize: 12.5, color: colors.gray400, fontWeight: 600 }}>XIRR</Typography>
+            </Stack>
+            <Typography sx={{ fontSize: 13.5, fontWeight: 750, color: xirr >= 0 ? colors.success : colors.error, letterSpacing: "-0.01em" }}>
+              {xirr >= 0 ? "+" : ""}{(xirr * 100).toFixed(2)}%
             </Typography>
           </Stack>
         )}
@@ -167,6 +182,48 @@ function CustomTooltip({ active, payload, label, currency, accentColor, showInve
           </Stack>
         </Box>
       )}
+    </Box>
+  );
+}
+
+function ExtremeCard({ kind, label, primary, secondary, date, colors }: {
+  kind: "best" | "worst";
+  label: string;
+  primary: string;
+  secondary?: string;
+  date: string;
+  colors: ReturnType<typeof useTokens>["colors"];
+}) {
+  const color = kind === "best" ? colors.success : colors.error;
+  const Icon = kind === "best" ? TrendingUpRoundedIcon : TrendingDownRoundedIcon;
+  return (
+    <Box sx={{
+      flex: 1, display: "flex", alignItems: "center", gap: { xs: 1, sm: 1.5 },
+      px: { xs: 1.5, sm: 2 }, py: { xs: 1, sm: 1.5 }, borderRadius: 2.5,
+      bgcolor: alpha(color, 0.06), border: `1px solid ${alpha(color, 0.12)}`,
+      overflow: "hidden",
+    }}>
+      <Box sx={{
+        width: { xs: 30, sm: 36 }, height: { xs: 30, sm: 36 }, borderRadius: 2,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        bgcolor: alpha(color, 0.12), flexShrink: 0,
+      }}>
+        <Icon sx={{ fontSize: { xs: 16, sm: 20 }, color }} />
+      </Box>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Typography sx={{ fontSize: { xs: 9, sm: 10 }, fontWeight: 600, color: colors.gray400, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+          {label}
+        </Typography>
+        <Typography noWrap sx={{ fontSize: { xs: 12, sm: 14 }, fontWeight: 750, color, letterSpacing: "-0.01em" }}>
+          {primary}{secondary && <Typography component="span" sx={{ fontSize: { xs: 9, sm: 11 }, fontWeight: 600 }}> {secondary}</Typography>}
+        </Typography>
+        <Typography sx={{ fontSize: { xs: 9, sm: 11 }, fontWeight: 600, color: colors.gray400, display: { xs: "block", sm: "none" } }}>
+          {date}
+        </Typography>
+      </Box>
+      <Typography sx={{ fontSize: 11, fontWeight: 600, color: colors.gray400, whiteSpace: "nowrap", display: { xs: "none", sm: "block" } }}>
+        {date}
+      </Typography>
     </Box>
   );
 }
@@ -299,20 +356,8 @@ function EntityChart({ entityType, entityId, accentColor, currency, showInvested
     return { strokeStops, fillStops };
   }, [data, hasInvData, colors.success, colors.error]);
 
-  // Best / worst P&L across the period
-  const plExtremes = useMemo(() => {
-    if (!showInvested || data.length < 2) return null;
-    const plPoints = data.filter(d => d.invested > 0).map(d => ({
-      date: d.date,
-      pl: d.value - d.invested,
-      plPct: (d.value - d.invested) / d.invested * 100,
-    }));
-    if (plPoints.length < 2) return null;
-    return {
-      best: plPoints.reduce((a, b) => b.plPct > a.plPct ? b : a),
-      worst: plPoints.reduce((a, b) => b.plPct < a.plPct ? b : a),
-    };
-  }, [data, showInvested]);
+  // Best / worst across the period, ranked three ways: return %, absolute P&L, and XIRR.
+  const extremes = useMemo(() => showInvested ? computeExtremes(data) : null, [data, showInvested]);
 
   return (
     <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3 }}>
@@ -461,76 +506,31 @@ function EntityChart({ entityType, entityId, accentColor, currency, showInvested
         </ResponsiveContainer>
       )}
 
-      {/* P&L High / Low strip */}
-      {!loading && !error && plExtremes && (
-        <Stack
-          direction={{ xs: "column", sm: "row" }}
-          spacing={1.5}
-          sx={{ mt: 2, pt: 2, borderTop: `1px solid ${colors.gray100}` }}
-        >
-          {/* Best P&L */}
-          <Box sx={{
-            flex: 1, display: "flex", alignItems: "center", gap: { xs: 1, sm: 1.5 },
-            px: { xs: 1.5, sm: 2 }, py: { xs: 1, sm: 1.5 }, borderRadius: 2.5,
-            bgcolor: alpha(colors.success, 0.06),
-            border: `1px solid ${alpha(colors.success, 0.12)}`,
-            overflow: "hidden",
-          }}>
-            <Box sx={{
-              width: { xs: 30, sm: 36 }, height: { xs: 30, sm: 36 }, borderRadius: 2,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              bgcolor: alpha(colors.success, 0.12), flexShrink: 0,
-            }}>
-              <TrendingUpRoundedIcon sx={{ fontSize: { xs: 16, sm: 20 }, color: colors.success }} />
-            </Box>
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography sx={{ fontSize: { xs: 9, sm: 10 }, fontWeight: 600, color: colors.gray400, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                Best P&L
-              </Typography>
-              <Typography noWrap sx={{ fontSize: { xs: 12, sm: 14 }, fontWeight: 750, color: colors.success, letterSpacing: "-0.01em" }}>
-                {plExtremes.best.pl >= 0 ? "+" : ""}{fmtCurrency(plExtremes.best.pl, seriesCurrency)} <Typography component="span" sx={{ fontSize: { xs: 9, sm: 11 }, fontWeight: 600 }}>({plExtremes.best.plPct >= 0 ? "+" : ""}{plExtremes.best.plPct.toFixed(2)}%)</Typography>
-              </Typography>
-              <Typography sx={{ fontSize: { xs: 9, sm: 11 }, fontWeight: 600, color: colors.gray400, display: { xs: "block", sm: "none" } }}>
-                {formatFullDate(plExtremes.best.date)}
-              </Typography>
-            </Box>
-            <Typography sx={{ fontSize: 11, fontWeight: 600, color: colors.gray400, whiteSpace: "nowrap", display: { xs: "none", sm: "block" } }}>
-              {formatFullDate(plExtremes.best.date)}
-            </Typography>
-          </Box>
-
-          {/* Worst P&L */}
-          <Box sx={{
-            flex: 1, display: "flex", alignItems: "center", gap: { xs: 1, sm: 1.5 },
-            px: { xs: 1.5, sm: 2 }, py: { xs: 1, sm: 1.5 }, borderRadius: 2.5,
-            bgcolor: alpha(colors.error, 0.06),
-            border: `1px solid ${alpha(colors.error, 0.12)}`,
-            overflow: "hidden",
-          }}>
-            <Box sx={{
-              width: { xs: 30, sm: 36 }, height: { xs: 30, sm: 36 }, borderRadius: 2,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              bgcolor: alpha(colors.error, 0.12), flexShrink: 0,
-            }}>
-              <TrendingDownRoundedIcon sx={{ fontSize: { xs: 16, sm: 20 }, color: colors.error }} />
-            </Box>
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography sx={{ fontSize: { xs: 9, sm: 10 }, fontWeight: 600, color: colors.gray400, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                Worst P&L
-              </Typography>
-              <Typography noWrap sx={{ fontSize: { xs: 12, sm: 14 }, fontWeight: 750, color: colors.error, letterSpacing: "-0.01em" }}>
-                {plExtremes.worst.pl >= 0 ? "+" : ""}{fmtCurrency(plExtremes.worst.pl, seriesCurrency)} <Typography component="span" sx={{ fontSize: { xs: 9, sm: 11 }, fontWeight: 600 }}>({plExtremes.worst.plPct >= 0 ? "+" : ""}{plExtremes.worst.plPct.toFixed(2)}%)</Typography>
-              </Typography>
-              <Typography sx={{ fontSize: { xs: 9, sm: 11 }, fontWeight: 600, color: colors.gray400, display: { xs: "block", sm: "none" } }}>
-                {formatFullDate(plExtremes.worst.date)}
-              </Typography>
-            </Box>
-            <Typography sx={{ fontSize: 11, fontWeight: 600, color: colors.gray400, whiteSpace: "nowrap", display: { xs: "none", sm: "block" } }}>
-              {formatFullDate(plExtremes.worst.date)}
-            </Typography>
-          </Box>
-        </Stack>
-      )}
+      {/* Best / worst strip: return %, absolute P&L, and XIRR */}
+      {!loading && !error && extremes && (() => {
+        const amt = (v: number) => `${v >= 0 ? "+" : ""}${fmtCurrency(v, extremes.currency)}`;
+        const pct = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
+        const row = (
+          label: string,
+          pair: { best: { date: string }; worst: { date: string } },
+          primary: (p: { pl: number; plPct: number; xirr?: number | null }) => string,
+          secondary?: (p: { pl: number; plPct: number; xirr?: number | null }) => string,
+        ) => (
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+            <ExtremeCard kind="best" label={`Best ${label}`} colors={colors}
+              primary={primary(pair.best as never)} secondary={secondary?.(pair.best as never)} date={formatFullDate(pair.best.date)} />
+            <ExtremeCard kind="worst" label={`Worst ${label}`} colors={colors}
+              primary={primary(pair.worst as never)} secondary={secondary?.(pair.worst as never)} date={formatFullDate(pair.worst.date)} />
+          </Stack>
+        );
+        return (
+          <Stack spacing={1.5} sx={{ mt: 2, pt: 2, borderTop: `1px solid ${colors.gray100}` }}>
+            {row("P&L (%)", extremes.byPct, p => pct(p.plPct), p => `(${amt(p.pl)})`)}
+            {row("P&L (Amount)", extremes.byAmount, p => amt(p.pl), p => `(${pct(p.plPct)})`)}
+            {extremes.byXirr && row("XIRR", extremes.byXirr, p => pct((p.xirr as number) * 100), p => `(${amt(p.pl)})`)}
+          </Stack>
+        );
+      })()}
     </Paper>
   );
 }

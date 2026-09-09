@@ -21,6 +21,8 @@ import BarChartRoundedIcon from "@mui/icons-material/BarChartRounded";
 import ViewListRoundedIcon from "@mui/icons-material/ViewListRounded";
 import ShowChartOutlinedIcon from "@mui/icons-material/ShowChartOutlined";
 import IncomeChart from "../components/IncomeChart";
+import CumulativeIncomeChart from "../components/CumulativeIncomeChart";
+import TaxRateChart from "../components/TaxRateChart";
 import { useUser } from "../context/UserContext";
 import {
   getIncomes, getIncomeSources, getIncomeTags,
@@ -242,6 +244,32 @@ function Incomes() {
       .sort(([, a], [, b]) => a.sortKey.localeCompare(b.sortKey))
       .map(([label, val]) => ({ label, net: val.net, tax: val.tax }));
   }, [filtered, grouping, sourceLookup, tagLookup]);
+
+  // Future period labels for the cumulative chart's forecast. Only time-based groupings can be
+  // projected; source/tag are categories, not a timeline. Labels match chartData's display format.
+  const forecastLabels = useMemo(() => {
+    if (grouping !== "month" && grouping !== "year" && grouping !== "fy") return [];
+    let maxDate = "";
+    for (const inc of filtered) if (inc.creditedDate > maxDate) maxDate = inc.creditedDate;
+    if (!maxDate) return [];
+    const out: string[] = [];
+    if (grouping === "month") {
+      const [y, m] = maxDate.slice(0, 7).split("-").map(Number);
+      let yy = y, mm = m; // mm is 1-based
+      for (let k = 0; k < 6; k++) {
+        mm++; if (mm > 12) { mm = 1; yy++; }
+        out.push(new Date(yy, mm - 1).toLocaleDateString("en-IN", { month: "short", year: "2-digit" }));
+      }
+    } else if (grouping === "year") {
+      let y = Number(maxDate.slice(0, 4));
+      for (let k = 0; k < 3; k++) out.push(String(++y));
+    } else {
+      const dt = new Date(maxDate + "T00:00:00");
+      let startYear = dt.getMonth() >= 3 ? dt.getFullYear() : dt.getFullYear() - 1;
+      for (let k = 0; k < 3; k++) { startYear++; out.push(`FY ${startYear}-${String(startYear + 1).slice(2)}`); }
+    }
+    return out;
+  }, [grouping, filtered]);
 
   const openCreate = () => {
     setEditIncome(null);
@@ -500,22 +528,46 @@ function Incomes() {
       {/* ── Chart View ── */}
       {!loading && view === "chart" && incomes.length > 0 && (
         <FadeIn>
-          <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
-              Income by {grouping === "fy" ? "Financial Year" : grouping.charAt(0).toUpperCase() + grouping.slice(1)}
-            </Typography>
-            {chartData.length >= 2 ? (
-              <Box sx={{ mx: { xs: -1, sm: 0 } }}>
-                <IncomeChart data={chartData} currency={displayCcy} />
-              </Box>
-            ) : (
-              <EmptyState
-                icon={<ShowChartOutlinedIcon />}
-                title="Not enough data"
-                description="At least 2 groups needed to show the chart. Try a different grouping or adjust filters."
-              />
+          <Stack spacing={{ xs: 2.5, sm: 3 }}>
+            <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                Income by {grouping === "fy" ? "Financial Year" : grouping.charAt(0).toUpperCase() + grouping.slice(1)}
+              </Typography>
+              {chartData.length >= 2 ? (
+                <Box sx={{ mx: { xs: -1, sm: 0 } }}>
+                  <IncomeChart data={chartData} currency={displayCcy} />
+                </Box>
+              ) : (
+                <EmptyState
+                  icon={<ShowChartOutlinedIcon />}
+                  title="Not enough data"
+                  description="At least 2 groups needed to show the chart. Try a different grouping or adjust filters."
+                />
+              )}
+            </Paper>
+
+            {chartData.length >= 2 && (
+              <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                  Cumulative Income
+                </Typography>
+                <Box sx={{ mx: { xs: -1, sm: 0 } }}>
+                  <CumulativeIncomeChart data={chartData} currency={displayCcy} forecastLabels={forecastLabels} />
+                </Box>
+              </Paper>
             )}
-          </Paper>
+
+            {chartData.length >= 2 && (
+              <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                  Effective Tax Rate
+                </Typography>
+                <Box sx={{ mx: { xs: -1, sm: 0 } }}>
+                  <TaxRateChart data={chartData} />
+                </Box>
+              </Paper>
+            )}
+          </Stack>
         </FadeIn>
       )}
 

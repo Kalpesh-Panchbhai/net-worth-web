@@ -1,8 +1,9 @@
 import { memo } from "react";
-import { ResponsiveContainer, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
+import { ResponsiveContainer, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine } from "recharts";
 import type { TooltipProps } from "recharts";
 import { Box, Typography, Stack } from "@mui/material";
 import { useTheme, useMediaQuery } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import { useTokens } from "../context/ColorModeContext";
 import { formatCurrency as fmtCurrency, formatCurrencyCompact } from "../utils/format";
 
@@ -78,6 +79,27 @@ function CustomCursor(props: any) {
   );
 }
 
+// Compact stat pill for an average, color-matched to its dashed reference line on the chart.
+function AvgPill({ color, muted, label, value }: { color: string; muted: string; label: string; value: string }) {
+  return (
+    <Box sx={{
+      display: "inline-flex", alignItems: "center", gap: 1,
+      px: 1.25, py: 0.6, borderRadius: 2,
+      bgcolor: alpha(color, 0.1), border: `1px solid ${alpha(color, 0.25)}`,
+    }}>
+      <Box sx={{ width: 16, flexShrink: 0, borderTop: `2px dashed ${color}` }} />
+      <Box>
+        <Typography sx={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: muted, lineHeight: 1, mb: 0.35 }}>
+          {label}
+        </Typography>
+        <Typography sx={{ fontSize: 13, fontWeight: 800, color, lineHeight: 1, letterSpacing: "-0.01em" }}>
+          {value}
+        </Typography>
+      </Box>
+    </Box>
+  );
+}
+
 const TOTAL_ANIMATION_MS = 600;
 const BAR_DURATION_MS = 150;
 
@@ -87,8 +109,21 @@ function IncomeChart({ data, currency }: IncomeChartProps) {
   const { colors, shadow } = useTokens();
   const stagger = data.length > 1 ? Math.round((TOTAL_ANIMATION_MS - BAR_DURATION_MS) / (data.length - 1)) : 0;
 
+  // Averages over exactly the groups being shown, so they follow the page's filters and grouping.
+  const n = data.length;
+  const avgTotal = n ? data.reduce((s, d) => s + d.net + d.tax, 0) / n : 0;
+  const avgNet = n ? data.reduce((s, d) => s + d.net, 0) / n : 0;
+
   return (
-    <ResponsiveContainer width="100%" height={compact ? 240 : 340}>
+    <>
+      {n > 0 && (
+        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap"
+          justifyContent={{ xs: "center", sm: "flex-end" }} sx={{ mb: 1.5 }}>
+          <AvgPill color={colors.brand} muted={colors.gray500} label="Avg Total" value={fmtCurrency(avgTotal, currency)} />
+          <AvgPill color={colors.accent} muted={colors.gray500} label="Avg Net" value={fmtCurrency(avgNet, currency)} />
+        </Stack>
+      )}
+      <ResponsiveContainer width="100%" height={compact ? 240 : 340}>
       <BarChart data={data} margin={{ top: 4, right: compact ? 4 : 8, left: compact ? -20 : 0, bottom: 0 }} barCategoryGap="20%">
         <CartesianGrid vertical={false} stroke={colors.gray100} />
         <XAxis
@@ -162,8 +197,13 @@ function IncomeChart({ data, currency }: IncomeChartProps) {
           shape={<AnimatedBarTop fill={colors.error} stagger={stagger} />}>
           {data.map((_, i) => <Cell key={i} fill={colors.error} />)}
         </Bar>
+        {/* Average lines over the shown groups. Values live in the pills above the chart, so no
+            on-chart labels to collide with the bars or each other when the two lines sit close. */}
+        {n > 0 && <ReferenceLine y={avgTotal} stroke={colors.brand} strokeDasharray="5 4" strokeWidth={2} isFront />}
+        {n > 0 && <ReferenceLine y={avgNet} stroke={colors.accent} strokeDasharray="5 4" strokeWidth={2} isFront />}
       </BarChart>
-    </ResponsiveContainer>
+      </ResponsiveContainer>
+    </>
   );
 }
 

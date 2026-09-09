@@ -38,6 +38,9 @@ export function xirr(input: CashFlow[]): number | null {
 
   const flows = [...input].sort((a, b) => a.date.getTime() - b.date.getTime());
   const t0 = flows[0].date.getTime();
+  // All flows on one date: zero elapsed time, so there is no rate to annualise. Bail out before
+  // Newton hands back its seed as a bogus rate when the flows net to zero at it.
+  if (t0 === flows[flows.length - 1].date.getTime()) return null;
 
   // Newton-Raphson
   let rate = 0.1;

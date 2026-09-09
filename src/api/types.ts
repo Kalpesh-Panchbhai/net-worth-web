@@ -88,6 +88,12 @@ export interface ChartDataPoint {
   invested: number;
   /** Currency `value` and `invested` are expressed in. */
   displayCurrency: string;
+  /**
+   * Money-weighted return (fraction, 0.12 === 12%) from inception up to this point's date, closed
+   * with this point's `value`. Null before the first investment or where it does not apply. The
+   * value at the last point equals the summary's `xirr`.
+   */
+  xirr?: number | null;
 }
 
 export type EntityType = "holding" | "account" | "watchlist";
