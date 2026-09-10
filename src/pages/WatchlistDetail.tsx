@@ -30,6 +30,7 @@ import {
 } from "../api/client";
 import { EmptyState, ErrorState, ListSkeleton, FadeIn } from "../components/shared";
 import EntityChart from "../components/EntityChart";
+import AllocationBreakdown, { type AllocationGrouping } from "../components/AllocationBreakdown";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
 import XirrBadge from "../components/XirrBadge";
@@ -47,6 +48,13 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
   LOAN: <AccountBalanceRoundedIcon sx={{ fontSize: 18 }} />,
   OTHER: <MoreHorizRoundedIcon sx={{ fontSize: 18 }} />,
 };
+
+// Module scope so the array identity is stable across renders (keeps the memoized card from re-running).
+const ACCOUNT_GROUPINGS: AllocationGrouping<AccountSummary>[] = [
+  { id: "type", label: "Type", keyOf: a => a.type, labelOf: k => TYPE_LABELS[k] ?? k, colorBy: "type" },
+  { id: "account", label: "Account", keyOf: a => a.name },
+  { id: "currency", label: "Currency", keyOf: a => a.currency },
+];
 
 /** Per-type subtotals, accumulated in the same pass that buckets the rows. */
 interface TypeGroup {
@@ -390,6 +398,18 @@ function WatchlistDetail() {
           <FadeIn delay={80}>
             <EntityChart entityType="watchlist" entityId={numWatchlistId} accentColor={isAll ? colors.brand : colors.accent} currency={watchlist.displayCurrency} showInvested={hasInvestable} />
           </FadeIn>
+
+          {/* ── Allocation ── */}
+          {linkedAccounts.length > 0 && (
+            <FadeIn delay={90}>
+              <AllocationBreakdown
+                items={linkedAccounts}
+                currency={watchlist.displayCurrency}
+                itemNoun="accounts"
+                groupings={ACCOUNT_GROUPINGS}
+              />
+            </FadeIn>
+          )}
 
           {/* Search + Group toolbar */}
           {linkedAccounts.length > 0 && (
