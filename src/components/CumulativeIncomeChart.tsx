@@ -28,12 +28,18 @@ interface Row {
   avgTotal: number | null;
   avgNet: number | null;
   avgTax: number | null;
-  /** Projected cumulative Total; carries the last actual value too, so the dashed line joins on. */
+  /** Projected cumulative Total/Net/Tax; each carries the last actual value too, so the dashed line joins on. */
   fcTotal: number | null;
-  /** [lower, upper] ±1σ range around the projection (recharts range area). Null on actual points. */
+  fcNet: number | null;
+  fcTax: number | null;
+  /** [lower, upper] ±1σ range around each projection (recharts range area). Null on actual points. */
   fcBand: [number, number] | null;
+  fcBandNet: [number, number] | null;
+  fcBandTax: [number, number] | null;
   projected: boolean;
   runRate?: number;
+  runRateNet?: number;
+  runRateTax?: number;
 }
 
 /**
@@ -59,32 +65,47 @@ function CumulativeIncomeChart({ data, currency, forecastLabels }: CumulativeInc
       return {
         label: d.label, cumTotal: runTotal, cumNet: runNet, cumTax: runTax,
         avgTotal: runTotal / count, avgNet: runNet / count, avgTax: runTax / count,
-        fcTotal: null, fcBand: null, projected: false,
+        fcTotal: null, fcNet: null, fcTax: null,
+        fcBand: null, fcBandNet: null, fcBandTax: null, projected: false,
       };
     });
 
     const n = data.length;
     const labels = forecastLabels ?? [];
     const rate = n ? runTotal / n : 0; // average per-period total = expected run-rate
+    const rateNet = n ? runNet / n : 0;
+    const rateTax = n ? runTax / n : 0;
     const hasForecast = n >= 2 && labels.length > 0 && rate > 0;
     if (hasForecast) {
       // Spread of per-period income (sample std dev). Over k future periods the cumulative
-      // uncertainty compounds as sigma*sqrt(k), giving the band its widening cone.
-      const totals = data.map(d => d.net + d.tax);
-      const variance = totals.reduce((s, v) => s + (v - rate) ** 2, 0) / (n - 1);
-      const sigma = Math.sqrt(variance);
+      // uncertainty compounds as sigma*sqrt(k), giving each band its widening cone.
+      const stdDev = (values: number[], mean: number) =>
+        Math.sqrt(values.reduce((s, v) => s + (v - mean) ** 2, 0) / (n - 1));
+      const sigma = stdDev(data.map(d => d.net + d.tax), rate);
+      const sigmaNet = stdDev(data.map(d => d.net), rateNet);
+      const sigmaTax = stdDev(data.map(d => d.tax), rateTax);
 
-      rows[rows.length - 1].fcTotal = runTotal;          // anchor the dashed line to the solid one
-      rows[rows.length - 1].fcBand = [runTotal, runTotal]; // band starts at zero width here
-      let fc = runTotal;
+      const last = rows[rows.length - 1];
+      last.fcTotal = runTotal; last.fcNet = runNet; last.fcTax = runTax; // anchor dashed lines to the solid ones
+      last.fcBand = [runTotal, runTotal];                                // bands start at zero width here
+      last.fcBandNet = [runNet, runNet];
+      last.fcBandTax = [runTax, runTax];
+      let fc = runTotal, fcNet = runNet, fcTax = runTax;
       labels.forEach((label, k) => {
-        fc += rate;
-        const half = sigma * Math.sqrt(k + 1);
-        const lower = Math.max(runTotal, fc - half); // cumulative income can't fall below what's earned
+        const spread = Math.sqrt(k + 1);
+        fc += rate; fcNet += rateNet; fcTax += rateTax;
+        const half = sigma * spread;
+        const halfNet = sigmaNet * spread;
+        const halfTax = sigmaTax * spread;
+        // cumulative income can't fall below what's already earned
         rows.push({
           label, cumTotal: null, cumNet: null, cumTax: null,
           avgTotal: null, avgNet: null, avgTax: null,
-          fcTotal: fc, fcBand: [lower, fc + half], projected: true, runRate: rate,
+          fcTotal: fc, fcNet, fcTax,
+          fcBand: [Math.max(runTotal, fc - half), fc + half],
+          fcBandNet: [Math.max(runNet, fcNet - halfNet), fcNet + halfNet],
+          fcBandTax: [Math.max(runTax, fcTax - halfTax), fcTax + halfTax],
+          projected: true, runRate: rate, runRateNet: rateNet, runRateTax: rateTax,
         });
       });
     }
@@ -127,16 +148,38 @@ function CumulativeIncomeChart({ data, currency, forecastLabels }: CumulativeInc
                       Projected
                     </Box>
                   </Stack>
-                  <Stack direction="row" justifyContent="space-between" spacing={2}>
-                    <Typography sx={{ fontSize: 12, fontWeight: 600, color: colors.brand }}>Projected Total</Typography>
-                    <Typography sx={{ fontSize: 12, fontWeight: 700 }}>{money(dp.fcTotal)}</Typography>
-                  </Stack>
-                  {dp.fcBand && (
-                    <Stack direction="row" justifyContent="space-between" spacing={2} sx={{ mt: 0.25 }}>
-                      <Typography sx={{ fontSize: 12, fontWeight: 600, color: colors.gray400 }}>Range (±1σ)</Typography>
-                      <Typography sx={{ fontSize: 12, fontWeight: 700 }}>{money(dp.fcBand[0])} – {money(dp.fcBand[1])}</Typography>
+                  <Stack spacing={0.5}>
+                    <Stack direction="row" justifyContent="space-between" spacing={2}>
+                      <Typography sx={{ fontSize: 12, fontWeight: 600, color: colors.brand }}>Projected Total</Typography>
+                      <Typography sx={{ fontSize: 12, fontWeight: 700 }}>{money(dp.fcTotal)}</Typography>
                     </Stack>
-                  )}
+                    {dp.fcBand && (
+                      <Stack direction="row" justifyContent="space-between" spacing={2}>
+                        <Typography sx={{ fontSize: 11, fontWeight: 500, color: colors.gray400 }}>Range (±1σ)</Typography>
+                        <Typography sx={{ fontSize: 11, fontWeight: 600, color: colors.gray500 }}>{money(dp.fcBand[0])} – {money(dp.fcBand[1])}</Typography>
+                      </Stack>
+                    )}
+                    <Stack direction="row" justifyContent="space-between" spacing={2}>
+                      <Typography sx={{ fontSize: 12, fontWeight: 600, color: colors.success }}>Projected Net</Typography>
+                      <Typography sx={{ fontSize: 12, fontWeight: 700 }}>{money(dp.fcNet)}</Typography>
+                    </Stack>
+                    {dp.fcBandNet && (
+                      <Stack direction="row" justifyContent="space-between" spacing={2}>
+                        <Typography sx={{ fontSize: 11, fontWeight: 500, color: colors.gray400 }}>Range (±1σ)</Typography>
+                        <Typography sx={{ fontSize: 11, fontWeight: 600, color: colors.gray500 }}>{money(dp.fcBandNet[0])} – {money(dp.fcBandNet[1])}</Typography>
+                      </Stack>
+                    )}
+                    <Stack direction="row" justifyContent="space-between" spacing={2}>
+                      <Typography sx={{ fontSize: 12, fontWeight: 600, color: colors.error }}>Projected Tax</Typography>
+                      <Typography sx={{ fontSize: 12, fontWeight: 700 }}>{money(dp.fcTax)}</Typography>
+                    </Stack>
+                    {dp.fcBandTax && (
+                      <Stack direction="row" justifyContent="space-between" spacing={2}>
+                        <Typography sx={{ fontSize: 11, fontWeight: 500, color: colors.gray400 }}>Range (±1σ)</Typography>
+                        <Typography sx={{ fontSize: 11, fontWeight: 600, color: colors.gray500 }}>{money(dp.fcBandTax[0])} – {money(dp.fcBandTax[1])}</Typography>
+                      </Stack>
+                    )}
+                  </Stack>
                   <Box sx={{ borderTop: `1px solid ${colors.gray200}`, pt: 0.5, mt: 0.4 }}>
                     <Typography sx={{ fontSize: 11, color: colors.gray400 }}>
                       At avg run-rate {money(dp.runRate ?? null)}/period
@@ -194,8 +237,8 @@ function CumulativeIncomeChart({ data, currency, forecastLabels }: CumulativeInc
               { label: "Cumulative Net", color: colors.success, kind: "solid" },
               { label: "Cumulative Tax", color: colors.error, kind: "solid" },
               ...(hasForecast ? [
-                { label: "Forecast (avg)", color: colors.brand, kind: "dashed" as const },
-                { label: "Range (±1σ)", color: colors.brand, kind: "band" as const },
+                { label: "Forecast (avg)", color: colors.gray500, kind: "dashed" as const },
+                { label: "Range (±1σ)", color: colors.gray500, kind: "band" as const },
               ] : []),
             ];
             return (
@@ -216,6 +259,14 @@ function CumulativeIncomeChart({ data, currency, forecastLabels }: CumulativeInc
           <Area type="monotone" dataKey="fcBand" name="Forecast range" stroke="none"
             fill={alpha(colors.brand, 0.14)} isAnimationActive={false} legendType="none" tooltipType="none" />
         )}
+        {hasForecast && (
+          <Area type="monotone" dataKey="fcBandNet" name="Forecast range (Net)" stroke="none"
+            fill={alpha(colors.success, 0.14)} isAnimationActive={false} legendType="none" tooltipType="none" />
+        )}
+        {hasForecast && (
+          <Area type="monotone" dataKey="fcBandTax" name="Forecast range (Tax)" stroke="none"
+            fill={alpha(colors.error, 0.14)} isAnimationActive={false} legendType="none" tooltipType="none" />
+        )}
         <Line type="monotone" dataKey="cumTotal" name="Cumulative Total" stroke={colors.brand}
           strokeWidth={2.5} dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: colors.white, fill: colors.brand }}
           isAnimationActive animationDuration={600} animationEasing="ease-out" />
@@ -230,6 +281,18 @@ function CumulativeIncomeChart({ data, currency, forecastLabels }: CumulativeInc
             strokeWidth={2} strokeDasharray="5 4" dot={false}
             activeDot={{ r: 4, strokeWidth: 2, stroke: colors.white, fill: colors.brand }}
             isAnimationActive={false} />
+        )}
+        {hasForecast && (
+          <Line type="monotone" dataKey="fcNet" name="Forecast (Net)" stroke={colors.success}
+            strokeWidth={2} strokeDasharray="5 4" dot={false}
+            activeDot={{ r: 4, strokeWidth: 2, stroke: colors.white, fill: colors.success }}
+            isAnimationActive={false} legendType="none" />
+        )}
+        {hasForecast && (
+          <Line type="monotone" dataKey="fcTax" name="Forecast (Tax)" stroke={colors.error}
+            strokeWidth={2} strokeDasharray="5 4" dot={false}
+            activeDot={{ r: 4, strokeWidth: 2, stroke: colors.white, fill: colors.error }}
+            isAnimationActive={false} legendType="none" />
         )}
       </ComposedChart>
     </ResponsiveContainer>

@@ -8,16 +8,28 @@ import { alpha } from "@mui/material/styles";
 import ShowChartOutlinedIcon from "@mui/icons-material/ShowChartOutlined";
 import AccountBalanceWalletRoundedIcon from "@mui/icons-material/AccountBalanceWalletRounded";
 import NetWorthChart from "../components/NetWorthChart";
+import AllocationBreakdown, { type AllocationGrouping } from "../components/AllocationBreakdown";
 import XirrBadge from "../components/XirrBadge";
 import { ChartSkeleton, ErrorState, EmptyState, FadeIn } from "../components/shared";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
-import { getWatchlists, getChartData, getIncomes } from "../api/client";
+import { getWatchlists, getChartData, getIncomes, getWatchlistAccounts } from "../api/client";
 import { useUser } from "../context/UserContext";
-import type { WatchlistSummary, ChartDataPoint, TimePeriod, Income } from "../api/types";
+import type { WatchlistSummary, ChartDataPoint, TimePeriod, Income, AccountSummary } from "../api/types";
 import { formatCurrency as fmt } from "../utils/format";
 
 const TIME_PERIODS: TimePeriod[] = ["1M", "3M", "6M", "1Y", "2Y", "5Y", "ALL"];
+
+const TYPE_LABELS: Record<string, string> = {
+  BROKER: "Broker", SAVINGS: "Savings", CREDIT_CARD: "Credit Card", LOAN: "Loan", OTHER: "Other",
+};
+
+// Module scope so the array identity is stable across renders (keeps the memoized card from re-running).
+const ACCOUNT_GROUPINGS: AllocationGrouping<AccountSummary>[] = [
+  { id: "type", label: "Type", keyOf: a => a.type, labelOf: k => TYPE_LABELS[k] ?? k, colorBy: "type" },
+  { id: "account", label: "Account", keyOf: a => a.name },
+  { id: "currency", label: "Currency", keyOf: a => a.currency },
+];
 
 function Dashboard() {
   const { userId, loading: userLoading, preferredCurrency, dataVersion } = useUser();
@@ -25,6 +37,7 @@ function Dashboard() {
   const { colors } = useTokens();
   const { showToast } = useToast();
   const [watchlist, setWatchlist] = useState<WatchlistSummary | null>(null);
+  const [accounts, setAccounts] = useState<AccountSummary[]>([]);
   const [incomes, setIncomes] = useState<Income[]>([]);
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [timePeriod, setTimePeriod] = useState<TimePeriod>("1Y");
@@ -58,9 +71,14 @@ function Dashboard() {
       setWatchlist(wl);
       setIncomes(inc);
       const seq = ++chartSeqRef.current;
-      const data = await getChartData("watchlist", wl.id, timePeriodRef.current);
+      // Chart + member accounts (for the allocation card) both need wl.id, so fetch together.
+      const [data, members] = await Promise.all([
+        getChartData("watchlist", wl.id, timePeriodRef.current),
+        getWatchlistAccounts(wl.id),
+      ]);
       if (cancelled() || seq !== chartSeqRef.current) return;
       setChartData(data);
+      setAccounts(members);
     } catch (err) {
       if (cancelled()) return;
       setError(err instanceof Error ? err.message : "Failed to load dashboard");
@@ -254,6 +272,18 @@ function Dashboard() {
               />
             )}
           </Paper>
+        </FadeIn>
+      )}
+
+      {/* ── Allocation ── */}
+      {!loading && accounts.length > 0 && (
+        <FadeIn delay={200}>
+          <AllocationBreakdown
+            items={accounts}
+            currency={preferredCurrency}
+            itemNoun="accounts"
+            groupings={ACCOUNT_GROUPINGS}
+          />
         </FadeIn>
       )}
     </Stack>

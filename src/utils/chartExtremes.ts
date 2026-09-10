@@ -35,9 +35,9 @@ export interface Extremes {
   byXirr: ExtremePair | null;
 }
 
-/** Days after the first XIRR point to ignore when the window begins near inception. */
-const XIRR_WARMUP_DAYS = 30;
-/** Above this |XIRR| the window's first point is still in the inception "explosion" range. */
+/** Elapsed days from the window's first XIRR point below which an explosive figure is discarded. */
+const XIRR_WARMUP_DAYS = 60;
+/** Above this |XIRR| a point is treated as still in the inception "explosion" range. */
 const XIRR_INCEPTION_THRESHOLD = 1; // 100%
 
 function ms(date: string): number {
@@ -82,23 +82,25 @@ export function computeExtremes(data: ExtremeInput[]): Extremes | null {
     worst: points.reduce((a, b) => (b.pl < a.pl ? b : a)),
   };
 
-  // XIRR extremes: annualising a few days near inception explodes the figure, so skip the warm-up
-  // window — but only when the window actually starts near inception (its first XIRR is still in
-  // the explosive range). For a zoomed view of a mature holding, rank across all points.
+  // XIRR extremes: annualising a few days near inception explodes the figure. Discard any point
+  // that is BOTH inside the warm-up window AND still in the explosive range — done per point, so a
+  // tame-looking first point can't wave through a later day-10 explosion, while a zoomed view of a
+  // mature holding (no explosive figures) keeps all its points. Fall back to the full set if the
+  // filter would leave nothing to rank.
   let byXirr: ExtremePair | null = null;
   const defined = points.filter(p => p.xirr != null && isFinite(p.xirr as number));
   if (defined.length > 0) {
     const start = ms(defined[0].date);
-    const nearInception = Math.abs(defined[0].xirr as number) > XIRR_INCEPTION_THRESHOLD;
-    const pool = nearInception
-      ? defined.filter(p => ms(p.date) - start >= XIRR_WARMUP_DAYS * 86_400_000)
-      : defined;
-    if (pool.length > 0) {
-      byXirr = {
-        best: pool.reduce((a, b) => ((b.xirr as number) > (a.xirr as number) ? b : a)),
-        worst: pool.reduce((a, b) => ((b.xirr as number) < (a.xirr as number) ? b : a)),
-      };
-    }
+    const stable = defined.filter(p => {
+      const withinWarmup = ms(p.date) - start < XIRR_WARMUP_DAYS * 86_400_000;
+      const explosive = Math.abs(p.xirr as number) > XIRR_INCEPTION_THRESHOLD;
+      return !(withinWarmup && explosive);
+    });
+    const pool = stable.length > 0 ? stable : defined;
+    byXirr = {
+      best: pool.reduce((a, b) => ((b.xirr as number) > (a.xirr as number) ? b : a)),
+      worst: pool.reduce((a, b) => ((b.xirr as number) < (a.xirr as number) ? b : a)),
+    };
   }
 
   return { currency, byPct, byAmount, byXirr };

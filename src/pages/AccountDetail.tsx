@@ -35,6 +35,7 @@ import ListItemIcon from "@mui/material/ListItemIcon";
 import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
 import { EmptyState, ErrorState, ListSkeleton, FadeIn } from "../components/shared";
 import EntityChart from "../components/EntityChart";
+import AllocationBreakdown, { type AllocationGrouping } from "../components/AllocationBreakdown";
 import XirrBadge from "../components/XirrBadge";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
@@ -49,6 +50,11 @@ import FiberNewRoundedIcon from "@mui/icons-material/FiberNewRounded";
 const TYPE_LABELS: Record<string, string> = {
   BROKER: "Broker", SAVINGS: "Savings", CREDIT_CARD: "Credit Card", LOAN: "Loan", OTHER: "Other",
 };
+
+// Module scope so the array identity is stable across renders (keeps the memoized card from re-running).
+const HOLDING_GROUPINGS: AllocationGrouping<HoldingSummary>[] = [
+  { id: "holding", label: "Holding", keyOf: h => h.name },
+];
 
 function parseTxnDate(dateStr: string) {
   const d = new Date(dateStr + "T00:00:00");
@@ -887,6 +893,19 @@ function AccountDetail() {
           <FadeIn delay={80}>
             <EntityChart entityType="account" entityId={numAccountId} accentColor={tc} currency={account.displayCurrency} showInvested={showInvested} />
           </FadeIn>
+
+          {/* ── BROKER: Holdings allocation ── */}
+          {isBroker && !holdingsLoading && holdingRows.length > 0 && (
+            <FadeIn delay={90}>
+              <AllocationBreakdown
+                items={holdings}
+                currency={account.displayCurrency}
+                title="Holdings Allocation"
+                itemNoun="holdings"
+                groupings={HOLDING_GROUPINGS}
+              />
+            </FadeIn>
+          )}
 
           {/* ── BROKER: Holdings cards ── */}
           {isBroker && (

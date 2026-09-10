@@ -12,6 +12,7 @@ import { getChartData } from "../api/client";
 import type { ChartDataPoint, EntityType, TimePeriod, Transaction } from "../api/types";
 import { formatCurrency as fmtCurrency, formatCurrencyCompact as fmtCompact, formatUnits as fmtUnits } from "../utils/format";
 import { computeExtremes } from "../utils/chartExtremes";
+import { buildValueForecast, type ForecastFields } from "../utils/forecast";
 
 const PERIODS: { value: TimePeriod; label: string }[] = [
   { value: "1M", label: "1M" },
@@ -38,6 +39,15 @@ interface TxnMarker {
   valueInUnits: boolean;
 }
 
+/** A chart row that may carry transaction markers and/or a forward Value projection. */
+type PlotPoint = Omit<ChartDataPoint, "value" | "invested"> & {
+  value: number | null;
+  invested: number | null;
+  txnInvestedDelta?: number;
+  txnValueDelta?: number;
+  txnValueInUnits?: boolean;
+} & ForecastFields;
+
 function formatFullDate(dateStr: string) {
   return new Date(dateStr + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
@@ -58,6 +68,49 @@ function formatDateLabel(dateStr: string, multiYear: boolean) {
 
 function CustomTooltip({ active, payload, label, currency, accentColor, showInvested, colors, shadow }: TooltipProps<number, string> & { currency: string; accentColor: string; showInvested: boolean; colors: ReturnType<typeof useTokens>["colors"]; shadow: ReturnType<typeof useTokens>["shadow"] }) {
   if (!active || !payload?.length) return null;
+
+  // Projected (future) point: show the forecast value and its ±1σ range instead of actuals.
+  const dp = payload[0]?.payload as PlotPoint | undefined;
+  if (dp?.projected) {
+    const d = new Date((dp.date ?? "") + "T00:00:00");
+    const formattedDate = d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+    const band = dp.fcBand;
+    return (
+      <Box sx={{
+        bgcolor: colors.white, border: `1px solid ${colors.gray200}`,
+        borderRadius: 4, boxShadow: shadow.md, minWidth: 220, overflow: "hidden",
+      }}>
+        <Box sx={{ px: 2.5, pt: 2, pb: 1.5, bgcolor: alpha(colors.gray100, 0.5), display: "flex", alignItems: "center", gap: 1 }}>
+          <Typography sx={{ fontSize: 12, fontWeight: 700, color: colors.gray500, letterSpacing: "0.01em" }}>
+            {formattedDate}
+          </Typography>
+          <Box sx={{ px: 0.75, py: 0.15, borderRadius: 1, bgcolor: colors.gray100, fontSize: 9, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: colors.gray500 }}>
+            Projected
+          </Box>
+        </Box>
+        <Stack spacing={0} sx={{ px: 2.5, py: 1.5 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ py: 0.75 }}>
+            <Stack direction="row" spacing={0.75} alignItems="center">
+              <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: accentColor }} />
+              <Typography sx={{ fontSize: 12.5, color: colors.gray400, fontWeight: 600 }}>Projected value</Typography>
+            </Stack>
+            <Typography sx={{ fontSize: 13.5, fontWeight: 750, color: colors.gray500, letterSpacing: "-0.01em" }}>
+              {fmtCurrency(dp.fcValue ?? 0, currency)}
+            </Typography>
+          </Stack>
+          {band && (
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ py: 0.75 }}>
+              <Typography sx={{ fontSize: 11.5, color: colors.gray400, fontWeight: 500 }}>Range (±1σ)</Typography>
+              <Typography sx={{ fontSize: 12, fontWeight: 600, color: colors.gray500 }}>
+                {fmtCurrency(band[0], currency)} – {fmtCurrency(band[1], currency)}
+              </Typography>
+            </Stack>
+          )}
+        </Stack>
+      </Box>
+    );
+  }
+
   const value = payload.find(p => p.dataKey === "value")?.value ?? 0;
   const invested = payload.find(p => p.dataKey === "invested")?.value ?? 0;
   const xirr = payload[0]?.payload?.xirr as number | null | undefined;
@@ -297,16 +350,19 @@ function EntityChart({ entityType, entityId, accentColor, currency, showInvested
   }, [transactions]);
 
   // Enrich chart data with transaction markers
-  const chartData = useMemo(() => {
-    if (txnDateMap.size === 0) return data;
+  const chartData = useMemo<PlotPoint[]>(() => {
     return data.map(d => {
       const txn = txnDateMap.get(d.date);
-      return txn ? { ...d, txnInvestedDelta: txn.investedDelta, txnValueDelta: txn.valueDelta, txnValueInUnits: txn.valueInUnits } : d;
+      return txn ? { ...d, txnInvestedDelta: txn.investedDelta, txnValueDelta: txn.valueDelta, txnValueInUnits: txn.valueInUnits } : { ...d };
     });
   }, [data, txnDateMap]);
 
+  // Forecast: extend the Value line ~25% of the window at the geometric (CAGR) trend, with a ±1σ cone.
+  const { plotData, hasForecast } = useMemo(() => buildValueForecast(chartData), [chartData]);
+
   const gradientId = `grad-${entityType}-${entityId}`;
   const gradientInvId = `grad-inv-${entityType}-${entityId}`;
+  const fcFillId = `grad-fc-${entityType}-${entityId}`;
   const valStrokeId = `val-stroke-${entityType}-${entityId}`;
   const valFillId = `val-fill-${entityType}-${entityId}`;
 
@@ -404,7 +460,7 @@ function EntityChart({ entityType, entityId, accentColor, currency, showInvested
         </Box>
       ) : (
         <ResponsiveContainer width="100%" height={compact ? 240 : 320}>
-          <AreaChart data={chartData} margin={{ top: 4, right: compact ? 4 : 8, left: compact ? -20 : 0, bottom: 0 }}>
+          <AreaChart data={plotData} margin={{ top: 4, right: compact ? 4 : 8, left: compact ? -20 : 0, bottom: 0 }}>
             <defs>
               {hasInvData ? (
                 <>
@@ -429,6 +485,12 @@ function EntityChart({ entityType, entityId, accentColor, currency, showInvested
                 <linearGradient id={gradientInvId} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={colors.warning} stopOpacity={0.1} />
                   <stop offset="100%" stopColor={colors.warning} stopOpacity={0} />
+                </linearGradient>
+              )}
+              {hasForecast && (
+                <linearGradient id={fcFillId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={color} stopOpacity={0.16} />
+                  <stop offset="100%" stopColor={color} stopOpacity={0.03} />
                 </linearGradient>
               )}
             </defs>
@@ -458,6 +520,7 @@ function EntityChart({ entityType, entityId, accentColor, currency, showInvested
               payload={[
                 { value: "Value", type: "circle" as const, color: hidden.has("Value") ? colors.gray300 : (hasInvData ? colors.success : color) },
                 ...(showInvested ? [{ value: "Invested", type: "circle" as const, color: hidden.has("Invested") ? colors.gray300 : colors.warning }] : []),
+                ...(hasForecast ? [{ value: "Forecast", type: "line" as const, color: hidden.has("Forecast") ? colors.gray300 : color }] : []),
               ]}
             />
             <Area
@@ -500,6 +563,27 @@ function EntityChart({ entityType, entityId, accentColor, currency, showInvested
                 dot={false}
                 activeDot={hidden.has("Invested") ? false : { r: 4, strokeWidth: 2, stroke: colors.white, fill: colors.warning }}
                 isAnimationActive={!hidden.has("Invested")} animationDuration={800} animationEasing="ease-out" animationBegin={100}
+              />
+            )}
+            {hasForecast && !hidden.has("Forecast") && (
+              <Area
+                type="monotone" dataKey="fcBand" name="Forecast range"
+                stroke="none" fill={`url(#${fcFillId})`}
+                dot={false} activeDot={false} legendType="none" tooltipType="none"
+                isAnimationActive={false} connectNulls
+              />
+            )}
+            {hasForecast && (
+              <Area
+                key={`fc-${showCount["Forecast"] ?? 0}`}
+                type="monotone" dataKey="fcValue" name="Forecast"
+                stroke={hidden.has("Forecast") ? "transparent" : color}
+                strokeWidth={hidden.has("Forecast") ? 0 : 2}
+                strokeDasharray="5 4"
+                fill="none"
+                dot={false}
+                activeDot={hidden.has("Forecast") ? false : { r: 4, strokeWidth: 2, stroke: colors.white, fill: color }}
+                isAnimationActive={false} connectNulls
               />
             )}
           </AreaChart>

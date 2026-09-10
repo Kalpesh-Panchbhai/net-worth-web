@@ -6,10 +6,13 @@ import SavingsOutlinedIcon from "@mui/icons-material/SavingsOutlined";
 import { useTokens } from "../context/ColorModeContext";
 import type { ChartDataPoint } from "../api/types";
 import { formatCurrency, formatCurrencyCompact } from "../utils/format";
+import { buildValueForecast, type ForecastFields } from "../utils/forecast";
 
 interface EnrichedDataPoint extends ChartDataPoint {
   savingsRate?: number | null;
 }
+
+type PlotPoint = EnrichedDataPoint & ForecastFields;
 
 interface NetWorthChartProps {
   data: EnrichedDataPoint[];
@@ -24,8 +27,50 @@ function CustomTooltip({ active, payload, label, colors, shadow, currency }: any
   if (!active || !payload?.length) return null;
   const value = payload.find((p: any) => p.dataKey === "value")?.value;
   const invested = payload.find((p: any) => p.dataKey === "invested")?.value;
-  const raw = payload[0]?.payload as EnrichedDataPoint | undefined;
+  const raw = payload[0]?.payload as PlotPoint | undefined;
   const sr = raw?.savingsRate;
+
+  // Projected (future) point: show the forecast value and its ±1σ range.
+  if (raw?.projected) {
+    const band = raw.fcBand;
+    return (
+      <Box sx={{
+        bgcolor: colors.white, border: `1px solid ${colors.gray200}`,
+        borderRadius: 3, boxShadow: shadow.md, p: 1.5, minWidth: 180,
+      }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
+          <Typography sx={{ fontSize: 11, color: colors.gray400, fontWeight: 500 }}>{label}</Typography>
+          <Box sx={{ px: 0.75, py: 0.15, borderRadius: 1, bgcolor: colors.gray100, fontSize: 9, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: colors.gray500 }}>
+            Projected
+          </Box>
+        </Box>
+        <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, mb: 0.5 }}>
+          <Typography sx={{ fontSize: 12, color: colors.gray500 }}>Projected value</Typography>
+          <Typography sx={{ fontSize: 12, fontWeight: 700, color: colors.brand }}>{fmtCurrency(raw.fcValue ?? 0, currency)}</Typography>
+        </Box>
+        {band && (
+          <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, mb: 0.5 }}>
+            <Typography sx={{ fontSize: 11, color: colors.gray400 }}>Range (±1σ)</Typography>
+            <Typography sx={{ fontSize: 11, fontWeight: 600, color: colors.gray500 }}>
+              {fmtCurrency(band[0], currency)} – {fmtCurrency(band[1], currency)}
+            </Typography>
+          </Box>
+        )}
+        {raw.fcInvested != null && (
+          <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, mb: 0.5 }}>
+            <Typography sx={{ fontSize: 12, color: colors.gray500 }}>Projected invested</Typography>
+            <Typography sx={{ fontSize: 12, fontWeight: 600, color: colors.warning }}>{fmtCurrency(raw.fcInvested, currency)}</Typography>
+          </Box>
+        )}
+        {raw.fcSaved != null && (
+          <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2 }}>
+            <Typography sx={{ fontSize: 12, color: colors.gray500 }}>Projected saved</Typography>
+            <Typography sx={{ fontSize: 12, fontWeight: 600, color: colors.success }}>{raw.fcSaved.toFixed(1)}%</Typography>
+          </Box>
+        )}
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{
@@ -75,6 +120,9 @@ function NetWorthChart({ data, currency }: NetWorthChartProps) {
   const chartCurrency = data[0]?.displayCurrency ?? currency;
 
   const hasSavings = useMemo(() => data.some((d) => d.savingsRate != null), [data]);
+
+  // Forecast: extend Value (with band) plus Invested and Saved % as line-only dashed extensions.
+  const { plotData, hasForecast } = useMemo(() => buildValueForecast(data, { invested: true, saved: true }), [data]);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [showCount, setShowCount] = useState<Record<string, number>>({});
   const toggle = (key: string) => {
@@ -110,11 +158,15 @@ function NetWorthChart({ data, currency }: NetWorthChartProps) {
 
   return (
     <ResponsiveContainer width="100%" height={compact ? 240 : 340}>
-      <AreaChart data={data} margin={{ top: 4, right: hasSavings ? (compact ? 30 : 40) : (compact ? 4 : 8), left: compact ? -10 : 0, bottom: 0 }}>
+      <AreaChart data={plotData} margin={{ top: 4, right: hasSavings ? (compact ? 30 : 40) : (compact ? 4 : 8), left: compact ? -10 : 0, bottom: 0 }}>
         <defs>
           <linearGradient id="gVal" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={colors.brand} stopOpacity={0.12} />
             <stop offset="100%" stopColor={colors.brand} stopOpacity={0} />
+          </linearGradient>
+          <linearGradient id="gFc" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={colors.brand} stopOpacity={0.16} />
+            <stop offset="100%" stopColor={colors.brand} stopOpacity={0.03} />
           </linearGradient>
           <linearGradient id="gInv" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={colors.warning} stopOpacity={0.1} />
@@ -171,6 +223,7 @@ function NetWorthChart({ data, currency }: NetWorthChartProps) {
             { value: "Value", type: "circle", color: hidden.has("Value") ? colors.gray300 : colors.brand },
             { value: "Invested", type: "circle", color: hidden.has("Invested") ? colors.gray300 : colors.warning },
             ...(hasSavings ? [{ value: "Saved %", type: "circle" as const, color: hidden.has("Saved %") ? colors.gray300 : colors.success }] : []),
+            ...(hasForecast ? [{ value: "Forecast", type: "line" as const, color: hidden.has("Forecast") ? colors.gray300 : colors.brand }] : []),
           ]}
         />
         <Area
@@ -183,6 +236,28 @@ function NetWorthChart({ data, currency }: NetWorthChartProps) {
           activeDot={hidden.has("Value") ? false : { r: 5, strokeWidth: 2, stroke: colors.white, fill: colors.brand }}
           isAnimationActive={!hidden.has("Value")} animationDuration={800} animationEasing="ease-out"
         />
+        {hasForecast && !hidden.has("Forecast") && (
+          <Area
+            yAxisId="left"
+            type="monotone" dataKey="fcBand" name="Forecast range"
+            stroke="none" fill="url(#gFc)"
+            dot={false} activeDot={false} legendType="none" tooltipType="none"
+            isAnimationActive={false} connectNulls
+          />
+        )}
+        {hasForecast && (
+          <Area
+            key={`fc-${showCount["Forecast"] ?? 0}`}
+            yAxisId="left"
+            type="monotone" dataKey="fcValue" name="Forecast"
+            stroke={hidden.has("Forecast") ? "transparent" : colors.brand}
+            strokeWidth={hidden.has("Forecast") ? 0 : 2}
+            strokeDasharray="5 4"
+            fill="none" dot={false}
+            activeDot={hidden.has("Forecast") ? false : { r: 4, strokeWidth: 2, stroke: colors.white, fill: colors.brand }}
+            isAnimationActive={false} connectNulls
+          />
+        )}
         <Area
           key={`inv-${showCount["Invested"] ?? 0}`}
           yAxisId="left"
@@ -194,6 +269,15 @@ function NetWorthChart({ data, currency }: NetWorthChartProps) {
           activeDot={hidden.has("Invested") ? false : { r: 4, strokeWidth: 2, stroke: colors.white, fill: colors.warning }}
           isAnimationActive={!hidden.has("Invested")} animationDuration={800} animationEasing="ease-out" animationBegin={100}
         />
+        {hasForecast && !hidden.has("Forecast") && !hidden.has("Invested") && (
+          <Area
+            yAxisId="left"
+            type="monotone" dataKey="fcInvested" name="Forecast invested"
+            stroke={colors.warning} strokeOpacity={0.7} strokeWidth={1.5} strokeDasharray="2 3"
+            fill="none" dot={false} activeDot={false} legendType="none" tooltipType="none"
+            isAnimationActive={false} connectNulls
+          />
+        )}
         {hasSavings && (
           <Area
             key={`sav-${showCount["Saved %"] ?? 0}`}
@@ -210,6 +294,15 @@ function NetWorthChart({ data, currency }: NetWorthChartProps) {
             })}
             connectNulls
             isAnimationActive={!hidden.has("Saved %")} animationDuration={800} animationEasing="ease-out" animationBegin={200}
+          />
+        )}
+        {hasSavings && hasForecast && !hidden.has("Forecast") && !hidden.has("Saved %") && (
+          <Area
+            yAxisId="right"
+            type="monotone" dataKey="fcSaved" name="Forecast saved"
+            stroke={colors.success} strokeOpacity={0.7} strokeWidth={1.5} strokeDasharray="2 3"
+            fill="none" dot={false} activeDot={false} legendType="none" tooltipType="none"
+            isAnimationActive={false} connectNulls
           />
         )}
       </AreaChart>
