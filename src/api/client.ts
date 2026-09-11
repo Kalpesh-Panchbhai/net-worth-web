@@ -202,7 +202,7 @@ export function getInsightsLayout(userId: number) {
 
 export function saveInsightsLayout(userId: number, layout: unknown[]) {
   invalidateCache(`/insights-config/${userId}`);
-  return request<void>(`/insights-config/${userId}`, { method: "PUT", body: JSON.stringify({ layout }) });
+  return request<void>(`/insights-config/${userId}`, { method: "PATCH", body: JSON.stringify({ layout }) });
 }
 
 // Refresh
