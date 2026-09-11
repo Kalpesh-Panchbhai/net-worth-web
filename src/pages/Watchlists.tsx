@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Box, Paper, Typography, TextField, Button,
+  Box, Paper, Typography, TextField, Button, Chip,
   Dialog, DialogTitle, DialogContent, DialogActions,
   Stack, IconButton, Fab, Avatar,
   useMediaQuery, useTheme,
@@ -21,11 +21,17 @@ import {
   invalidateCache,
 } from "../api/client";
 import { EmptyState, ErrorState, ListSkeleton, FadeIn } from "../components/shared";
+import AllocationBreakdown, { type AllocationGrouping } from "../components/AllocationBreakdown";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
 import XirrBadge from "../components/XirrBadge";
 import type { WatchlistSummary } from "../api/types";
 import { formatCurrency as fmt } from "../utils/format";
+
+// One donut comparing watchlists: each slice is a watchlist, sized by its total.
+const WATCHLIST_GROUPINGS: AllocationGrouping<WatchlistSummary>[] = [
+  { id: "watchlist", label: "Watchlist", keyOf: w => w.name },
+];
 
 function Watchlists() {
   const { userId, preferredCurrency, dataVersion, refreshAll } = useUser();
@@ -118,6 +124,20 @@ function Watchlists() {
     }
   };
 
+  // Every watchlist except the catch-all "All", for the comparison donut.
+  const realWatchlists = useMemo(() => watchlists.filter(w => w.name !== "All"), [watchlists]);
+  const realIdsKey = realWatchlists.map(w => w.id).join(",");
+
+  // Which watchlists are included in the comparison donut; defaults to all, resets when the set changes.
+  const [selectedWlIds, setSelectedWlIds] = useState<Set<number>>(() => new Set(realWatchlists.map(w => w.id)));
+  useEffect(() => { setSelectedWlIds(new Set(realWatchlists.map(w => w.id))); }, [realIdsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const toggleWl = (id: number) => setSelectedWlIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) { if (next.size > 1) next.delete(id); } else next.add(id);
+    return next;
+  });
+  const comparedWatchlists = useMemo(() => realWatchlists.filter(w => selectedWlIds.has(w.id)), [realWatchlists, selectedWlIds]);
+
   // Filter and sort. Copy before sorting: the un-filtered branch hands back the state array itself.
   const filtered = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
@@ -150,6 +170,40 @@ function Watchlists() {
             sx={{ flex: 1, maxWidth: { sm: 320 } }}
           />
         </Stack>
+      )}
+
+      {/* One donut comparing watchlists (each slice = a watchlist). "All" is the catch-all sum, so it
+          is excluded; shown only when there are 2+ real watchlists to compare. */}
+      {!loading && realWatchlists.length >= 2 && (
+        <FadeIn>
+          <AllocationBreakdown
+            items={comparedWatchlists}
+            currency={preferredCurrency}
+            title="Watchlist Comparison"
+            itemNoun="watchlists"
+            groupings={WATCHLIST_GROUPINGS}
+            headerExtra={
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                {realWatchlists.map(w => {
+                  const on = selectedWlIds.has(w.id);
+                  return (
+                    <Chip
+                      key={w.id} label={w.name} size="small" onClick={() => toggleWl(w.id)}
+                      variant={on ? "filled" : "outlined"}
+                      sx={{
+                        fontWeight: 600, fontSize: "0.72rem", cursor: "pointer",
+                        bgcolor: on ? alpha(colors.brand, 0.12) : "transparent",
+                        color: on ? colors.brand : colors.gray500,
+                        border: `1px solid ${on ? alpha(colors.brand, 0.35) : colors.gray200}`,
+                        "&:hover": { bgcolor: on ? alpha(colors.brand, 0.18) : alpha(colors.gray400, 0.08) },
+                      }}
+                    />
+                  );
+                })}
+              </Stack>
+            }
+          />
+        </FadeIn>
       )}
 
       {loading ? <ListSkeleton rows={3} /> : watchlists.length === 0 ? (

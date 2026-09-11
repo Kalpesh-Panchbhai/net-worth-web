@@ -31,7 +31,7 @@ import { CURRENCIES } from "../constants";
 const SIDEBAR_W = 252;
 
 const PRIMARY_NAV = [
-  { label: "Dashboard", path: "/", icon: <DashboardRoundedIcon /> },
+  { label: "Insights", path: "/", icon: <DashboardRoundedIcon /> },
   { label: "Accounts", path: "/accounts", icon: <AccountBalanceWalletRoundedIcon /> },
   { label: "Watchlists", path: "/watchlists", icon: <VisibilityRoundedIcon /> },
   { label: "Incomes", path: "/incomes", icon: <ReceiptLongRoundedIcon /> },
@@ -363,7 +363,8 @@ function Layout({ children }: { children: ReactNode }) {
         <Box sx={{
           px: { xs: 1.5, sm: 3 }, py: { xs: 2, sm: 3 },
           pb: { xs: "calc(16px + env(safe-area-inset-bottom, 0px))", sm: 3 },
-          maxWidth: 960, mx: "auto",
+          // Wide canvas across the app so content fills the screen instead of leaving big side gaps.
+          maxWidth: 1320, mx: "auto",
         }}>
           {children}
         </Box>

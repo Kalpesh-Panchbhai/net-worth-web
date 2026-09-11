@@ -1,4 +1,4 @@
-import { memo, useMemo, useRef, useState } from "react";
+import { memo, useMemo, useRef, useState, type ReactNode } from "react";
 import { Box, Paper, Typography, Stack, ToggleButton, ToggleButtonGroup, useTheme, useMediaQuery } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
@@ -56,15 +56,20 @@ interface AllocationBreakdownProps<T extends AllocationItem> {
   title?: string;
   /** Noun for the "Other" hint / empty state, e.g. "accounts" or "holdings". */
   itemNoun?: string;
+  /** Optional controls rendered inside the card, under the header (e.g. include/exclude chips). */
+  headerExtra?: ReactNode;
+  /** Seed the grouping/metric toggles (they stay interactive afterwards). */
+  initialGroupingId?: string;
+  initialMetric?: Metric;
 }
 
-function AllocationBreakdown<T extends AllocationItem>({ items, currency, groupings, title = "Allocation", itemNoun = "items" }: AllocationBreakdownProps<T>) {
+function AllocationBreakdown<T extends AllocationItem>({ items, currency, groupings, title = "Allocation", itemNoun = "items", headerExtra, initialGroupingId, initialMetric }: AllocationBreakdownProps<T>) {
   const theme = useTheme();
   const compact = useMediaQuery(theme.breakpoints.down("sm"));
   const { colors, typeColors, accentPalette, shadow } = useTokens();
-  const [groupingId, setGroupingId] = useState(groupings[0]?.id);
+  const [groupingId, setGroupingId] = useState(initialGroupingId && groupings.some(g => g.id === initialGroupingId) ? initialGroupingId : groupings[0]?.id);
   const grouping = groupings.find(g => g.id === groupingId) ?? groupings[0];
-  const [metric, setMetric] = useState<Metric>("value");
+  const [metric, setMetric] = useState<Metric>(initialMetric ?? "value");
   // The "Other" wedge's members are revealed in a panel pinned inside the card. A short close delay
   // lets the cursor travel from the slice/legend onto the (scrollable) panel without it flickering shut.
   const [otherOpen, setOtherOpen] = useState(false);
@@ -146,6 +151,8 @@ function AllocationBreakdown<T extends AllocationItem>({ items, currency, groupi
           )}
         </Stack>
       </Stack>
+
+      {headerExtra && <Box sx={{ mb: 2 }}>{headerExtra}</Box>}
 
       {slices.length === 0 ? (
         <EmptyState

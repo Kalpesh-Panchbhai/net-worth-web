@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Box, Button, CircularProgress, Typography } from "@mui/material";
-import Dashboard from "./pages/Dashboard";
+import Insights from "./pages/Insights";
 import Accounts from "./pages/Accounts";
 import AccountDetail from "./pages/AccountDetail";
 import HoldingDetail from "./pages/HoldingDetail";
@@ -52,7 +52,7 @@ function AuthGate() {
     <Layout>
       <ScrollToTop />
       <Routes>
-        <Route path="/" element={<Dashboard />} />
+        <Route path="/" element={<Insights />} />
         <Route path="/accounts" element={<Accounts />} />
         <Route path="/accounts/:accountId" element={<AccountDetail />} />
         <Route path="/accounts/:accountId/holdings/:holdingId" element={<HoldingDetail />} />

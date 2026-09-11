@@ -194,6 +194,17 @@ export function deleteUser(id: number) {
   return request<void>(`/users/${id}`, { method: "DELETE" });
 }
 
+// Insights dashboard layout (per-user widget configuration, synced across devices).
+// The layout is an opaque array to the API layer; the insights module owns its shape.
+export function getInsightsLayout(userId: number) {
+  return request<{ layout: unknown[] | null }>(`/insights-config/${userId}`);
+}
+
+export function saveInsightsLayout(userId: number, layout: unknown[]) {
+  invalidateCache(`/insights-config/${userId}`);
+  return request<void>(`/insights-config/${userId}`, { method: "PUT", body: JSON.stringify({ layout }) });
+}
+
 // Refresh
 export function refreshData() {
   return request<{ message: string; durationMs: number }>("/refresh", {
