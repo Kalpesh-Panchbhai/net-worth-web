@@ -141,17 +141,40 @@ function HoldingDetail() {
 
   const handleDelete = async () => {
     if (!deleteConfirm) return;
-    const { id, txnDate: date } = deleteConfirm;
+    const removed = deleteConfirm;
+    const { id, txnDate: date } = removed;
     const prev = transactions;
+    // "add" mode needs a date after the last row, so only the newest transaction can be faithfully
+    // re-created. Capture this row's own delta before it is removed.
+    const isLatest = transactions[0]?.id === id;
+    const next = transactions[1];
+    const investedDelta = removed.investedDelta ?? removed.invested - (next?.invested ?? 0);
+    const valueDelta = removed.valueDelta ?? removed.value - (next?.value ?? 0);
     setTransactions(t => t.filter(txn => txn.id !== id));
     setDeleteConfirm(null);
     try {
       await deleteTransaction(id);
       invalidateMoneyCaches();
-      showToast(`Transaction on ${date} deleted`);
+      showToast(`Transaction on ${date} deleted`, "success", isLatest ? {
+        action: { label: "Undo", onClick: () => restoreTransaction(date, investedDelta, valueDelta) },
+      } : undefined);
     } catch (err) {
       setTransactions(prev);
       showToast(err instanceof Error ? err.message : "Failed to delete transaction", "error");
+    }
+  };
+
+  const restoreTransaction = async (date: string, investedDelta: number, valueDelta: number) => {
+    try {
+      await createTransaction({
+        accountId: numAccountId, holdingId: numHoldingId, txnDate: date, mode: "add",
+        invested: investedDelta, value: valueDelta,
+      });
+      invalidateMoneyCaches();
+      refreshAll();
+      showToast("Transaction restored");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to restore transaction", "error");
     }
   };
 

@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ThemeProvider, CssBaseline, type PaletteMode } from "@mui/material";
 import { getTheme, getTokens, type AppTokens } from "../theme";
+import { setAmountsMasked, getAmountsMasked } from "../utils/format";
 
 export type ColorModePref = "light" | "dark" | "system";
 
@@ -9,6 +10,14 @@ interface ColorModeContextType {
   preference: ColorModePref;
   setPreference: (pref: ColorModePref) => void;
   tokens: AppTokens;
+  /**
+   * Privacy mode lives here rather than in UserContext because every component that renders an
+   * amount already reads `tokens` via useTokens(). Toggling this changes the context value, so all
+   * of them — including memoised amount cards — re-render in place (no remount, no refetch) and pick
+   * up the formatter's new mask. The actual masking is done by a module-level flag in utils/format.
+   */
+  privacyMode: boolean;
+  togglePrivacy: () => void;
 }
 
 const ColorModeContext = createContext<ColorModeContextType>({
@@ -16,6 +25,8 @@ const ColorModeContext = createContext<ColorModeContextType>({
   preference: "system",
   setPreference: () => {},
   tokens: getTokens("light"),
+  privacyMode: false,
+  togglePrivacy: () => {},
 });
 
 function getSystemMode(): PaletteMode {
@@ -67,6 +78,16 @@ function withViewTransition(update: () => void) {
 export function ColorModeProvider({ children }: { children: ReactNode }) {
   const [preference, setPreferenceState] = useState<ColorModePref>(getInitialPref);
   const [mode, setMode] = useState<PaletteMode>(() => resolveMode(getInitialPref()));
+  // Seeded from the format module, which read localStorage synchronously at import time.
+  const [privacyMode, setPrivacyMode] = useState(getAmountsMasked);
+
+  const togglePrivacy = useCallback(() => {
+    setPrivacyMode(prev => {
+      const next = !prev;
+      setAmountsMasked(next);
+      return next;
+    });
+  }, []);
 
   const setPreference = useCallback((pref: ColorModePref) => {
     const newMode = resolveMode(pref);
@@ -97,7 +118,10 @@ export function ColorModeProvider({ children }: { children: ReactNode }) {
   const theme = useMemo(() => getTheme(mode), [mode]);
   const tokens = useMemo(() => getTokens(mode), [mode]);
 
-  const value = useMemo(() => ({ mode, preference, setPreference, tokens }), [mode, preference, setPreference, tokens]);
+  const value = useMemo(
+    () => ({ mode, preference, setPreference, tokens, privacyMode, togglePrivacy }),
+    [mode, preference, setPreference, tokens, privacyMode, togglePrivacy],
+  );
 
   return (
     <ColorModeContext.Provider value={value}>

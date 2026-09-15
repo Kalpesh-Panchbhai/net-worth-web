@@ -1,5 +1,26 @@
 import { DEFAULT_CURRENCY } from "../constants";
 
+// ─── Privacy mode ────────────────────────────────────────────
+// A single module-level flag lets every formatted amount in the app be masked at once, without
+// threading a prop through hundreds of render sites. The flag is read synchronously at import time
+// so the very first paint already honours the persisted preference. Toggling it must be paired with
+// a re-render of the amount-rendering tree (see UserContext / Layout).
+const PRIVACY_KEY = "privacy-mode";
+const MASK = "•••••";
+
+let amountsMasked = (() => {
+  try { return localStorage.getItem(PRIVACY_KEY) === "true"; } catch { return false; }
+})();
+
+export function setAmountsMasked(masked: boolean) {
+  amountsMasked = masked;
+  try { localStorage.setItem(PRIVACY_KEY, String(masked)); } catch { /* ignore */ }
+}
+
+export function getAmountsMasked(): boolean {
+  return amountsMasked;
+}
+
 interface FormatCurrencyOptions {
   // Fixed number of fraction digits. When omitted, decimals are shown only for
   // non-integer values (2 digits), matching the app's default display style.
@@ -42,6 +63,7 @@ function formatter(currency: string, digits: number, compact: boolean): Intl.Num
  * code and the grouping from that currency's own locale.
  */
 export function formatCurrency(v: number, currency: string = DEFAULT_CURRENCY, opts?: FormatCurrencyOptions): string {
+  if (amountsMasked) return MASK;
   const digits = opts?.maxDecimals ?? (v % 1 !== 0 ? 2 : 0);
   const formatted = formatter(currency, digits, false).format(Math.abs(v));
   return v < 0 ? `-${formatted}` : formatted;
@@ -53,11 +75,13 @@ export function formatCurrency(v: number, currency: string = DEFAULT_CURRENCY, o
  * abbreviation always matches the currency instead of assuming every chart is in rupees.
  */
 export function formatCurrencyCompact(v: number, currency: string = DEFAULT_CURRENCY): string {
+  if (amountsMasked) return MASK;
   const formatted = formatter(currency, 1, true).format(Math.abs(v));
   return v < 0 ? `-${formatted}` : formatted;
 }
 
 /** Format a holding unit count with 3 decimal places. */
 export function formatUnits(v: number): string {
+  if (amountsMasked) return MASK;
   return v.toFixed(3);
 }

@@ -163,17 +163,45 @@ function Transactions() {
 
   const handleDelete = async () => {
     if (!deleteConfirm) return;
-    const { id, txnDate } = deleteConfirm;
+    const removed = deleteConfirm;
+    const { id, txnDate } = removed;
     const prev = transactions;
+    // The transactions endpoint is append-only ("add" mode requires a date after the last row), so a
+    // faithful undo is only possible for the newest transaction. Capture its own delta before removal.
+    const isLatest = transactions[0]?.id === id;
+    const next = transactions[1];
+    const valueDelta = removed.valueDelta ?? removed.value - (next?.value ?? 0);
+    const investedDelta = removed.investedDelta ?? removed.invested - (next?.invested ?? 0);
+    const acctId = removed.accountId; const holdId = removed.holdingId; const investable = showInvested;
     setTransactions(t => t.filter(txn => txn.id !== id));
     setDeleteConfirm(null);
     try {
       await deleteTransaction(id);
       invalidateMoneyCaches();
-      showToast(`Transaction on ${txnDate} deleted`);
+      showToast(`Transaction on ${txnDate} deleted`, "success", isLatest ? {
+        action: { label: "Undo", onClick: () => restoreTransaction(acctId, holdId, txnDate, investable, investedDelta, valueDelta) },
+      } : undefined);
     } catch (err) {
       setTransactions(prev);
       showToast(err instanceof Error ? err.message : "Failed to delete transaction", "error");
+    }
+  };
+
+  const restoreTransaction = async (
+    accountId: number, holdingId: number, date: string, investable: boolean,
+    investedDelta: number, valueDelta: number,
+  ) => {
+    try {
+      await createTransaction({
+        accountId, holdingId, txnDate: date, mode: "add",
+        invested: investable ? investedDelta : valueDelta,
+        value: valueDelta,
+      });
+      invalidateMoneyCaches();
+      refreshAll();
+      showToast("Transaction restored");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to restore transaction", "error");
     }
   };
 

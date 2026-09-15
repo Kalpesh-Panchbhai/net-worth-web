@@ -1,10 +1,10 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Box, Typography, Avatar, ToggleButtonGroup, ToggleButton,
   Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText,
   IconButton, Divider, Dialog, DialogTitle, DialogContent, DialogActions, Button,
-  TextField, MenuItem,
+  TextField, MenuItem, Tooltip, CircularProgress,
   useMediaQuery, useTheme,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
@@ -12,6 +12,7 @@ import MenuIcon from "@mui/icons-material/Menu";
 import DashboardRoundedIcon from "@mui/icons-material/DashboardRounded";
 import AccountBalanceWalletRoundedIcon from "@mui/icons-material/AccountBalanceWalletRounded";
 import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
+import VisibilityOffRoundedIcon from "@mui/icons-material/VisibilityOffRounded";
 import ReceiptLongRoundedIcon from "@mui/icons-material/ReceiptLongRounded";
 import AccountBalanceRoundedIcon from "@mui/icons-material/AccountBalanceRounded";
 import LocalOfferRoundedIcon from "@mui/icons-material/LocalOfferRounded";
@@ -21,11 +22,17 @@ import DarkModeRoundedIcon from "@mui/icons-material/DarkModeRounded";
 import LightModeRoundedIcon from "@mui/icons-material/LightModeRounded";
 import SettingsBrightnessRoundedIcon from "@mui/icons-material/SettingsBrightnessRounded";
 import SyncRoundedIcon from "@mui/icons-material/SyncRounded";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
+import QueryStatsRoundedIcon from "@mui/icons-material/QueryStatsRounded";
+import FileDownloadRoundedIcon from "@mui/icons-material/FileDownloadRounded";
+import FileUploadRoundedIcon from "@mui/icons-material/FileUploadRounded";
 import { useUser } from "../context/UserContext";
 import { deleteUser, invalidateCache, refreshData } from "../api/client";
 import { useToast } from "../context/ToastContext";
 import { useColorMode, useTokens } from "../context/ColorModeContext";
 import type { ColorModePref } from "../context/ColorModeContext";
+import GlobalSearch from "./GlobalSearch";
+import { exportData, downloadBackup, parseBackup, importData, type BackupFile } from "../utils/backup";
 import { CURRENCIES } from "../constants";
 
 const SIDEBAR_W = 252;
@@ -35,6 +42,7 @@ const PRIMARY_NAV = [
   { label: "Accounts", path: "/accounts", icon: <AccountBalanceWalletRoundedIcon /> },
   { label: "Watchlists", path: "/watchlists", icon: <VisibilityRoundedIcon /> },
   { label: "Incomes", path: "/incomes", icon: <ReceiptLongRoundedIcon /> },
+  { label: "Simulator", path: "/simulator", icon: <QueryStatsRoundedIcon /> },
 ];
 
 const SECONDARY_NAV = [
@@ -50,12 +58,73 @@ function Layout({ children }: { children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { firebaseUser, userId, logout, preferredCurrency, setPreferredCurrency, refreshAll } = useUser();
   const { showToast } = useToast();
-  const { preference, setPreference } = useColorMode();
+  const { preference, setPreference, privacyMode, togglePrivacy } = useColorMode();
   const { colors } = useTokens();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [savingCurrency, setSavingCurrency] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [pendingImport, setPendingImport] = useState<BackupFile | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ⌘K / Ctrl+K opens the global search from anywhere.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen(o => !o);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  const handleExport = async () => {
+    if (!userId) return;
+    try {
+      setExporting(true);
+      const backup = await exportData(userId, preferredCurrency);
+      downloadBackup(backup);
+      showToast("Backup downloaded");
+    } catch {
+      showToast("Failed to export data. Please try again.", "error");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleImportFile = async (file: File) => {
+    try {
+      const text = await file.text();
+      setPendingImport(parseBackup(text));
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Could not read that file.", "error");
+    }
+  };
+
+  const confirmImport = async () => {
+    if (!userId || !pendingImport) return;
+    const backup = pendingImport;
+    setPendingImport(null);
+    try {
+      setImporting(true);
+      const result = await importData(userId, backup);
+      refreshAll();
+      const restored = result.accounts + result.holdings + result.transactions + result.watchlists + result.incomes;
+      if (result.errors.length > 0) {
+        showToast(`Restored ${restored} items with ${result.errors.length} error(s).`, "warning");
+      } else {
+        showToast(`Restored ${restored} items successfully`);
+      }
+    } catch {
+      showToast("Failed to import data. Please try again.", "error");
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const handleRefresh = async () => {
     try {
@@ -134,6 +203,33 @@ function Layout({ children }: { children: ReactNode }) {
         </Typography>
       </Box>
 
+      {/* Search + privacy */}
+      <Box sx={{ px: 1, mb: 2, display: "flex", gap: 1 }}>
+        <Button
+          onClick={() => { setSearchOpen(true); setDrawerOpen(false); }}
+          startIcon={<SearchRoundedIcon sx={{ fontSize: 18 }} />}
+          sx={{
+            flex: 1, justifyContent: "flex-start", borderRadius: 2.5, py: 0.9, px: 1.5,
+            textTransform: "none", fontSize: "0.8rem", fontWeight: 500,
+            color: colors.gray500, bgcolor: colors.gray100,
+            "&:hover": { bgcolor: colors.gray200 },
+          }}
+        >
+          Search
+          <Box sx={{ ml: "auto", fontSize: "0.65rem", fontWeight: 600, color: colors.gray400, border: `1px solid ${colors.gray200}`, borderRadius: 1, px: 0.5, lineHeight: 1.6 }}>
+            ⌘K
+          </Box>
+        </Button>
+        <Tooltip title={privacyMode ? "Show amounts" : "Hide amounts"}>
+          <IconButton
+            onClick={togglePrivacy}
+            sx={{ borderRadius: 2.5, bgcolor: privacyMode ? colors.brandLight : colors.gray100, color: privacyMode ? colors.brand : colors.gray500, "&:hover": { bgcolor: colors.gray200 } }}
+          >
+            {privacyMode ? <VisibilityOffRoundedIcon sx={{ fontSize: 20 }} /> : <VisibilityRoundedIcon sx={{ fontSize: 20 }} />}
+          </IconButton>
+        </Tooltip>
+      </Box>
+
       {/* Primary nav */}
       <Typography variant="overline" sx={{ px: 1.5, mb: 0.5, fontSize: "0.625rem", color: colors.gray400 }}>
         Main
@@ -208,6 +304,40 @@ function Layout({ children }: { children: ReactNode }) {
         <Typography sx={{ fontSize: "0.6rem", color: colors.gray400, textAlign: "center", mt: 0.5 }}>
           Sync latest prices & balances
         </Typography>
+      </Box>
+
+      {/* Backup / Restore */}
+      <Box sx={{ px: 1, mb: 1.5 }}>
+        <Typography variant="overline" sx={{ px: 1, mb: 0.75, display: "block", fontSize: "0.6rem", color: colors.gray400 }}>
+          Data
+        </Typography>
+        <Box sx={{ display: "flex", gap: 1 }}>
+          <Button
+            fullWidth variant="outlined" onClick={handleExport} disabled={exporting}
+            startIcon={exporting ? <CircularProgress size={14} /> : <FileDownloadRoundedIcon sx={{ fontSize: 18 }} />}
+            sx={{ borderRadius: 2.5, py: 0.6, textTransform: "none", fontSize: "0.75rem", fontWeight: 600, borderColor: colors.gray200, color: colors.gray600, "&:hover": { borderColor: colors.brand, color: colors.brand } }}
+          >
+            Export
+          </Button>
+          <Button
+            fullWidth variant="outlined" onClick={() => fileInputRef.current?.click()} disabled={importing}
+            startIcon={importing ? <CircularProgress size={14} /> : <FileUploadRoundedIcon sx={{ fontSize: 18 }} />}
+            sx={{ borderRadius: 2.5, py: 0.6, textTransform: "none", fontSize: "0.75rem", fontWeight: 600, borderColor: colors.gray200, color: colors.gray600, "&:hover": { borderColor: colors.brand, color: colors.brand } }}
+          >
+            Import
+          </Button>
+        </Box>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/json,.json"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleImportFile(file);
+            e.target.value = "";
+          }}
+        />
       </Box>
 
       {/* Display currency */}
@@ -357,6 +487,13 @@ function Layout({ children }: { children: ReactNode }) {
             <Typography sx={{ fontWeight: 700, fontSize: "0.95rem", letterSpacing: "-0.02em" }}>
               Net Worth
             </Typography>
+            <Box sx={{ flex: 1 }} />
+            <IconButton onClick={() => setSearchOpen(true)} size="small" sx={{ p: 1 }} aria-label="Search">
+              <SearchRoundedIcon sx={{ fontSize: 21 }} />
+            </IconButton>
+            <IconButton onClick={togglePrivacy} size="small" sx={{ p: 1, color: privacyMode ? colors.brand : undefined }} aria-label={privacyMode ? "Show amounts" : "Hide amounts"}>
+              {privacyMode ? <VisibilityOffRoundedIcon sx={{ fontSize: 21 }} /> : <VisibilityRoundedIcon sx={{ fontSize: 21 }} />}
+            </IconButton>
           </Box>
         )}
 
@@ -369,6 +506,27 @@ function Layout({ children }: { children: ReactNode }) {
           {children}
         </Box>
       </Box>
+
+      <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
+
+      {/* Import confirmation */}
+      <Dialog open={!!pendingImport} onClose={() => setPendingImport(null)}>
+        <DialogTitle sx={{ fontWeight: 700 }}>Restore from backup?</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ color: colors.gray600 }}>
+            This adds everything from the backup file
+            {pendingImport?.exportedAt ? ` (exported ${pendingImport.exportedAt.slice(0, 10)})` : ""} to your
+            current account — accounts, holdings, transactions, watchlists, and incomes. It does not remove or
+            overwrite anything, so importing into an account that already has data will create duplicates.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPendingImport(null)} disabled={importing}>Cancel</Button>
+          <Button variant="contained" onClick={confirmImport} disabled={importing}>
+            {importing ? "Restoring…" : "Restore"}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Delete Account Confirmation */}
       <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>

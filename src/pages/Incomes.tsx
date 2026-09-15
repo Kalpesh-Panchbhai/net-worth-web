@@ -450,18 +450,41 @@ function Incomes() {
 
   const handleDelete = async () => {
     if (!deleteConfirm) return;
-    const { id } = deleteConfirm;
-    const amt = fmt(deleteConfirm.convertedNetAmount, deleteConfirm.convertedCurrency);
+    const removed = deleteConfirm;
+    const amt = fmt(removed.convertedNetAmount, removed.convertedCurrency);
     const prev = incomes;
-    setIncomes(list => list.filter(i => i.id !== id));
+    setIncomes(list => list.filter(i => i.id !== removed.id));
     setDeleteConfirm(null);
     try {
-      await deleteIncome(id);
+      await deleteIncome(removed.id);
       invalidateMoneyCaches();
-      showToast(`Income of ${amt} deleted`);
+      // An income row carries every field the create endpoint needs, so undo is a faithful restore.
+      showToast(`Income of ${amt} deleted`, "success", {
+        action: { label: "Undo", onClick: () => restoreIncome(removed) },
+      });
     } catch (err) {
       setIncomes(prev);
       showToast(err instanceof Error ? err.message : "Failed to delete income", "error");
+    }
+  };
+
+  const restoreIncome = async (income: Income) => {
+    if (!userId) return;
+    try {
+      await createIncome({
+        userId,
+        incomeSourceId: income.incomeSourceId,
+        incomeTagId: income.incomeTagId,
+        netAmount: income.netAmount,
+        taxPaid: income.taxPaid,
+        currency: income.currency,
+        creditedDate: income.creditedDate,
+      });
+      invalidateMoneyCaches();
+      load();
+      showToast("Income restored");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to restore income", "error");
     }
   };
 

@@ -493,17 +493,42 @@ function AccountDetail() {
 
   const handleDeleteTxn = async () => {
     if (!deleteTxnConfirm) return;
-    const { id, txnDate: date } = deleteTxnConfirm;
+    const removed = deleteTxnConfirm;
+    const { id, txnDate: date } = removed;
     const prev = transactions;
+    // "add" mode requires a date after the last row, so only the newest transaction can be faithfully
+    // re-created. Capture this row's own delta before it is removed.
+    const isLatest = transactions[0]?.id === id;
+    const next = transactions[1];
+    const investedDelta = removed.investedDelta ?? removed.invested - (next?.invested ?? 0);
+    const valueDelta = removed.valueDelta ?? removed.value - (next?.value ?? 0);
+    const holdingId = removed.holdingId;
     setTransactions(t => t.filter(txn => txn.id !== id));
     setDeleteTxnConfirm(null);
     try {
       await deleteTransaction(id);
       invalidateMoneyCaches();
-      showToast(`Transaction on ${date} deleted`);
+      showToast(`Transaction on ${date} deleted`, "success", isLatest ? {
+        action: { label: "Undo", onClick: () => restoreTxn(holdingId, date, investedDelta, valueDelta) },
+      } : undefined);
     } catch (err) {
       setTransactions(prev);
       showToast(err instanceof Error ? err.message : "Failed to delete transaction", "error");
+    }
+  };
+
+  const restoreTxn = async (holdingId: number, date: string, investedDelta: number, valueDelta: number) => {
+    try {
+      await createTransaction({
+        accountId: numAccountId, holdingId, txnDate: date, mode: "add",
+        invested: showInvested ? investedDelta : valueDelta,
+        value: valueDelta,
+      });
+      invalidateMoneyCaches();
+      refreshAll();
+      showToast("Transaction restored");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to restore transaction", "error");
     }
   };
 
