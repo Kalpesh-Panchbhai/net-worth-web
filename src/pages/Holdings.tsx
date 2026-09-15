@@ -159,12 +159,12 @@ function Holdings() {
 
       {/* Summary metrics */}
       {selectedAccountId && (
-        <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2 }}>
           {holdingsLoading ? <><MetricSkeleton /><MetricSkeleton /></> : (
-            <FadeIn>
-              <MetricCard label="Total Value" value={fmt(totalValue, rowCurrency)} />
-              <MetricCard label="Invested" value={fmt(totalInvested, rowCurrency)} accent={totalValue >= totalInvested ? colors.success : colors.error} />
-            </FadeIn>
+            <>
+              <FadeIn><MetricCard label="Total Value" value={fmt(totalValue, rowCurrency)} /></FadeIn>
+              <FadeIn><MetricCard label="Invested" value={fmt(totalInvested, rowCurrency)} accent={totalValue >= totalInvested ? colors.success : colors.error} /></FadeIn>
+            </>
           )}
         </Box>
       )}

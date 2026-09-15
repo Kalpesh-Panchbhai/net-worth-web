@@ -211,12 +211,12 @@ function Transactions() {
 
       {/* Summary */}
       {selectedHoldingId && (
-        <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2 }}>
           {txnLoading ? <><MetricSkeleton /><MetricSkeleton /></> : (
-            <FadeIn>
-              {showInvested && <MetricCard label="Total Invested" value={fmt(totalInvested, txnCurrency)} />}
-              <MetricCard label="Total Value" value={latestTxn?.valueInUnits ? `${fmtUnits(totalValue)} units` : fmt(totalValue, txnCurrency)} accent={showInvested ? (totalValue >= totalInvested ? colors.success : colors.error) : undefined} />
-            </FadeIn>
+            <>
+              {showInvested && <FadeIn><MetricCard label="Total Invested" value={fmt(totalInvested, txnCurrency)} /></FadeIn>}
+              <FadeIn><MetricCard label="Total Value" value={latestTxn?.valueInUnits ? `${fmtUnits(totalValue)} units` : fmt(totalValue, txnCurrency)} accent={showInvested ? (totalValue >= totalInvested ? colors.success : colors.error) : undefined} /></FadeIn>
+            </>
           )}
         </Box>
       )}

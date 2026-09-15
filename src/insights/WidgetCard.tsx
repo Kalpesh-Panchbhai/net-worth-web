@@ -44,7 +44,10 @@ export default function WidgetCard({ instance, canConfigure = true, onConfigure,
         display: "flex", alignItems: "center", gap: 0.25,
         px: 0.25, py: 0.15, borderRadius: 999,
         bgcolor: colors.white, border: `1px solid ${colors.gray200}`, boxShadow: shadow.md,
-        opacity: menuEl ? 1 : 0, pointerEvents: menuEl ? "auto" : "none",
+        // Touch devices can't hover, so the controls stay visible on mobile; desktop reveals them on
+        // hover (or while the menu is open).
+        opacity: { xs: 1, sm: menuEl ? 1 : 0 },
+        pointerEvents: { xs: "auto", sm: menuEl ? "auto" : "none" },
         transition: "opacity 0.15s ease",
       }}>
         <IconButton size="small" {...attributes} {...listeners} sx={{ cursor: "grab", color: colors.gray400, "&:active": { cursor: "grabbing" } }} aria-label="Drag to reorder">

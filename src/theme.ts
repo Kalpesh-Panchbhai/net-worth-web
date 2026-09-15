@@ -184,8 +184,15 @@ function getTheme(mode: PaletteMode) {
       MuiCssBaseline: {
         styleOverrides: {
           "*, *::before, *::after": { boxSizing: "border-box" },
-          html: { WebkitFontSmoothing: "antialiased", MozOsxFontSmoothing: "grayscale", scrollBehavior: "smooth" },
+          html: { WebkitFontSmoothing: "antialiased", MozOsxFontSmoothing: "grayscale", scrollBehavior: "smooth", WebkitTextSizeAdjust: "100%" },
           body: { overflowX: "hidden", WebkitTapHighlightColor: "transparent" },
+          // Nothing should ever push the page wider than the viewport on mobile.
+          "#root": { overflowX: "hidden", maxWidth: "100vw" },
+          // Media can't overflow its container regardless of intrinsic size.
+          "img, svg, video, canvas, audio, iframe, embed, object": { maxWidth: "100%" },
+          "img, video": { height: "auto" },
+          // Long unbroken strings (fund names, emails, symbols) wrap instead of forcing h-scroll.
+          "p, h1, h2, h3, h4, h5, h6, span, div, li, td, th, dd, dt, a": { overflowWrap: "break-word" },
           "@media (prefers-reduced-motion: reduce)": { "*, *::before, *::after": { animationDuration: "0.01ms !important", transitionDuration: "0.01ms !important" } },
         },
       },

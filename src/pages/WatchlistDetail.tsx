@@ -31,6 +31,7 @@ import {
 import { EmptyState, ErrorState, ListSkeleton, FadeIn } from "../components/shared";
 import EntityChart from "../components/EntityChart";
 import AllocationBreakdown, { type AllocationGrouping } from "../components/AllocationBreakdown";
+import { EntitySwitcher, SwitcherArrows, useSwitcher, useSwipeNav, type SwitcherItem } from "../components/EntitySwitcher";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
 import XirrBadge from "../components/XirrBadge";
@@ -172,6 +173,7 @@ function WatchlistDetail() {
 
   const { showToast } = useToast();
   const [watchlist, setWatchlist] = useState<WatchlistSummary | null>(null);
+  const [allWatchlists, setAllWatchlists] = useState<WatchlistSummary[]>([]);
   const [linkedAccounts, setLinkedAccounts] = useState<AccountSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -202,6 +204,7 @@ function WatchlistDetail() {
         if (cancelled) return;
         const found = wls.find(w => w.id === numWatchlistId);
         if (found) setWatchlist(found); else setError("Watchlist not found");
+        setAllWatchlists(wls);
         setLinkedAccounts(accs);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load");
@@ -290,6 +293,46 @@ function WatchlistDetail() {
     return [...byType.values()];
   }, [filtered, groupByType, watchlist?.displayCurrency]);
 
+  // Sibling watchlists for the switcher. "All" (the synthetic aggregate) is pinned first; the rest
+  // follow alphabetically. Declared before the early return so hook order is stable.
+  const switcherItems = useMemo<SwitcherItem[]>(
+    () => [...allWatchlists]
+      .sort((a, b) => {
+        if (a.name === "All") return -1;
+        if (b.name === "All") return 1;
+        return a.name.localeCompare(b.name);
+      })
+      .map(w => {
+        const wIsAll = w.name === "All";
+        const tint = wIsAll ? colors.brand : colors.accent;
+        return {
+          id: w.id,
+          name: w.name,
+          value: w.currentDayValue,
+          valueCurrency: w.displayCurrency,
+          dayChange: w.dayChange,
+          dayChangePct: w.previousDayValue > 0 ? (w.dayChange / w.previousDayValue) * 100 : 0,
+          avatar: wIsAll ? <AllInclusiveRoundedIcon sx={{ fontSize: 16 }} /> : <VisibilityRoundedIcon sx={{ fontSize: 16 }} />,
+          avatarBg: alpha(tint, 0.12),
+          avatarColor: tint,
+        };
+      }),
+    [allWatchlists, colors.accent, colors.brand],
+  );
+  const sw = useSwitcher(switcherItems, numWatchlistId);
+
+  const goToWatchlist = (id: number) => {
+    sw.close();
+    if (id !== numWatchlistId) navigate(`/watchlists/${id}`);
+  };
+
+  // Mobile: swipe the hero card left/right to move through watchlists.
+  const swipe = useSwipeNav({
+    enabled: isMobile && sw.hasSiblings,
+    onPrev: () => sw.prev && goToWatchlist(sw.prev.id),
+    onNext: () => sw.next && goToWatchlist(sw.next.id),
+  });
+
   if (error && !watchlist && !loading) return <ErrorState message={error} onRetry={refreshAll} />;
 
   const isAll = watchlist?.name === "All";
@@ -301,8 +344,37 @@ function WatchlistDetail() {
         <MuiLink underline="hover" color="inherit" sx={{ cursor: "pointer" }} onClick={() => navigate("/watchlists")}>
           Watchlists
         </MuiLink>
-        <Typography color="text.primary">{watchlist?.name || "..."}</Typography>
+        {sw.hasSiblings ? (
+          <Box
+            component="span" role="button" tabIndex={0}
+            onClick={sw.openSwitcher}
+            onKeyDown={e => { if (e.key === "Enter" || e.key === " ") sw.openSwitcher(e as unknown as React.MouseEvent<HTMLElement>); }}
+            sx={{
+              display: "inline-flex", alignItems: "center", gap: 0.25, cursor: "pointer",
+              color: "text.primary", borderRadius: 1, px: 0.25,
+              "&:hover": { color: colors.accent },
+            }}
+          >
+            {watchlist?.name || "..."}
+            <ExpandMoreRoundedIcon sx={{ fontSize: 18, opacity: 0.7 }} />
+          </Box>
+        ) : (
+          <Typography color="text.primary">{watchlist?.name || "..."}</Typography>
+        )}
       </Breadcrumbs>
+
+      {/* Watchlist switcher (jump to another watchlist) */}
+      <EntitySwitcher
+        open={sw.open}
+        anchorEl={sw.anchorEl}
+        onClose={sw.close}
+        items={switcherItems}
+        currentId={numWatchlistId}
+        isMobile={isMobile}
+        onSelect={goToWatchlist}
+        title="Switch watchlist"
+        searchPlaceholder="Search watchlists…"
+      />
 
       {loading ? <ListSkeleton rows={3} /> : watchlist && (
         <>
@@ -322,25 +394,42 @@ function WatchlistDetail() {
               const totalGainPct = watchlist.invested > 0 ? (watchlist.gain / watchlist.invested) * 100 : 0;
               const totalDayPct = watchlist.previousDayValue > 0 ? (watchlist.dayChange / watchlist.previousDayValue) * 100 : 0;
               return (
-              <Paper sx={{
+              <Paper {...swipe} sx={{
                 p: { xs: 2.5, sm: 3 }, borderRadius: 3,
                 bgcolor: heroBg,
                 border: "none", borderLeft: `4px solid ${accentColor}`,
                 boxShadow: isDark ? "0 4px 20px rgba(0,0,0,0.3)" : "0 4px 20px rgba(0,0,0,0.08)",
+                touchAction: "pan-y",
               }}>
                 <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1.5 }}>
                   <Avatar sx={{ width: 36, height: 36, bgcolor: alpha(accentColor, 0.1), color: accentColor, borderRadius: 2 }}>
                     {isAll ? <AllInclusiveRoundedIcon sx={{ fontSize: 20 }} /> : <VisibilityRoundedIcon sx={{ fontSize: 20 }} />}
                   </Avatar>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography sx={{ fontSize: { xs: "1.1rem", sm: "1.25rem" }, fontWeight: 700, color: heroText, lineHeight: 1.2 }}>
-                      {watchlist.name}
-                    </Typography>
+                    <Box
+                      onClick={sw.hasSiblings ? sw.openSwitcher : undefined}
+                      sx={{
+                        display: "inline-flex", alignItems: "center", gap: 0.5, maxWidth: "100%",
+                        ...(sw.hasSiblings && {
+                          cursor: "pointer", borderRadius: 1.5, mx: -0.5, px: 0.5,
+                          transition: "background 0.15s", "&:hover": { bgcolor: heroSubtle },
+                        }),
+                      }}
+                    >
+                      <Typography noWrap sx={{ fontSize: { xs: "1.1rem", sm: "1.25rem" }, fontWeight: 700, color: heroText, lineHeight: 1.2 }}>
+                        {watchlist.name}
+                      </Typography>
+                      {sw.hasSiblings && <ExpandMoreRoundedIcon sx={{ fontSize: 20, color: heroMuted, flexShrink: 0 }} />}
+                    </Box>
                     <Typography sx={{ fontSize: "0.7rem", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: heroMuted }}>
                       {linkedAccounts.length} account{linkedAccounts.length !== 1 ? "s" : ""}
                     </Typography>
                   </Box>
                   <XirrBadge value={watchlist.xirr} size="lg" />
+                  {sw.hasSiblings && (
+                    <SwitcherArrows prev={sw.prev} next={sw.next} onSelect={goToWatchlist}
+                      entityLabel="watchlist" color={heroText} mutedColor={heroMuted} hoverBg={heroSubtle} />
+                  )}
                 </Stack>
 
                 <Box sx={{ px: 2, py: 1.5, borderRadius: 2, bgcolor: heroSubtle, display: "inline-block" }}>

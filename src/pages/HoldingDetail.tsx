@@ -12,6 +12,7 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ReceiptOutlinedIcon from "@mui/icons-material/ReceiptOutlined";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import PauseCircleOutlineIcon from "@mui/icons-material/PauseCircleOutline";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { useUser } from "../context/UserContext";
 import {
   getAccounts, getHoldings, getTransactions, createTransaction, deleteTransaction,
@@ -20,6 +21,7 @@ import {
 import { EmptyState, ErrorState, ListSkeleton, FadeIn } from "../components/shared";
 import EntityChart from "../components/EntityChart";
 import XirrBadge from "../components/XirrBadge";
+import { EntitySwitcher, SwitcherArrows, useSwitcher, useSwipeNav, type SwitcherItem } from "../components/EntitySwitcher";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
 import type { AccountSummary, HoldingSummary, Transaction } from "../api/types";
@@ -46,6 +48,7 @@ function HoldingDetail() {
 
   const [account, setAccount] = useState<AccountSummary | null>(null);
   const [holding, setHolding] = useState<HoldingSummary | null>(null);
+  const [holdings, setHoldings] = useState<HoldingSummary[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -78,6 +81,7 @@ function HoldingDetail() {
       const foundHolding = holdings.find(h => h.id === numHoldingId);
       if (foundAccount) setAccount(foundAccount); else setError("Account not found");
       if (foundHolding) setHolding(foundHolding); else setError("Holding not found");
+      setHoldings(holdings);
       setTransactions(txns);
     } catch (err) { if (isActive()) setError(err instanceof Error ? err.message : "Failed to load"); }
     finally { if (isActive()) setLoading(false); }
@@ -176,6 +180,39 @@ function HoldingDetail() {
   const holdingDayChg = holding?.dayChange ?? 0;
   const holdingDayPct = holding && holding.previousDayValue > 0 ? (holdingDayChg / holding.previousDayValue) * 100 : 0;
 
+  // Sibling holdings for the switcher, ordered alphabetically by name.
+  const switcherItems = useMemo<SwitcherItem[]>(
+    () => [...holdings]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(h => ({
+        id: h.id,
+        name: h.name,
+        subtitle: h.symbol,
+        value: h.currentDayValue,
+        valueCurrency: h.displayCurrency,
+        dayChange: h.dayChange,
+        dayChangePct: h.previousDayValue > 0 ? (h.dayChange / h.previousDayValue) * 100 : 0,
+        avatar: h.symbol.slice(0, 3),
+        avatarBg: alpha(colors.brand, 0.1),
+        avatarColor: colors.brand,
+      })),
+    [holdings, colors.brand],
+  );
+  const sw = useSwitcher(switcherItems, numHoldingId);
+  const { hasSiblings, prev: prevHolding, next: nextHolding } = sw;
+
+  const goToHolding = (id: number) => {
+    sw.close();
+    if (id !== numHoldingId) navigate(`/accounts/${accountId}/holdings/${id}`);
+  };
+
+  // Mobile: swipe the hero card left/right to move through siblings.
+  const swipe = useSwipeNav({
+    enabled: isMobile && hasSiblings,
+    onPrev: () => prevHolding && goToHolding(prevHolding.id),
+    onNext: () => nextHolding && goToHolding(nextHolding.id),
+  });
+
   if (error && !account && !loading) return <ErrorState message={error} onRetry={() => load()} />;
 
   return (
@@ -188,7 +225,23 @@ function HoldingDetail() {
         <MuiLink underline="hover" color="inherit" sx={{ cursor: "pointer" }} onClick={() => navigate(`/accounts/${accountId}`)}>
           {account?.name || "..."}
         </MuiLink>
-        <Typography color="text.primary">{holding?.name || "..."}</Typography>
+        {hasSiblings ? (
+          <Box
+            component="span" role="button" tabIndex={0}
+            onClick={sw.openSwitcher}
+            onKeyDown={e => { if (e.key === "Enter" || e.key === " ") sw.openSwitcher(e as unknown as React.MouseEvent<HTMLElement>); }}
+            sx={{
+              display: "inline-flex", alignItems: "center", gap: 0.25, cursor: "pointer",
+              color: "text.primary", borderRadius: 1, px: 0.25,
+              "&:hover": { color: colors.brand },
+            }}
+          >
+            {holding?.name || "..."}
+            <ExpandMoreIcon sx={{ fontSize: 18, opacity: 0.7 }} />
+          </Box>
+        ) : (
+          <Typography color="text.primary">{holding?.name || "..."}</Typography>
+        )}
       </Breadcrumbs>
 
       {loading ? <ListSkeleton rows={3} /> : holding && (
@@ -205,11 +258,12 @@ function HoldingDetail() {
               const heroSuccess = isDark ? "#34D399" : colors.success;
               const heroError = isDark ? "#F87171" : colors.error;
               return (
-                <Paper sx={{
+                <Paper {...swipe} sx={{
                   p: { xs: 2.5, sm: 3 }, borderRadius: 3,
                   bgcolor: heroBg,
                   border: "none", borderLeft: `4px solid ${colors.brand}`,
                   boxShadow: isDark ? "0 4px 20px rgba(0,0,0,0.3)" : "0 4px 20px rgba(0,0,0,0.08)",
+                  touchAction: "pan-y",
                   ...(account && !account.isActive && { opacity: 0.75, filter: "saturate(0.5)" }),
                 }}>
                   <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1 }}>
@@ -217,9 +271,22 @@ function HoldingDetail() {
                       {holding.symbol.slice(0, 3)}
                     </Avatar>
                     <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography sx={{ fontSize: { xs: "1rem", sm: "1.15rem" }, fontWeight: 700, color: heroText, lineHeight: 1.2 }}>
-                        {holding.name}
-                      </Typography>
+                      <Box
+                        onClick={hasSiblings ? sw.openSwitcher : undefined}
+                        sx={{
+                          display: "inline-flex", alignItems: "center", gap: 0.5, maxWidth: "100%",
+                          ...(hasSiblings && {
+                            cursor: "pointer", borderRadius: 1.5, mx: -0.5, px: 0.5,
+                            transition: "background 0.15s",
+                            "&:hover": { bgcolor: heroSubtle },
+                          }),
+                        }}
+                      >
+                        <Typography noWrap sx={{ fontSize: { xs: "1rem", sm: "1.15rem" }, fontWeight: 700, color: heroText, lineHeight: 1.2 }}>
+                          {holding.name}
+                        </Typography>
+                        {hasSiblings && <ExpandMoreIcon sx={{ fontSize: 20, color: heroMuted, flexShrink: 0 }} />}
+                      </Box>
                       <Stack direction="row" spacing={0.75} alignItems="center">
                         <Typography sx={{ fontSize: "0.7rem", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: heroMuted }}>
                           {holding.symbol} · {holding.unitsAreShares ? `${fmtUnits(holding.units)} units` : fmt(holding.units, account?.currency)}
@@ -232,6 +299,10 @@ function HoldingDetail() {
                       </Stack>
                     </Box>
                     <XirrBadge value={holding.xirr} size="lg" />
+                    {hasSiblings && (
+                      <SwitcherArrows prev={prevHolding} next={nextHolding} onSelect={goToHolding}
+                        entityLabel="holding" color={heroText} mutedColor={heroMuted} hoverBg={heroSubtle} />
+                    )}
                   </Stack>
 
                   <Box sx={{ px: 2, py: 1.5, borderRadius: 2, bgcolor: heroSubtle, display: "inline-block" }}>
@@ -400,6 +471,19 @@ function HoldingDetail() {
           )}
         </>
       )}
+
+      {/* Holding switcher (jump to a sibling in the same account) */}
+      <EntitySwitcher
+        open={sw.open}
+        anchorEl={sw.anchorEl}
+        onClose={sw.close}
+        items={switcherItems}
+        currentId={numHoldingId}
+        isMobile={isMobile}
+        onSelect={goToHolding}
+        title="Switch holding"
+        searchPlaceholder="Search holdings…"
+      />
 
       {/* Create Transaction Dialog */}
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} fullScreen={isMobile} fullWidth maxWidth="sm">

@@ -47,8 +47,8 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, action }: PageHeaderProps) {
   return (
-    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: { xs: 2, sm: 3 } }}>
-      <Typography variant="h5">{title}</Typography>
+    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 1.5, flexWrap: "wrap", mb: { xs: 2, sm: 3 } }}>
+      <Typography variant="h5" sx={{ minWidth: 0 }}>{title}</Typography>
       {action}
     </Box>
   );

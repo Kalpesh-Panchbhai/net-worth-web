@@ -13,6 +13,7 @@ import ShowChartIcon from "@mui/icons-material/ShowChart";
 import ReceiptOutlinedIcon from "@mui/icons-material/ReceiptOutlined";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import PauseCircleOutlineIcon from "@mui/icons-material/PauseCircleOutline";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import AddCircleRoundedIcon from "@mui/icons-material/AddCircleRounded";
 import { useUser } from "../context/UserContext";
@@ -37,6 +38,7 @@ import { EmptyState, ErrorState, ListSkeleton, FadeIn } from "../components/shar
 import EntityChart from "../components/EntityChart";
 import AllocationBreakdown, { type AllocationGrouping } from "../components/AllocationBreakdown";
 import XirrBadge from "../components/XirrBadge";
+import { EntitySwitcher, SwitcherArrows, useSwitcher, useSwipeNav, type SwitcherItem } from "../components/EntitySwitcher";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
 import type { AccountSummary, HoldingSummary, Transaction, WatchlistSummary, SyncMfDiff, StockSyncPreview } from "../api/types";
@@ -272,6 +274,7 @@ function AccountDetail() {
   const isDark = theme.palette.mode === "dark";
 
   const [account, setAccount] = useState<AccountSummary | null>(null);
+  const [allAccounts, setAllAccounts] = useState<AccountSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -343,6 +346,7 @@ function AccountDetail() {
         if (cancelled) return;
         const found = accounts.find(a => a.id === numAccountId);
         if (found) setAccount(found); else setError("Account not found");
+        setAllAccounts(accounts);
         setAccountWatchlists(wls);
       })
       .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load"); })
@@ -725,6 +729,42 @@ function AccountDetail() {
     unchangedDiffs: syncDiffs.filter(d => d.status === "UNCHANGED"),
   }), [syncDiffs]);
 
+  // Sibling accounts for the switcher, ordered alphabetically by name. Declared before the early
+  // return below so the hooks always run in the same order.
+  const switcherItems = useMemo<SwitcherItem[]>(
+    () => [...allAccounts]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(a => {
+        const atc = typeColors[a.type] || colors.gray500;
+        return {
+          id: a.id,
+          name: a.name,
+          subtitle: `${TYPE_LABELS[a.type] || a.type} · ${a.currency}`,
+          value: a.currentDayValue,
+          valueCurrency: a.displayCurrency,
+          dayChange: a.dayChange,
+          dayChangePct: a.previousDayValue > 0 ? (a.dayChange / a.previousDayValue) * 100 : 0,
+          avatar: a.name.slice(0, 2).toUpperCase(),
+          avatarBg: alpha(atc, 0.12),
+          avatarColor: atc,
+        };
+      }),
+    [allAccounts, typeColors, colors.gray500],
+  );
+  const sw = useSwitcher(switcherItems, numAccountId);
+
+  const goToAccount = (id: number) => {
+    sw.close();
+    if (id !== numAccountId) navigate(`/accounts/${id}`);
+  };
+
+  // Mobile: swipe the hero card left/right to move through accounts.
+  const swipe = useSwipeNav({
+    enabled: isMobile && sw.hasSiblings,
+    onPrev: () => sw.prev && goToAccount(sw.prev.id),
+    onNext: () => sw.next && goToAccount(sw.next.id),
+  });
+
   if (error && !account && !loading) return <ErrorState message={error} onRetry={refreshAll} />;
 
   const acctGainPct = account && account.invested > 0 ? (account.gain / account.invested) * 100 : 0;
@@ -741,8 +781,37 @@ function AccountDetail() {
         <MuiLink underline="hover" color="inherit" sx={{ cursor: "pointer" }} onClick={() => navigate("/accounts")}>
           Accounts
         </MuiLink>
-        <Typography color="text.primary">{account?.name || "..."}</Typography>
+        {sw.hasSiblings ? (
+          <Box
+            component="span" role="button" tabIndex={0}
+            onClick={sw.openSwitcher}
+            onKeyDown={e => { if (e.key === "Enter" || e.key === " ") sw.openSwitcher(e as unknown as React.MouseEvent<HTMLElement>); }}
+            sx={{
+              display: "inline-flex", alignItems: "center", gap: 0.25, cursor: "pointer",
+              color: "text.primary", borderRadius: 1, px: 0.25,
+              "&:hover": { color: colors.brand },
+            }}
+          >
+            {account?.name || "..."}
+            <ExpandMoreIcon sx={{ fontSize: 18, opacity: 0.7 }} />
+          </Box>
+        ) : (
+          <Typography color="text.primary">{account?.name || "..."}</Typography>
+        )}
       </Breadcrumbs>
+
+      {/* Account switcher (jump to another account) */}
+      <EntitySwitcher
+        open={sw.open}
+        anchorEl={sw.anchorEl}
+        onClose={sw.close}
+        items={switcherItems}
+        currentId={numAccountId}
+        isMobile={isMobile}
+        onSelect={goToAccount}
+        title="Switch account"
+        searchPlaceholder="Search accounts…"
+      />
 
       {loading ? <ListSkeleton rows={3} /> : account && (
         <>
@@ -757,14 +826,15 @@ function AccountDetail() {
               const heroSuccess = isDark ? "#34D399" : colors.success;
               const heroError = isDark ? "#F87171" : colors.error;
               return (
-              <Paper sx={{
+              <Paper {...swipe} sx={{
                 p: { xs: 2.5, sm: 3 }, borderRadius: 3,
                 bgcolor: heroBg,
                 border: "none", borderLeft: `4px solid ${tc}`,
                 boxShadow: isDark ? "0 4px 20px rgba(0,0,0,0.3)" : "0 4px 20px rgba(0,0,0,0.08)",
+                touchAction: "pan-y",
                 ...(account && !account.isActive && { opacity: 0.75, filter: "saturate(0.5)" }),
               }}>
-                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+                <Stack direction="row" useFlexGap flexWrap="wrap" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
                   <Typography sx={{ fontSize: "0.7rem", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: heroMuted }}>
                     {TYPE_LABELS[account.type] || account.type} · {account.currency}
                   </Typography>
@@ -794,10 +864,26 @@ function AccountDetail() {
                     />
                   )}
                   <XirrBadge value={acctXirr} size="lg" />
+                  {sw.hasSiblings && (
+                    <SwitcherArrows prev={sw.prev} next={sw.next} onSelect={goToAccount}
+                      entityLabel="account" color={heroText} mutedColor={heroMuted} hoverBg={heroSubtle} />
+                  )}
                 </Stack>
-                <Typography sx={{ fontSize: { xs: "1.1rem", sm: "1.25rem" }, fontWeight: 700, mb: 1.5, color: heroText }}>
-                  {account.name}
-                </Typography>
+                <Box
+                  onClick={sw.hasSiblings ? sw.openSwitcher : undefined}
+                  sx={{
+                    display: "flex", alignItems: "center", gap: 0.5, width: "fit-content", maxWidth: "100%", mb: 1.5,
+                    ...(sw.hasSiblings && {
+                      cursor: "pointer", borderRadius: 1.5, mx: -0.5, px: 0.5,
+                      transition: "background 0.15s", "&:hover": { bgcolor: heroSubtle },
+                    }),
+                  }}
+                >
+                  <Typography noWrap sx={{ fontSize: { xs: "1.1rem", sm: "1.25rem" }, fontWeight: 700, color: heroText }}>
+                    {account.name}
+                  </Typography>
+                  {sw.hasSiblings && <ExpandMoreIcon sx={{ fontSize: 20, color: heroMuted, flexShrink: 0 }} />}
+                </Box>
 
                 <Box sx={{ px: 2, py: 1.5, borderRadius: 2, bgcolor: heroSubtle, display: "inline-block" }}>
                   <Typography sx={{ fontSize: "0.7rem", fontWeight: 500, color: heroMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.25 }}>
