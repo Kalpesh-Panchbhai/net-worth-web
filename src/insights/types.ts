@@ -37,7 +37,7 @@ export interface SummaryConfig {
   label: string;
 }
 
-export type IncomeChartKind = "cumulative" | "bar" | "tax";
+export type IncomeChartKind = "cumulative" | "bar" | "avg" | "tax";
 export type IncomeGrouping = "month" | "year" | "fy" | "source" | "tag";
 export interface IncomeConfig {
   chart: IncomeChartKind;

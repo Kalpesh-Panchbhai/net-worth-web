@@ -62,6 +62,72 @@ export function buildIncomeChartData(incomes: Income[], grouping: IncomeGrouping
 }
 
 /**
+ * Elapsed span between two ISO dates, in average-length months (365.25/12 days), anchored to the
+ * 1st of the start date's month and counted inclusively through the end date.
+ * e.g. 1–29 Nov ⇒ 29 days; 1 Nov–31 Dec ⇒ 61 days. Never zero, so it's always safe to divide by.
+ */
+function incomeMonthsSpan(startDate: string, endDate: string): number {
+  if (!startDate || !endDate) return 1;
+  const DAYS_PER_MONTH = 365.25 / 12;
+  const startMs = new Date(startDate.slice(0, 7) + "-01T00:00:00").getTime();
+  const days = (new Date(endDate + "T00:00:00").getTime() - startMs) / 86400000 + 1;
+  return Math.max(days, 1) / DAYS_PER_MONTH;
+}
+
+/**
+ * Average-monthly-income chart points: each group's income divided by its elapsed span in months.
+ * Mirrors the Incomes page — Month accumulates from the first income (a running monthly rate), while
+ * Source/Tag/Year/FY are self-contained (each group ÷ its own date span). Same order as
+ * buildIncomeChartData so the two share an x-axis.
+ */
+export function buildIncomeAvgChartData(incomes: Income[], grouping: IncomeGrouping, { sourceLookup, tagLookup, displayCcy }: Lookups): IncomeChartPoint[] {
+  const groups = new Map<string, { sortKey: string; net: number; tax: number; minDate: string; maxDate: string }>();
+  let globalMin = "";
+  for (const inc of incomes) {
+    if (inc.convertedCurrency !== displayCcy) continue;
+    if (!globalMin || inc.creditedDate < globalMin) globalMin = inc.creditedDate;
+    let key: string;
+    let sortKey: string;
+    switch (grouping) {
+      case "month": {
+        const raw = inc.creditedDate.slice(0, 7);
+        const [y, m] = raw.split("-");
+        key = new Date(Number(y), Number(m) - 1).toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
+        sortKey = raw;
+        break;
+      }
+      case "year": key = incomeYearKey(inc.creditedDate); sortKey = key; break;
+      case "fy": key = incomeFyKey(inc.creditedDate); sortKey = key; break;
+      case "source": key = sourceLookup.get(inc.incomeSourceId) ?? "Unknown"; sortKey = key; break;
+      case "tag": key = tagLookup.get(inc.incomeTagId) ?? "Unknown"; sortKey = key; break;
+    }
+    const g = groups.get(key) || { sortKey, net: 0, tax: 0, minDate: "", maxDate: "" };
+    if (!g.minDate || inc.creditedDate < g.minDate) g.minDate = inc.creditedDate;
+    if (inc.creditedDate > g.maxDate) g.maxDate = inc.creditedDate;
+    g.net += inc.convertedNetAmount;
+    g.tax += inc.convertedTaxPaid;
+    groups.set(key, g);
+  }
+
+  const entries = Array.from(groups.entries()).sort(([, a], [, b]) => a.sortKey.localeCompare(b.sortKey));
+  if (grouping === "month") {
+    // Continuous timeline: totals accumulate oldest→newest, the span runs from the first income.
+    let cNet = 0, cTax = 0, cMax = "";
+    return entries.map(([label, g]) => {
+      cNet += g.net; cTax += g.tax;
+      if (g.maxDate > cMax) cMax = g.maxDate;
+      const months = incomeMonthsSpan(globalMin, cMax);
+      return { label, net: cNet / months, tax: cTax / months };
+    });
+  }
+  // Self-contained groups: each divided by its own date span.
+  return entries.map(([label, g]) => {
+    const months = incomeMonthsSpan(g.minDate, g.maxDate);
+    return { label, net: g.net / months, tax: g.tax / months };
+  });
+}
+
+/**
  * Future period labels for the cumulative chart's forecast. Only time-based groupings can be
  * projected (source/tag are categories, not a timeline); labels match buildIncomeChartData's format.
  */

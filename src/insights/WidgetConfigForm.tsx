@@ -77,6 +77,7 @@ export default function WidgetConfigForm({ type, config, data, onChange }: {
       <TextField {...sel} select label="Chart" value={c.chart} onChange={e => onChange({ ...c, chart: e.target.value as IncomeConfig["chart"] })}>
         <MenuItem value="cumulative">Cumulative income</MenuItem>
         <MenuItem value="bar">Income breakdown</MenuItem>
+        <MenuItem value="avg">Avg monthly income</MenuItem>
         <MenuItem value="tax">Tax rate</MenuItem>
       </TextField>
       <TextField {...sel} select label="Group by" value={c.grouping} onChange={e => onChange({ ...c, grouping: e.target.value as IncomeConfig["grouping"] })}>

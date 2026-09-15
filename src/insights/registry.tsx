@@ -56,7 +56,7 @@ export const WIDGET_META: Record<WidgetType, { label: string; description: strin
   },
   income: {
     label: "Income",
-    description: "Cumulative income, income breakdown, or effective tax-rate trend.",
+    description: "Cumulative income, income breakdown, avg monthly income, or effective tax-rate trend.",
     icon: <PaymentsRoundedIcon />,
     defaultConfig: { chart: "cumulative", grouping: "month" } satisfies IncomeConfig,
     configurable: true,

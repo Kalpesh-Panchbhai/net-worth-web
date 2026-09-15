@@ -14,6 +14,8 @@ import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import ExpandLessRoundedIcon from "@mui/icons-material/ExpandLessRounded";
+import UnfoldLessRoundedIcon from "@mui/icons-material/UnfoldLessRounded";
+import UnfoldMoreRoundedIcon from "@mui/icons-material/UnfoldMoreRounded";
 import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import AccountBalanceRoundedIcon from "@mui/icons-material/AccountBalanceRounded";
@@ -21,6 +23,7 @@ import BarChartRoundedIcon from "@mui/icons-material/BarChartRounded";
 import ViewListRoundedIcon from "@mui/icons-material/ViewListRounded";
 import ShowChartOutlinedIcon from "@mui/icons-material/ShowChartOutlined";
 import IncomeChart from "../components/IncomeChart";
+import IncomeLineChart from "../components/IncomeLineChart";
 import CumulativeIncomeChart from "../components/CumulativeIncomeChart";
 import TaxRateChart from "../components/TaxRateChart";
 import { useUser } from "../context/UserContext";
@@ -36,6 +39,7 @@ import { formatCurrency as fmt } from "../utils/format";
 import type { Income, IncomeSource, IncomeTag } from "../api/types";
 
 type Grouping = "month" | "source" | "tag" | "year" | "fy";
+type Metric = "normal" | "cumulative" | "avg";
 
 /**
  * A row held in local state, which may be an optimistic insert or edit. The backend converts at
@@ -78,6 +82,7 @@ function Incomes() {
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "chart">("list");
   const [grouping, setGrouping] = useState<Grouping>("month");
+  const [metric, setMetric] = useState<Metric>("normal");
   const [showFilters, setShowFilters] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [filterSources, setFilterSources] = useState<number[]>([]);
@@ -184,29 +189,77 @@ function Incomes() {
   }, [incomes, preferredCurrency]);
 
   const sections = useMemo(() => {
-    const groups = new Map<string, IncomeRow[]>();
+    const groups = new Map<string, { items: IncomeRow[]; sortKey: string }>();
     for (const inc of filtered) {
       let key: string;
+      let sortKey: string;
       switch (grouping) {
-        case "month": key = monthKey(inc.creditedDate); break;
-        case "year": key = yearKey(inc.creditedDate); break;
-        case "fy": key = fyKey(inc.creditedDate); break;
-        case "source": key = sourceLookup.get(inc.incomeSourceId) ?? "Unknown"; break;
-        case "tag": key = tagLookup.get(inc.incomeTagId) ?? "Unknown"; break;
+        case "month": key = monthKey(inc.creditedDate); sortKey = inc.creditedDate.slice(0, 7); break;
+        case "year": key = yearKey(inc.creditedDate); sortKey = key; break;
+        case "fy": key = fyKey(inc.creditedDate); sortKey = key; break;
+        case "source": key = sourceLookup.get(inc.incomeSourceId) ?? "Unknown"; sortKey = key; break;
+        case "tag": key = tagLookup.get(inc.incomeTagId) ?? "Unknown"; sortKey = key; break;
       }
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(inc);
+      if (!groups.has(key)) groups.set(key, { items: [], sortKey });
+      groups.get(key)!.items.push(inc);
     }
-    return Array.from(groups.entries()).map(([title, items]) => {
-      let net = 0, tax = 0;
+    // Each group's own net/tax and its earliest/latest credited date, both computed over only the
+    // rows that count toward the total — a row whose FX-converted currency differs from the page
+    // total is excluded from the sums AND from the date span, so the "Avg" metric divides the
+    // counted income by exactly the time that income spans.
+    const base = Array.from(groups.entries()).map(([title, { items, sortKey }]) => {
+      let net = 0, tax = 0, minDate = "", maxDate = "";
       for (const inc of items) {
         if (inc.convertedCurrency !== displayCcy) continue;
+        if (!minDate || inc.creditedDate < minDate) minDate = inc.creditedDate;
+        if (inc.creditedDate > maxDate) maxDate = inc.creditedDate;
         net += inc.convertedNetAmount;
         tax += inc.convertedTaxPaid;
       }
-      return { title, items, net, tax, total: net + tax };
+      return { title, items, sortKey, net, tax, total: net + tax, minDate, maxDate };
     });
+
+    // Elapsed span between two dates, in average-length months (365.25/12 days), anchored to the
+    // 1st of the start date's month and counted inclusively through the end date.
+    // e.g. 1–29 Nov ⇒ 29 days; 1 Nov–31 Dec ⇒ 61 days. A group with no counted rows has no span,
+    // so it falls back to 1 (its net/tax are 0, giving an avg of 0 either way).
+    const DAYS_PER_MONTH = 365.25 / 12;
+    const monthsSpan = (startDate: string, endDate: string) => {
+      if (!startDate || !endDate) return 1;
+      const startMs = new Date(startDate.slice(0, 7) + "-01T00:00:00").getTime();
+      const days = (new Date(endDate + "T00:00:00").getTime() - startMs) / 86400000 + 1;
+      return Math.max(days, 1) / DAYS_PER_MONTH;
+    };
+
+    const cum = new Map<string, { cNet: number; cTax: number; avgMonths: number }>();
+    if (grouping === "month") {
+      // Month grouping is a continuous timeline: totals accumulate oldest→newest (though displayed
+      // newest-first) and the Avg span runs from the very first counted income's month onward.
+      let globalMin = "";
+      for (const inc of filtered) if (inc.convertedCurrency === displayCcy && (!globalMin || inc.creditedDate < globalMin)) globalMin = inc.creditedDate;
+      const accOrder = [...base].sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+      let cNet = 0, cTax = 0, cMaxDate = "";
+      for (const s of accOrder) {
+        cNet += s.net; cTax += s.tax;
+        if (s.maxDate > cMaxDate) cMaxDate = s.maxDate;
+        cum.set(s.title, { cNet, cTax, avgMonths: monthsSpan(globalMin, cMaxDate) });
+      }
+    } else {
+      // Source/tag/year/FY are self-contained: cumulative is the group's own total, and the Avg
+      // span covers only that group's own date range (its first income's month → its last income).
+      for (const s of base) {
+        cum.set(s.title, { cNet: s.net, cTax: s.tax, avgMonths: monthsSpan(s.minDate, s.maxDate) });
+      }
+    }
+    return base.map((s) => ({ ...s, ...cum.get(s.title)! }));
   }, [filtered, grouping, sourceLookup, tagLookup, displayCcy]);
+
+  // Whether every visible section is currently collapsed drives the collapse/expand-all control:
+  // one tap flips them all. Expanding just clears the map (undefined = expanded is the default).
+  const allCollapsed = sections.length > 0 && sections.every((s) => collapsed[s.title]);
+  const toggleAll = () => {
+    setCollapsed(allCollapsed ? {} : Object.fromEntries(sections.map((s) => [s.title, true])));
+  };
 
   const totals = useMemo(() => {
     let net = 0, tax = 0;
@@ -218,6 +271,33 @@ function Incomes() {
     return { net, tax, all: net + tax };
   }, [filtered, displayCcy]);
   const netPct = totals.all > 0 ? (totals.net / totals.all) * 100 : 0;
+
+  // Elapsed span of the whole filtered set, in average-length months (365.25/12 days), anchored to
+  // the 1st of the earliest counted income's month through the latest. The "Avg" metric's header
+  // divisor — measured only over rows that count toward the total, so the numerator and denominator
+  // cover the same income (rows whose FX conversion differs from the page total are skipped).
+  const overallAvgMonths = useMemo(() => {
+    const DAYS_PER_MONTH = 365.25 / 12;
+    let min = "", max = "";
+    for (const inc of filtered) {
+      if (inc.convertedCurrency !== displayCcy) continue;
+      if (!min || inc.creditedDate < min) min = inc.creditedDate;
+      if (inc.creditedDate > max) max = inc.creditedDate;
+    }
+    if (!min) return 1;
+    const startMs = new Date(min.slice(0, 7) + "-01T00:00:00").getTime();
+    const days = (new Date(max + "T00:00:00").getTime() - startMs) / 86400000 + 1;
+    return Math.max(days, 1) / DAYS_PER_MONTH;
+  }, [filtered, displayCcy]);
+
+  // The hero card mirrors the active metric (the toggle drives both the list and the charts).
+  // Cumulative equals the plain total across all filtered data; Avg divides it by the elapsed span.
+  const headerMetric = metric;
+  const headerDivisor = headerMetric === "avg" ? overallAvgMonths : 1;
+  const headerNet = totals.net / headerDivisor;
+  const headerTax = totals.tax / headerDivisor;
+  const headerAll = totals.all / headerDivisor;
+  const headerLabel = headerMetric === "avg" ? "Avg Monthly Income" : headerMetric === "cumulative" ? "Cumulative Income" : "Total Income";
 
   const chartData = useMemo(() => {
     const map = new Map<string, { sortKey: string; net: number; tax: number }>();
@@ -244,6 +324,35 @@ function Incomes() {
       .sort(([, a], [, b]) => a.sortKey.localeCompare(b.sortKey))
       .map(([label, val]) => ({ label, net: val.net, tax: val.tax }));
   }, [filtered, grouping, sourceLookup, tagLookup]);
+
+  // Avg-per-group bars for the chart, using the exact same average the list headers show (running
+  // monthly rate for Month, own-span monthly rate for the rest), re-labelled and re-sorted to match
+  // chartData's chronological x-axis.
+  const avgChartData = useMemo(() => {
+    return sections
+      .map((s) => {
+        let label = s.title;
+        if (grouping === "month") {
+          const [y, m] = s.sortKey.split("-");
+          label = new Date(Number(y), Number(m) - 1).toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
+        }
+        return { label, sortKey: s.sortKey, net: s.cNet / s.avgMonths, tax: s.cTax / s.avgMonths };
+      })
+      .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+      .map(({ label, net, tax }) => ({ label, net, tax }));
+  }, [sections, grouping]);
+
+  // The chart panel switches on the active metric: per-group bars (Normal), a running line
+  // (Cumulative), or Avg — a progressive line for time groupings (month/year/FY) and grouped bars
+  // for the category groupings (source/tag). Cumulative reuses chartData inside its own component.
+  const isTimeGrouping = grouping === "month" || grouping === "year" || grouping === "fy";
+  const barChartData = metric === "avg" ? avgChartData : chartData;
+  const chartTitleBase = grouping === "fy" ? "Financial Year" : grouping.charAt(0).toUpperCase() + grouping.slice(1);
+  const chartTitle = metric === "cumulative"
+    ? "Cumulative Income"
+    : metric === "avg"
+      ? `Avg Monthly Income by ${chartTitleBase}`
+      : `Income by ${chartTitleBase}`;
 
   // Future period labels for the cumulative chart's forecast. Only time-based groupings can be
   // projected; source/tag are categories, not a timeline. Labels match chartData's display format.
@@ -376,21 +485,21 @@ function Incomes() {
 
             <Box sx={{ position: "relative", zIndex: 1 }}>
               <Typography sx={{ fontSize: "0.7rem", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.75, mb: 0.5 }}>
-                Total Income
+                {headerLabel}
               </Typography>
               <Typography sx={{ fontSize: { xs: "1.75rem", sm: "2.25rem" }, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.1 }}>
-                {fmt(totals.all, displayCcy)}
+                {fmt(headerAll, displayCcy)}
               </Typography>
             </Box>
 
             <Stack direction="row" spacing={1.5} sx={{ mt: 2, position: "relative", zIndex: 1 }} flexWrap="wrap" useFlexGap>
               <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, px: { xs: 1, sm: 1.5 }, py: 0.5, borderRadius: 2, bgcolor: alpha(colors.pureWhite, 0.15), fontSize: { xs: "0.7rem", sm: "0.78rem" }, fontWeight: 600 }}>
                 <TrendingUpIcon sx={{ fontSize: 14 }} />
-                Net: {fmt(totals.net, displayCcy)} ({netPct.toFixed(1)}%)
+                Net: {fmt(headerNet, displayCcy)} ({netPct.toFixed(1)}%)
               </Box>
               <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, px: { xs: 1, sm: 1.5 }, py: 0.5, borderRadius: 2, bgcolor: alpha(colors.pureWhite, 0.12), fontSize: { xs: "0.7rem", sm: "0.78rem" }, fontWeight: 600 }}>
                 <AccountBalanceRoundedIcon sx={{ fontSize: 14 }} />
-                Tax: {fmt(totals.tax, displayCcy)} ({totals.all > 0 ? ((totals.tax / totals.all) * 100).toFixed(1) : "0.0"}%)
+                Tax: {fmt(headerTax, displayCcy)} ({totals.all > 0 ? ((totals.tax / totals.all) * 100).toFixed(1) : "0.0"}%)
               </Box>
             </Stack>
           </Paper>
@@ -420,7 +529,35 @@ function Incomes() {
               <ToggleButton value="fy">FY</ToggleButton>
             </ToggleButtonGroup>
 
+            <ToggleButtonGroup value={metric} exclusive
+              onChange={(_e, val) => val && setMetric(val)} size="small"
+              sx={{
+                "& .MuiToggleButton-root": {
+                  px: { xs: 1.25, sm: 1.75 }, py: 0.5, fontSize: { xs: "0.72rem", sm: "0.8rem" }, fontWeight: 600,
+                  borderRadius: "20px !important", border: "none",
+                  bgcolor: alpha(colors.success, 0.08),
+                  "&.Mui-selected": { bgcolor: colors.success, color: colors.pureWhite, "&:hover": { bgcolor: colors.success } },
+                },
+                gap: 0.75, border: "none",
+              }}
+            >
+              <ToggleButton value="normal">Normal</ToggleButton>
+              <ToggleButton value="cumulative">Cumulative</ToggleButton>
+              <ToggleButton value="avg">Avg</ToggleButton>
+            </ToggleButtonGroup>
+
             <Box sx={{ flex: 1, display: { xs: "none", sm: "block" } }} />
+
+            {view === "list" && sections.length > 0 && (
+              <Chip
+                icon={allCollapsed ? <UnfoldMoreRoundedIcon sx={{ fontSize: 16 }} /> : <UnfoldLessRoundedIcon sx={{ fontSize: 16 }} />}
+                label={allCollapsed ? "Expand all" : "Collapse all"}
+                onClick={toggleAll}
+                variant="outlined"
+                size="small"
+                sx={{ fontWeight: 600, fontSize: "0.8rem" }}
+              />
+            )}
 
             <Chip
               icon={<FilterListRoundedIcon sx={{ fontSize: 16 }} />}
@@ -531,11 +668,15 @@ function Incomes() {
           <Stack spacing={{ xs: 2.5, sm: 3 }}>
             <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3 }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
-                Income by {grouping === "fy" ? "Financial Year" : grouping.charAt(0).toUpperCase() + grouping.slice(1)}
+                {chartTitle}
               </Typography>
               {chartData.length >= 2 ? (
                 <Box sx={{ mx: { xs: -1, sm: 0 } }}>
-                  <IncomeChart data={chartData} currency={displayCcy} />
+                  {metric === "cumulative"
+                    ? <CumulativeIncomeChart data={chartData} currency={displayCcy} forecastLabels={forecastLabels} />
+                    : metric === "avg" && isTimeGrouping
+                      ? <IncomeLineChart data={avgChartData} currency={displayCcy} />
+                      : <IncomeChart data={barChartData} currency={displayCcy} />}
                 </Box>
               ) : (
                 <EmptyState
@@ -545,17 +686,6 @@ function Incomes() {
                 />
               )}
             </Paper>
-
-            {chartData.length >= 2 && (
-              <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3 }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
-                  Cumulative Income
-                </Typography>
-                <Box sx={{ mx: { xs: -1, sm: 0 } }}>
-                  <CumulativeIncomeChart data={chartData} currency={displayCcy} forecastLabels={forecastLabels} />
-                </Box>
-              </Paper>
-            )}
 
             {chartData.length >= 2 && (
               <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3 }}>
@@ -583,7 +713,13 @@ function Incomes() {
         </Paper>
       ) : (
         sections.map((section, si) => {
-          const { net: sNet, tax: sTax, total: sTotal } = section;
+          // The header reflects the active metric: the group's own total, the running total from
+          // the start through this group, or that running total as an average monthly rate (running
+          // sum ÷ months elapsed from the start through this group).
+          const sNet = metric === "normal" ? section.net : metric === "cumulative" ? section.cNet : section.cNet / section.avgMonths;
+          const sTax = metric === "normal" ? section.tax : metric === "cumulative" ? section.cTax : section.cTax / section.avgMonths;
+          const sTotal = sNet + sTax;
+          const metricLabel = metric === "cumulative" ? "Cumulative" : metric === "avg" ? "Avg / month" : null;
           return (
             <FadeIn key={section.title} delay={si * 40}>
               <Paper sx={{ borderRadius: 3, overflow: "hidden", border: `1px solid ${colors.gray200}` }} elevation={0}>
@@ -607,6 +743,11 @@ function Incomes() {
                     <Typography sx={{ fontWeight: 700, fontSize: "0.95rem" }} noWrap>{section.title}</Typography>
                   </Box>
                   <Stack alignItems="flex-end" spacing={0.25}>
+                    {metricLabel && (
+                      <Typography sx={{ fontSize: "0.58rem", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: colors.success, lineHeight: 1 }}>
+                        {metricLabel}
+                      </Typography>
+                    )}
                     <Typography sx={{ fontWeight: 750, fontSize: "1rem", letterSpacing: "-0.02em" }}>{fmt(sTotal, displayCcy)}</Typography>
                     <Stack direction="row" spacing={0.25} sx={{ flexWrap: "wrap" }}>
                       <TintedChip label={`Net ${fmt(sNet, displayCcy)} (${sTotal > 0 ? ((sNet / sTotal) * 100).toFixed(1) : "0.0"}%)`} color={colors.success} size="small" />
