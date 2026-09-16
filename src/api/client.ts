@@ -194,20 +194,9 @@ export function deleteUser(id: number) {
   return request<void>(`/users/${id}`, { method: "DELETE" });
 }
 
-// Insights dashboard layout (per-user widget configuration, synced across devices).
-// The layout is an opaque array to the API layer; the insights module owns its shape.
-export function getInsightsLayout(userId: number) {
-  return request<{ layout: unknown[] | null }>(`/insights-config/${userId}`);
-}
-
-export function saveInsightsLayout(userId: number, layout: unknown[]) {
-  invalidateCache(`/insights-config/${userId}`);
-  return request<void>(`/insights-config/${userId}`, { method: "PATCH", body: JSON.stringify({ layout }) });
-}
-
-// Generic per-user config store (goals, FIRE assumptions, Simulator inputs, …). Keyed by an opaque
-// string; the value is arbitrary JSON persisted and returned verbatim, so new settings need no API
-// change beyond a new key.
+// Generic per-user config store (Insights layout, goals, FIRE assumptions, Simulator inputs, …).
+// Keyed by an opaque string; the value is arbitrary JSON persisted and returned verbatim, so new
+// settings need no API change beyond a new key.
 export function getUserConfig<T>(userId: number, key: string) {
   return request<{ value: T | null }>(`/user-config/${userId}?key=${encodeURIComponent(key)}`);
 }
