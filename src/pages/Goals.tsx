@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Box, Paper, Typography, TextField, InputAdornment, Stack, Slider, Button,
+  Box, Paper, Typography, TextField, InputAdornment, Stack, Slider, Button, MenuItem,
   Dialog, DialogTitle, DialogContent, DialogActions, IconButton, Fab, Avatar,
   LinearProgress, useMediaQuery, useTheme,
 } from "@mui/material";
@@ -15,15 +15,16 @@ import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tool
 import { useUser } from "../context/UserContext";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
-import { getAccounts } from "../api/client";
-import { isInternalAccount } from "../utils/account";
+import { getHoldings } from "../api/client";
 import { PageHeader, MetricCard, FadeIn, EmptyState, TintedChip } from "../components/shared";
 import { formatCurrency as fmt, formatCurrencyCompact as fmtC } from "../utils/format";
 import {
-  newGoalId, evaluateGoal, computeFire,
-  formatDuration, formatMonthYear, type Goal,
+  newGoalId, evaluateGoal, computeFire, goalSourceLabel,
+  formatDuration, formatMonthYear, type Goal, type GoalSource,
 } from "../utils/goals";
 import { useSyncedConfig } from "../utils/syncedConfig";
+import { useGoalValues } from "../utils/useGoalValues";
+import type { HoldingSummary } from "../api/types";
 
 const num = (s: string) => { const n = parseFloat(s); return Number.isFinite(n) ? n : 0; };
 
@@ -176,65 +177,132 @@ function FireCalculator({ netWorth, prefilled }: { netWorth: number; prefilled: 
 
 // ─── Goals list ──────────────────────────────────────────────
 
+type SourceKind = "networth" | "account" | "watchlist" | "holding" | "manual";
+
+const SOURCE_OPTIONS: { value: SourceKind; label: string }[] = [
+  { value: "networth", label: "Overall net worth" },
+  { value: "account", label: "An account / broker" },
+  { value: "holding", label: "A holding" },
+  { value: "watchlist", label: "A watchlist" },
+  { value: "manual", label: "Manual amount" },
+];
+
 interface GoalForm {
-  name: string; targetAmount: string; currentAmount: string;
-  monthlyContribution: string; annualReturnPct: string; targetDate: string;
+  name: string;
+  sourceKind: SourceKind;
+  accountId: string;   // account source, and the account a holding belongs to
+  watchlistId: string; // watchlist source
+  holdingId: string;   // holding source
+  targetAmount: string;
+  currentAmount: string; // manual source only
+  monthlyContribution: string;
+  annualReturnPct: string;
+  targetDate: string;
 }
 
-const emptyForm = (netWorth: number): GoalForm => ({
-  name: "", targetAmount: "", currentAmount: netWorth > 0 ? String(Math.round(netWorth)) : "0",
+const emptyForm = (): GoalForm => ({
+  name: "", sourceKind: "networth", accountId: "", watchlistId: "", holdingId: "",
+  targetAmount: "", currentAmount: "0",
   monthlyContribution: "25000", annualReturnPct: "12", targetDate: "",
 });
+
+/** Reconstruct the editable form fields from a saved goal. */
+function formFromGoal(g: Goal): GoalForm {
+  const src = g.source;
+  const base = emptyForm();
+  base.name = g.name;
+  base.targetAmount = String(g.targetAmount);
+  base.currentAmount = String(g.currentAmount);
+  base.monthlyContribution = String(g.monthlyContribution);
+  base.annualReturnPct = String(g.annualReturnPct);
+  base.targetDate = g.targetDate ?? "";
+  base.sourceKind = src?.kind ?? "manual";
+  if (src?.kind === "account") base.accountId = String(src.id);
+  if (src?.kind === "watchlist") base.watchlistId = String(src.id);
+  if (src?.kind === "holding") { base.accountId = String(src.accountId); base.holdingId = String(src.id); }
+  return base;
+}
 
 function Goals() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-  const { userId, preferredCurrency, dataVersion } = useUser();
+  const { userId, preferredCurrency } = useUser();
   const { colors } = useTokens();
   const { showToast } = useToast();
 
   const [goals, setGoals] = useSyncedConfig<Goal[]>(userId, "goals", []);
-  const [netWorth, setNetWorth] = useState(0);
-  const [prefilled, setPrefilled] = useState(false);
+  const { netWorth, accounts, watchlists, valueOf } = useGoalValues(goals);
+  const prefilled = netWorth > 0;
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editGoal, setEditGoal] = useState<Goal | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Goal | null>(null);
-  const [form, setForm] = useState<GoalForm>(emptyForm(0));
+  const [form, setForm] = useState<GoalForm>(emptyForm());
 
-  // Net worth: sum of active accounts in the display currency (mirrors the Simulator prefill).
+  // Holdings for the account picked in the form's "holding" source.
+  const [holdingOptions, setHoldingOptions] = useState<HoldingSummary[]>([]);
+  const [loadingHoldings, setLoadingHoldings] = useState(false);
   useEffect(() => {
-    if (!userId) return;
+    if (form.sourceKind !== "holding" || !form.accountId) { setHoldingOptions([]); return; }
     let cancelled = false;
-    getAccounts(userId).then(accounts => {
-      if (cancelled) return;
-      const net = accounts
-        .filter(a => a.isActive && a.displayCurrency === preferredCurrency && !isInternalAccount(a.name))
-        .reduce((sum, a) => sum + a.currentDayValue, 0);
-      setNetWorth(net);
-      setPrefilled(net > 0);
-    }).catch(() => {});
+    setLoadingHoldings(true);
+    getHoldings(Number(form.accountId))
+      .then(hs => { if (!cancelled) setHoldingOptions(hs); })
+      .catch(() => { if (!cancelled) setHoldingOptions([]); })
+      .finally(() => { if (!cancelled) setLoadingHoldings(false); });
     return () => { cancelled = true; };
-  }, [userId, preferredCurrency, dataVersion]);
+  }, [form.sourceKind, form.accountId]);
 
-  const openCreate = () => { setForm(emptyForm(netWorth)); setCreateOpen(true); };
-  const openEdit = (g: Goal) => {
-    setEditGoal(g);
-    setForm({
-      name: g.name, targetAmount: String(g.targetAmount), currentAmount: String(g.currentAmount),
-      monthlyContribution: String(g.monthlyContribution), annualReturnPct: String(g.annualReturnPct),
-      targetDate: g.targetDate ?? "",
-    });
-  };
+  const openCreate = () => { setForm(emptyForm()); setCreateOpen(true); };
+  const openEdit = (g: Goal) => { setForm(formFromGoal(g)); setEditGoal(g); };
 
   const setField = (k: keyof GoalForm) => (v: string) => setForm(f => ({ ...f, [k]: v }));
-  const formValid = form.name.trim() !== "" && num(form.targetAmount) > 0;
+
+  // Resolve the picked entity into a GoalSource; null while a required entity isn't chosen yet.
+  const buildSource = (): GoalSource | null => {
+    switch (form.sourceKind) {
+      case "manual": return { kind: "manual" };
+      case "networth": return { kind: "networth" };
+      case "account": {
+        if (!form.accountId) return null;
+        const a = accounts.find(x => x.id === Number(form.accountId));
+        return { kind: "account", id: Number(form.accountId), label: a?.name ?? "Account" };
+      }
+      case "watchlist": {
+        if (!form.watchlistId) return null;
+        const w = watchlists.find(x => x.id === Number(form.watchlistId));
+        return { kind: "watchlist", id: Number(form.watchlistId), label: w?.name ?? "Watchlist" };
+      }
+      case "holding": {
+        if (!form.accountId || !form.holdingId) return null;
+        const h = holdingOptions.find(x => x.id === Number(form.holdingId));
+        return { kind: "holding", id: Number(form.holdingId), accountId: Number(form.accountId), label: h?.name ?? "Holding" };
+      }
+    }
+  };
+
+  const resolvedSource = buildSource();
+  const formValid = num(form.targetAmount) > 0 && resolvedSource !== null;
+  const effectiveName = () => form.name.trim() || goalSourceLabel(resolvedSource ?? undefined);
+
+  // Live value for the source currently chosen in the form (for the preview line).
+  const currentPreview = (() => {
+    if (!resolvedSource) return 0;
+    switch (resolvedSource.kind) {
+      case "networth": return netWorth;
+      case "account": return accounts.find(a => a.id === resolvedSource.id)?.currentDayValue ?? 0;
+      case "watchlist": return watchlists.find(w => w.id === resolvedSource.id)?.currentDayValue ?? 0;
+      case "holding": return holdingOptions.find(h => h.id === resolvedSource.id)?.currentDayValue ?? 0;
+      default: return num(form.currentAmount);
+    }
+  })();
 
   const handleCreate = () => {
-    if (!formValid) return;
+    if (!formValid || !resolvedSource) return;
     const goal: Goal = {
-      id: newGoalId(), name: form.name.trim(),
-      targetAmount: num(form.targetAmount), currentAmount: num(form.currentAmount),
+      id: newGoalId(), name: effectiveName(), source: resolvedSource,
+      targetAmount: num(form.targetAmount),
+      currentAmount: resolvedSource.kind === "manual" ? num(form.currentAmount) : 0,
       monthlyContribution: num(form.monthlyContribution), annualReturnPct: num(form.annualReturnPct),
       targetDate: form.targetDate || undefined, createdAt: new Date().toISOString(),
     };
@@ -244,15 +312,17 @@ function Goals() {
   };
 
   const handleUpdate = () => {
-    if (!editGoal || !formValid) return;
+    if (!editGoal || !formValid || !resolvedSource) return;
+    const name = effectiveName();
     setGoals(goals.map(g => g.id === editGoal.id ? {
-      ...g, name: form.name.trim(),
-      targetAmount: num(form.targetAmount), currentAmount: num(form.currentAmount),
+      ...g, name, source: resolvedSource,
+      targetAmount: num(form.targetAmount),
+      currentAmount: resolvedSource.kind === "manual" ? num(form.currentAmount) : 0,
       monthlyContribution: num(form.monthlyContribution), annualReturnPct: num(form.annualReturnPct),
       targetDate: form.targetDate || undefined,
     } : g));
     setEditGoal(null);
-    showToast(`Goal "${form.name.trim()}" updated`);
+    showToast(`Goal "${name}" updated`);
   };
 
   const handleDelete = () => {
@@ -274,9 +344,58 @@ function Goals() {
       <DialogTitle>{mode === "create" ? "New Goal" : "Edit Goal"}</DialogTitle>
       <DialogContent sx={{ pt: "16px !important" }}>
         <Stack spacing={2}>
-          <TextField label="Name" value={form.name} onChange={e => setField("name")(e.target.value)} fullWidth autoFocus placeholder="e.g. House down payment" />
+          <TextField
+            select label="Track" value={form.sourceKind} fullWidth
+            onChange={e => setForm(f => ({ ...f, sourceKind: e.target.value as SourceKind, accountId: "", watchlistId: "", holdingId: "" }))}
+            helperText="What this goal measures progress against"
+          >
+            {SOURCE_OPTIONS.map(o => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
+          </TextField>
+
+          {form.sourceKind === "account" && (
+            <TextField select label="Account" value={form.accountId} onChange={e => setField("accountId")(e.target.value)} fullWidth>
+              {accounts.length === 0 && <MenuItem value="" disabled>No accounts</MenuItem>}
+              {accounts.map(a => <MenuItem key={a.id} value={String(a.id)}>{a.name}</MenuItem>)}
+            </TextField>
+          )}
+
+          {form.sourceKind === "watchlist" && (
+            <TextField select label="Watchlist" value={form.watchlistId} onChange={e => setField("watchlistId")(e.target.value)} fullWidth>
+              {watchlists.length === 0 && <MenuItem value="" disabled>No watchlists</MenuItem>}
+              {watchlists.map(w => <MenuItem key={w.id} value={String(w.id)}>{w.name}</MenuItem>)}
+            </TextField>
+          )}
+
+          {form.sourceKind === "holding" && (
+            <>
+              <TextField select label="Account" value={form.accountId} onChange={e => setForm(f => ({ ...f, accountId: e.target.value, holdingId: "" }))} fullWidth>
+                {accounts.length === 0 && <MenuItem value="" disabled>No accounts</MenuItem>}
+                {accounts.map(a => <MenuItem key={a.id} value={String(a.id)}>{a.name}</MenuItem>)}
+              </TextField>
+              <TextField
+                select label="Holding" value={form.holdingId} onChange={e => setField("holdingId")(e.target.value)} fullWidth
+                disabled={!form.accountId || loadingHoldings}
+                helperText={loadingHoldings ? "Loading holdings…" : !form.accountId ? "Pick an account first" : undefined}
+              >
+                {holdingOptions.length === 0 && <MenuItem value="" disabled>No holdings</MenuItem>}
+                {holdingOptions.map(h => <MenuItem key={h.id} value={String(h.id)}>{h.name}</MenuItem>)}
+              </TextField>
+            </>
+          )}
+
+          <TextField
+            label="Name (optional)" value={form.name} onChange={e => setField("name")(e.target.value)}
+            fullWidth placeholder={goalSourceLabel(resolvedSource ?? undefined)}
+          />
           {numberField("Target amount", form.targetAmount, setField("targetAmount"), preferredCurrency)}
-          {numberField("Already saved", form.currentAmount, setField("currentAmount"), preferredCurrency, "start", "Prefilled from your net worth")}
+          {form.sourceKind === "manual"
+            ? numberField("Already saved", form.currentAmount, setField("currentAmount"), preferredCurrency)
+            : (
+              <Typography sx={{ fontSize: "0.75rem", color: colors.gray500, px: 0.5 }}>
+                Current value is read live from <strong>{goalSourceLabel(resolvedSource ?? undefined)}</strong>
+                {resolvedSource && resolvedSource.kind !== "manual" ? ` — ${fmt(currentPreview, preferredCurrency)}` : ""}.
+              </Typography>
+            )}
           {numberField("Monthly contribution", form.monthlyContribution, setField("monthlyContribution"), preferredCurrency)}
           {numberField("Expected annual return", form.annualReturnPct, setField("annualReturnPct"), "%", "end")}
           <TextField
@@ -315,10 +434,12 @@ function Goals() {
         ) : (
           <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, gap: 2 }}>
             {goals.map((g, i) => {
-              const s = evaluateGoal(g);
+              const current = valueOf(g);
+              const s = evaluateGoal(g, current);
               const progress = Math.min(100, Math.max(0, s.progressPct));
               const done = progress >= 100;
               const barColor = done ? success : g.targetDate && s.onTrack === false ? colors.error : colors.brand;
+              const linked = g.source && g.source.kind !== "manual";
               return (
                 <FadeIn key={g.id} delay={i * 40}>
                   <Paper sx={{ p: 2.5, borderRadius: 3, borderLeft: `4px solid ${barColor}`, height: "100%", display: "flex", flexDirection: "column" }}>
@@ -329,7 +450,7 @@ function Goals() {
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography sx={{ fontWeight: 650, fontSize: "0.9rem", lineHeight: 1.3 }} noWrap>{g.name}</Typography>
                         <Typography sx={{ fontSize: "0.72rem", color: colors.gray400 }}>
-                          {fmt(g.currentAmount, preferredCurrency)} of {fmt(g.targetAmount, preferredCurrency)}
+                          {fmt(current, preferredCurrency)} of {fmt(g.targetAmount, preferredCurrency)}
                         </Typography>
                       </Box>
                       <Stack direction="row" spacing={0}>
@@ -352,6 +473,7 @@ function Goals() {
                     </Box>
 
                     <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: "auto" }}>
+                      {linked && <TintedChip label={`Tracking: ${goalSourceLabel(g.source)}`} color={colors.accent} />}
                       <TintedChip label={done ? "Reached" : `~${formatDuration(s.monthsToGoal)}`} color={done ? success : colors.brand} />
                       {!done && <TintedChip label={formatMonthYear(s.projectedDate)} color={colors.gray500} />}
                       {g.targetDate && !done && (

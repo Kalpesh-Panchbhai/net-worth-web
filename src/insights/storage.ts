@@ -17,6 +17,7 @@ export function defaultLayout(): WidgetInstance[] {
     { id: newWidgetId(), type: "performance", size: "full", config: { entityType: "watchlist", entityId: 0, label: "Net Worth" } },
     { id: newWidgetId(), type: "allocation", size: "half", config: { source: { kind: "networth" }, grouping: "type", metric: "value" } },
     { id: newWidgetId(), type: "watchlistComparison", size: "half", config: { metric: "value", excludedIds: [] } },
+    { id: newWidgetId(), type: "goals", size: "half", config: {} },
     { id: newWidgetId(), type: "income", size: "full", config: { chart: "cumulative", grouping: "month" } },
   ];
 }

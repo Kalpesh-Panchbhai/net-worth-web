@@ -1,6 +1,6 @@
 import type { EntityType } from "../api/types";
 
-export type WidgetType = "summary" | "netWorth" | "allocation" | "watchlistComparison" | "performance" | "income";
+export type WidgetType = "summary" | "netWorth" | "allocation" | "watchlistComparison" | "performance" | "income" | "goals";
 export type WidgetSize = "half" | "full";
 export type AllocationMetric = "value" | "invested";
 
@@ -47,13 +47,17 @@ export interface IncomeConfig {
 /** The net-worth (savings-rate) chart takes no config — it always tracks total net worth. */
 export type NetWorthConfig = Record<string, never>;
 
+/** The goals widget takes no config — it lists every goal's live progress. */
+export type GoalsConfig = Record<string, never>;
+
 export type WidgetConfig =
   | SummaryConfig
   | NetWorthConfig
   | AllocationConfig
   | WatchlistComparisonConfig
   | PerformanceConfig
-  | IncomeConfig;
+  | IncomeConfig
+  | GoalsConfig;
 
 export interface WidgetInstance {
   /** Stable instance id (not the widget type). */

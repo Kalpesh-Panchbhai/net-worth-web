@@ -1,4 +1,16 @@
 /**
+ * What a goal's current value is measured against. A linked source reads the live value of an
+ * entity (net worth, an account/broker, a holding, a watchlist), so progress updates on its own;
+ * `manual` uses the goal's own `currentAmount`. Absent source === manual (back-compat).
+ */
+export type GoalSource =
+  | { kind: "manual" }
+  | { kind: "networth" }
+  | { kind: "account"; id: number; label: string }
+  | { kind: "watchlist"; id: number; label: string }
+  | { kind: "holding"; id: number; accountId: number; label: string };
+
+/**
  * A savings/net-worth goal. Persisted per-user via `useSyncedConfig` (backend `user-config` store
  * with a localStorage cache), so goals follow the user across devices.
  */
@@ -6,8 +18,10 @@ export interface Goal {
   id: string;
   name: string;
   targetAmount: number;
-  /** Amount already saved toward this goal. Seeded from net worth on create, then user-owned. */
+  /** Amount already saved. Used only when `source` is manual (or absent). */
   currentAmount: number;
+  /** What the current value is read from; defaults to manual when absent. */
+  source?: GoalSource;
   /** Fixed monthly contribution assumed for the projection. */
   monthlyContribution: number;
   /** Expected annual return, as a percent (12 === 12%). */
@@ -15,6 +29,13 @@ export interface Goal {
   /** Optional deadline, YYYY-MM-DD. When set, the goal is scored on-track / behind against it. */
   targetDate?: string;
   createdAt: string;
+}
+
+/** Short human label for a goal's source, e.g. for a "Tracking …" chip. */
+export function goalSourceLabel(source: GoalSource | undefined): string {
+  if (!source || source.kind === "manual") return "Manual";
+  if (source.kind === "networth") return "Net worth";
+  return source.label;
 }
 
 let counter = 0;
@@ -88,16 +109,17 @@ export interface GoalStatus {
   requiredContribution?: number;
 }
 
-export function evaluateGoal(goal: Goal): GoalStatus {
+/** @param currentAmount the goal's live current value (from its source, or its manual amount). */
+export function evaluateGoal(goal: Goal, currentAmount: number): GoalStatus {
   const rate = monthlyRateOf(goal.annualReturnPct);
-  const progressPct = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount) * 100 : 0;
-  const monthsToGoal = monthsToReach(goal.currentAmount, goal.targetAmount, goal.monthlyContribution, rate);
+  const progressPct = goal.targetAmount > 0 ? (currentAmount / goal.targetAmount) * 100 : 0;
+  const monthsToGoal = monthsToReach(currentAmount, goal.targetAmount, goal.monthlyContribution, rate);
   const projectedDate = dateAfterMonths(monthsToGoal);
 
   if (!goal.targetDate) return { progressPct, monthsToGoal, projectedDate };
 
   const monthsAvailable = monthsUntil(goal.targetDate);
-  const requiredContribution = requiredMonthly(goal.currentAmount, goal.targetAmount, monthsAvailable, rate);
+  const requiredContribution = requiredMonthly(currentAmount, goal.targetAmount, monthsAvailable, rate);
   const onTrack = monthsToGoal <= monthsAvailable;
   return { progressPct, monthsToGoal, projectedDate, onTrack, monthsAvailable, requiredContribution };
 }

@@ -5,12 +5,14 @@ import PieChartRoundedIcon from "@mui/icons-material/PieChartRounded";
 import PaymentsRoundedIcon from "@mui/icons-material/PaymentsRounded";
 import AccountBalanceWalletRoundedIcon from "@mui/icons-material/AccountBalanceWalletRounded";
 import SavingsRoundedIcon from "@mui/icons-material/SavingsRounded";
+import FlagRoundedIcon from "@mui/icons-material/FlagRounded";
 import SummaryWidget from "./widgets/SummaryWidget";
 import NetWorthWidget from "./widgets/NetWorthWidget";
 import AllocationWidget from "./widgets/AllocationWidget";
 import WatchlistComparisonWidget from "./widgets/WatchlistComparisonWidget";
 import PerformanceWidget from "./widgets/PerformanceWidget";
 import IncomeWidget from "./widgets/IncomeWidget";
+import GoalsWidget from "./widgets/GoalsWidget";
 import type {
   WidgetType, WidgetConfig, WidgetInstance,
   SummaryConfig, AllocationConfig, WatchlistComparisonConfig, PerformanceConfig, IncomeConfig,
@@ -61,9 +63,16 @@ export const WIDGET_META: Record<WidgetType, { label: string; description: strin
     defaultConfig: { chart: "cumulative", grouping: "month" } satisfies IncomeConfig,
     configurable: true,
   },
+  goals: {
+    label: "Goals",
+    description: "Live progress toward your savings & FIRE goals — net worth, an account, holding or watchlist.",
+    icon: <FlagRoundedIcon />,
+    defaultConfig: {},
+    configurable: false,
+  },
 };
 
-export const WIDGET_ORDER: WidgetType[] = ["summary", "netWorth", "performance", "allocation", "watchlistComparison", "income"];
+export const WIDGET_ORDER: WidgetType[] = ["summary", "netWorth", "performance", "allocation", "watchlistComparison", "income", "goals"];
 
 /** Renders a widget instance with the shared data; `onConfigChange` persists in-card edits (chips). */
 export function WidgetView({ instance, data, onConfigChange }: {
@@ -84,6 +93,8 @@ export function WidgetView({ instance, data, onConfigChange }: {
       return <PerformanceWidget config={instance.config as PerformanceConfig} data={data} />;
     case "income":
       return <IncomeWidget config={instance.config as IncomeConfig} data={data} />;
+    case "goals":
+      return <GoalsWidget />;
     default:
       return null;
   }
