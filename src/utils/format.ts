@@ -85,3 +85,21 @@ export function formatUnits(v: number): string {
   if (amountsMasked) return MASK;
   return v.toFixed(3);
 }
+
+/**
+ * Group a run of integer digits with the currency's own separators (e.g. INR → "1,11,111",
+ * USD → "111,111"). Used for live grouping inside number inputs, so it never masks and takes a
+ * digit string (not a number) to avoid float precision loss on large amounts. Leading zeros are
+ * dropped. Returns "" for an empty string.
+ */
+export function groupThousands(intDigits: string, currency: string = DEFAULT_CURRENCY): string {
+  if (!intDigits) return "";
+  try {
+    return new Intl.NumberFormat(LOCALE_BY_CURRENCY[currency] ?? "en-US", {
+      useGrouping: true,
+      maximumFractionDigits: 0,
+    }).format(BigInt(intDigits));
+  } catch {
+    return intDigits;
+  }
+}

@@ -32,6 +32,7 @@ import {
   createIncome, updateIncome, deleteIncome, invalidateMoneyCaches,
 } from "../api/client";
 import { ListSkeleton, EmptyState, ErrorState, TintedChip, FadeIn } from "../components/shared";
+import NumericField from "../components/NumericField";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
 import { CURRENCIES, DEFAULT_CURRENCY } from "../constants";
@@ -899,14 +900,12 @@ function Incomes() {
           </TextField>
           <Grid container spacing={2}>
             <Grid size={6}>
-              <TextField label="Net amount" type="number" value={formNet}
-                onChange={(e) => { const v = e.target.value; if (v === "" || /^\d*\.?\d{0,2}$/.test(v)) setFormNet(v); }} fullWidth
-                inputProps={{ inputMode: "decimal", step: "0.01", min: 0 }} />
+              <NumericField label="Net amount" value={formNet} onChange={setFormNet}
+                currency={formCurrency} maxDecimals={2} fullWidth />
             </Grid>
             <Grid size={6}>
-              <TextField label="Tax paid" type="number" value={formTax}
-                onChange={(e) => { const v = e.target.value; if (v === "" || /^\d*\.?\d{0,2}$/.test(v)) setFormTax(v); }} fullWidth
-                inputProps={{ inputMode: "decimal", step: "0.01", min: 0 }} />
+              <NumericField label="Tax paid" value={formTax} onChange={setFormTax}
+                currency={formCurrency} maxDecimals={2} fullWidth />
             </Grid>
           </Grid>
           <Grid container spacing={2}>

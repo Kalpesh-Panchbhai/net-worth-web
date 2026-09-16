@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Box, Paper, Typography, TextField, InputAdornment, Stack, Slider, Button,
+  Box, Paper, Typography, Stack, Slider, Button,
   useTheme,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
@@ -14,6 +14,8 @@ import { getAccounts } from "../api/client";
 import { isInternalAccount } from "../utils/account";
 import { useSyncedConfig } from "../utils/syncedConfig";
 import { PageHeader, MetricCard, FadeIn } from "../components/shared";
+import NumericField from "../components/NumericField";
+import { DEFAULT_CURRENCY } from "../constants";
 import { formatCurrency as fmt, formatCurrencyCompact as fmtC } from "../utils/format";
 
 interface YearPoint {
@@ -121,18 +123,16 @@ function Simulator() {
     label: string, value: string, setter: (v: string) => void,
     adornment: string, adornmentPos: "start" | "end" = "start", helper?: string,
   ) => (
-    <TextField
+    <NumericField
       label={label}
       value={value}
-      onChange={e => setter(e.target.value)}
-      type="number"
-      inputMode="decimal"
+      onChange={setter}
+      adornment={adornment}
+      adornmentPos={adornmentPos}
+      currency={adornmentPos === "start" ? adornment : DEFAULT_CURRENCY}
       size="small"
       fullWidth
       helperText={helper}
-      InputProps={adornmentPos === "start"
-        ? { startAdornment: <InputAdornment position="start">{adornment}</InputAdornment> }
-        : { endAdornment: <InputAdornment position="end">{adornment}</InputAdornment> }}
     />
   );
 

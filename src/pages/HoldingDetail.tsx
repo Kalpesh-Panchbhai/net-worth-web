@@ -19,6 +19,7 @@ import {
   invalidateMoneyCaches,
 } from "../api/client";
 import { EmptyState, ErrorState, ListSkeleton, FadeIn } from "../components/shared";
+import NumericField from "../components/NumericField";
 import EntityChart from "../components/EntityChart";
 import XirrBadge from "../components/XirrBadge";
 import { EntitySwitcher, SwitcherArrows, useSwitcher, useSwipeNav, type SwitcherItem } from "../components/EntitySwitcher";
@@ -517,8 +518,8 @@ function HoldingDetail() {
               <MenuItem value="add">Add</MenuItem>
               <MenuItem value="update">Update</MenuItem>
             </TextField>
-            <TextField label="Units" type="number" inputMode="decimal" value={txnValue} onChange={e => setTxnValue(e.target.value)} inputProps={{ step: "0.001" }} helperText={txnMode === "add" ? "Units to add" : "Total units (overwrites)"} fullWidth />
-            <TextField label={`Invested (${account?.currency ?? ""})`} type="number" inputMode="decimal" value={txnInvested} onChange={e => setTxnInvested(e.target.value)} inputProps={{ step: "0.01" }} helperText={txnMode === "add" ? "Amount to add" : "Total invested (overwrites)"} fullWidth />
+            <NumericField label="Units" value={txnValue} onChange={setTxnValue} currency={account?.currency} maxDecimals={3} helperText={txnMode === "add" ? "Units to add" : "Total units (overwrites)"} fullWidth />
+            <NumericField label={`Invested (${account?.currency ?? ""})`} value={txnInvested} onChange={setTxnInvested} currency={account?.currency} maxDecimals={2} helperText={txnMode === "add" ? "Amount to add" : "Total invested (overwrites)"} fullWidth />
             <TextField label="Date" type="date" value={txnDate} onChange={e => { const v = e.target.value; if (v && ((minDate && v < minDate) || v > today)) return; setTxnDate(v); }} error={!!txnDate && ((!!minDate && txnDate < minDate) || txnDate > today)} helperText={minDate ? `Select between ${minDate} and ${today}` : `Up to ${today}`} InputLabelProps={{ shrink: true }} inputProps={{ min: minDate || undefined, max: today }} fullWidth />
           </Stack>
         </DialogContent>

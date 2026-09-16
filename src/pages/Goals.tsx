@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Box, Paper, Typography, TextField, InputAdornment, Stack, Slider, Button, MenuItem,
+  Box, Paper, Typography, TextField, Stack, Slider, Button, MenuItem,
   Dialog, DialogTitle, DialogContent, DialogActions, IconButton, Fab, Avatar,
   LinearProgress, useMediaQuery, useTheme,
 } from "@mui/material";
@@ -24,6 +24,8 @@ import {
 } from "../utils/goals";
 import { useSyncedConfig } from "../utils/syncedConfig";
 import { useGoalValues } from "../utils/useGoalValues";
+import NumericField from "../components/NumericField";
+import { DEFAULT_CURRENCY } from "../constants";
 import type { HoldingSummary } from "../api/types";
 
 const num = (s: string) => { const n = parseFloat(s); return Number.isFinite(n) ? n : 0; };
@@ -33,12 +35,11 @@ function numberField(
   adornment: string, adornmentPos: "start" | "end" = "start", helper?: string,
 ) {
   return (
-    <TextField
-      label={label} value={value} onChange={e => setter(e.target.value)}
-      type="number" inputMode="decimal" size="small" fullWidth helperText={helper}
-      InputProps={adornmentPos === "start"
-        ? { startAdornment: <InputAdornment position="start">{adornment}</InputAdornment> }
-        : { endAdornment: <InputAdornment position="end">{adornment}</InputAdornment> }}
+    <NumericField
+      label={label} value={value} onChange={setter}
+      adornment={adornment} adornmentPos={adornmentPos}
+      currency={adornmentPos === "start" ? adornment : DEFAULT_CURRENCY}
+      size="small" fullWidth helperText={helper}
     />
   );
 }

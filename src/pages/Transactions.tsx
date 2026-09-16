@@ -14,6 +14,7 @@ import {
   getAccounts, getHoldings, getTransactions, createTransaction, deleteTransaction, invalidateMoneyCaches,
 } from "../api/client";
 import { PageHeader, EmptyState, ErrorState, ListSkeleton, MetricCard, MetricSkeleton, FadeIn } from "../components/shared";
+import NumericField from "../components/NumericField";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
 import type { AccountSummary, HoldingSummary, Transaction } from "../api/types";
@@ -316,8 +317,8 @@ function Transactions() {
               <MenuItem value="add">Add</MenuItem>
               <MenuItem value="update">Update</MenuItem>
             </TextField>
-            <TextField label={isBroker ? "Units" : `Amount (${selAcct?.currency ?? ""})`} type="number" inputMode="decimal" value={formValue} onChange={e => setFormValue(e.target.value)} inputProps={{ step: isBroker ? "0.001" : "0.01" }} helperText={formMode === "add" ? (isBroker ? "Units to add" : "Amount to add") : (isBroker ? "Total units (overwrites)" : "Total amount (overwrites)")} fullWidth />
-            {showInvested && <TextField label={`Invested (${selAcct?.currency ?? ""})`} type="number" inputMode="decimal" value={formInvested} onChange={e => setFormInvested(e.target.value)} inputProps={{ step: "0.01" }} helperText={formMode === "add" ? "Investment to add" : "Total invested (overwrites)"} fullWidth />}
+            <NumericField label={isBroker ? "Units" : `Amount (${selAcct?.currency ?? ""})`} value={formValue} onChange={setFormValue} currency={selAcct?.currency} maxDecimals={isBroker ? 3 : 2} helperText={formMode === "add" ? (isBroker ? "Units to add" : "Amount to add") : (isBroker ? "Total units (overwrites)" : "Total amount (overwrites)")} fullWidth />
+            {showInvested && <NumericField label={`Invested (${selAcct?.currency ?? ""})`} value={formInvested} onChange={setFormInvested} currency={selAcct?.currency} maxDecimals={2} helperText={formMode === "add" ? "Investment to add" : "Total invested (overwrites)"} fullWidth />}
             <TextField label="Date" type="date" value={formDate} onChange={e => { const v = e.target.value; if (v && ((minTxnDate && v < minTxnDate) || v > todayStr)) return; setFormDate(v); }} error={!!formDate && ((!!minTxnDate && formDate < minTxnDate) || formDate > todayStr)} helperText={minTxnDate ? `Select between ${minTxnDate} and ${todayStr}` : `Up to ${todayStr}`} InputLabelProps={{ shrink: true }} inputProps={{ min: minTxnDate || undefined, max: todayStr }} fullWidth />
           </Stack>
         </DialogContent>
