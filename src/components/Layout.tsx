@@ -24,6 +24,7 @@ import SettingsBrightnessRoundedIcon from "@mui/icons-material/SettingsBrightnes
 import SyncRoundedIcon from "@mui/icons-material/SyncRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import QueryStatsRoundedIcon from "@mui/icons-material/QueryStatsRounded";
+import FlagRoundedIcon from "@mui/icons-material/FlagRounded";
 import FileDownloadRoundedIcon from "@mui/icons-material/FileDownloadRounded";
 import FileUploadRoundedIcon from "@mui/icons-material/FileUploadRounded";
 import { useUser } from "../context/UserContext";
@@ -42,6 +43,7 @@ const PRIMARY_NAV = [
   { label: "Accounts", path: "/accounts", icon: <AccountBalanceWalletRoundedIcon /> },
   { label: "Watchlists", path: "/watchlists", icon: <VisibilityRoundedIcon /> },
   { label: "Incomes", path: "/incomes", icon: <ReceiptLongRoundedIcon /> },
+  { label: "Goals & FIRE", path: "/goals", icon: <FlagRoundedIcon /> },
   { label: "Simulator", path: "/simulator", icon: <QueryStatsRoundedIcon /> },
 ];
 

@@ -9,6 +9,7 @@ import Watchlists from "./pages/Watchlists";
 import WatchlistDetail from "./pages/WatchlistDetail";
 import Incomes from "./pages/Incomes";
 import Simulator from "./pages/Simulator";
+import Goals from "./pages/Goals";
 import IncomeSources from "./pages/IncomeSources";
 import IncomeTags from "./pages/IncomeTags";
 import Login from "./pages/Login";
@@ -60,6 +61,7 @@ function AuthGate() {
         <Route path="/watchlists" element={<Watchlists />} />
         <Route path="/watchlists/:watchlistId" element={<WatchlistDetail />} />
         <Route path="/incomes" element={<Incomes />} />
+        <Route path="/goals" element={<Goals />} />
         <Route path="/simulator" element={<Simulator />} />
         <Route path="/income-sources" element={<IncomeSources />} />
         <Route path="/income-tags" element={<IncomeTags />} />

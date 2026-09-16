@@ -205,6 +205,21 @@ export function saveInsightsLayout(userId: number, layout: unknown[]) {
   return request<void>(`/insights-config/${userId}`, { method: "PATCH", body: JSON.stringify({ layout }) });
 }
 
+// Generic per-user config store (goals, FIRE assumptions, Simulator inputs, …). Keyed by an opaque
+// string; the value is arbitrary JSON persisted and returned verbatim, so new settings need no API
+// change beyond a new key.
+export function getUserConfig<T>(userId: number, key: string) {
+  return request<{ value: T | null }>(`/user-config/${userId}?key=${encodeURIComponent(key)}`);
+}
+
+export function saveUserConfig(userId: number, key: string, value: unknown) {
+  invalidateCache(`/user-config/${userId}?key=${encodeURIComponent(key)}`);
+  return request<void>(`/user-config/${userId}?key=${encodeURIComponent(key)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ value }),
+  });
+}
+
 // Refresh
 export function refreshData() {
   return request<{ message: string; durationMs: number }>("/refresh", {

@@ -12,6 +12,7 @@ import { useUser } from "../context/UserContext";
 import { useTokens } from "../context/ColorModeContext";
 import { getAccounts } from "../api/client";
 import { isInternalAccount } from "../utils/account";
+import { useSyncedConfig } from "../utils/syncedConfig";
 import { PageHeader, MetricCard, FadeIn } from "../components/shared";
 import { formatCurrency as fmt, formatCurrencyCompact as fmtC } from "../utils/format";
 
@@ -49,18 +50,23 @@ function project(
   return points;
 }
 
+interface SimSettings {
+  monthly: string; annualReturn: string; stepUp: string; inflation: string; years: number;
+}
+const DEFAULT_SIM: SimSettings = { monthly: "25000", annualReturn: "12", stepUp: "5", inflation: "6", years: 20 };
+
 function Simulator() {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
   const { userId, preferredCurrency, dataVersion } = useUser();
   const { colors } = useTokens();
 
+  // The starting amount is prefilled from net worth per-session (not synced); the assumptions below
+  // are the user's own inputs and sync across devices.
   const [start, setStart] = useState("");
-  const [monthly, setMonthly] = useState("25000");
-  const [annualReturn, setAnnualReturn] = useState("12");
-  const [stepUp, setStepUp] = useState("5");
-  const [inflation, setInflation] = useState("6");
-  const [years, setYears] = useState(20);
+  const [sim, setSim] = useSyncedConfig<SimSettings>(userId, "simulator", DEFAULT_SIM);
+  const patch = (k: keyof SimSettings, v: string | number) => setSim({ ...sim, [k]: v });
+  const { monthly, annualReturn, stepUp, inflation, years } = sim;
   const [prefilled, setPrefilled] = useState(false);
 
   // Prefill the starting amount with current net worth (sum of active accounts, in the display
@@ -143,17 +149,17 @@ function Simulator() {
           <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2 }}>
             {inputField("Starting amount", start, setStart, preferredCurrency, "start",
               prefilled ? "Prefilled from your current net worth" : undefined)}
-            {inputField("Monthly contribution", monthly, setMonthly, preferredCurrency, "start")}
-            {inputField("Expected annual return", annualReturn, setAnnualReturn, "%", "end")}
-            {inputField("Annual step-up", stepUp, setStepUp, "%", "end", "Yearly increase in your contribution")}
-            {inputField("Inflation", inflation, setInflation, "%", "end", "Used to compute today's-money value")}
+            {inputField("Monthly contribution", monthly, v => patch("monthly", v), preferredCurrency, "start")}
+            {inputField("Expected annual return", annualReturn, v => patch("annualReturn", v), "%", "end")}
+            {inputField("Annual step-up", stepUp, v => patch("stepUp", v), "%", "end", "Yearly increase in your contribution")}
+            {inputField("Inflation", inflation, v => patch("inflation", v), "%", "end", "Used to compute today's-money value")}
             <Box sx={{ px: 1 }}>
               <Typography sx={{ fontSize: "0.75rem", color: colors.gray500, mb: 0.5 }}>
                 Time horizon: <strong>{years} years</strong>
               </Typography>
               <Slider
                 value={years}
-                onChange={(_, v) => setYears(v as number)}
+                onChange={(_, v) => patch("years", v as number)}
                 min={1}
                 max={40}
                 marks={[{ value: 1, label: "1y" }, { value: 20, label: "20y" }, { value: 40, label: "40y" }]}
@@ -209,7 +215,7 @@ function Simulator() {
       <Box sx={{ display: "flex", justifyContent: "center", pb: 1 }}>
         <Button
           variant="text"
-          onClick={() => { setMonthly("25000"); setAnnualReturn("12"); setStepUp("5"); setInflation("6"); setYears(20); }}
+          onClick={() => setSim(DEFAULT_SIM)}
           sx={{ textTransform: "none", color: colors.gray500, "&:hover": { bgcolor: alpha(colors.brand, 0.06) } }}
         >
           Reset assumptions
