@@ -233,6 +233,8 @@ function Goals() {
   const [goals, setGoals] = useSyncedConfig<Goal[]>(userId, "goals", []);
   const { netWorth, accounts, watchlists, valueOf } = useGoalValues(goals);
   const prefilled = netWorth > 0;
+  // Only broker accounts hold holdings, so the holding picker's account list is broker-only.
+  const brokerAccounts = accounts.filter(a => a.type === "BROKER");
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editGoal, setEditGoal] = useState<Goal | null>(null);
@@ -369,8 +371,8 @@ function Goals() {
           {form.sourceKind === "holding" && (
             <>
               <TextField select label="Account" value={form.accountId} onChange={e => setForm(f => ({ ...f, accountId: e.target.value, holdingId: "" }))} fullWidth>
-                {accounts.length === 0 && <MenuItem value="" disabled>No accounts</MenuItem>}
-                {accounts.map(a => <MenuItem key={a.id} value={String(a.id)}>{a.name}</MenuItem>)}
+                {brokerAccounts.length === 0 && <MenuItem value="" disabled>No broker accounts</MenuItem>}
+                {brokerAccounts.map(a => <MenuItem key={a.id} value={String(a.id)}>{a.name}</MenuItem>)}
               </TextField>
               <TextField
                 select label="Holding" value={form.holdingId} onChange={e => setField("holdingId")(e.target.value)} fullWidth
