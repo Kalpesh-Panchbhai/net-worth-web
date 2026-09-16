@@ -4,7 +4,7 @@ import {
   Box, Typography, Avatar, ToggleButtonGroup, ToggleButton,
   Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText,
   IconButton, Divider, Dialog, DialogTitle, DialogContent, DialogActions, Button,
-  TextField, MenuItem, Tooltip, CircularProgress,
+  TextField, Menu, MenuItem, Tooltip, CircularProgress,
   useMediaQuery, useTheme,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
@@ -27,6 +27,8 @@ import QueryStatsRoundedIcon from "@mui/icons-material/QueryStatsRounded";
 import FlagRoundedIcon from "@mui/icons-material/FlagRounded";
 import FileDownloadRoundedIcon from "@mui/icons-material/FileDownloadRounded";
 import FileUploadRoundedIcon from "@mui/icons-material/FileUploadRounded";
+import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
+import UnfoldMoreRoundedIcon from "@mui/icons-material/UnfoldMoreRounded";
 import { useUser } from "../context/UserContext";
 import { deleteUser, invalidateCache, refreshData } from "../api/client";
 import { useToast } from "../context/ToastContext";
@@ -38,18 +40,31 @@ import { CURRENCIES } from "../constants";
 
 const SIDEBAR_W = 252;
 
-const PRIMARY_NAV = [
-  { label: "Insights", path: "/", icon: <DashboardRoundedIcon /> },
-  { label: "Accounts", path: "/accounts", icon: <AccountBalanceWalletRoundedIcon /> },
-  { label: "Watchlists", path: "/watchlists", icon: <VisibilityRoundedIcon /> },
-  { label: "Incomes", path: "/incomes", icon: <ReceiptLongRoundedIcon /> },
-  { label: "Goals & FIRE", path: "/goals", icon: <FlagRoundedIcon /> },
-  { label: "Simulator", path: "/simulator", icon: <QueryStatsRoundedIcon /> },
-];
-
-const SECONDARY_NAV = [
-  { label: "Sources", path: "/income-sources", icon: <AccountBalanceRoundedIcon /> },
-  { label: "Tags", path: "/income-tags", icon: <LocalOfferRoundedIcon /> },
+// Navigation grouped by intent so the sidebar reads as a short list of sections rather than one
+// long flat menu: everyday views up top, planning tools next, income taxonomy setup last.
+const NAV_GROUPS: { label?: string; items: { label: string; path: string; icon: ReactNode }[] }[] = [
+  {
+    items: [
+      { label: "Insights", path: "/", icon: <DashboardRoundedIcon /> },
+      { label: "Accounts", path: "/accounts", icon: <AccountBalanceWalletRoundedIcon /> },
+      { label: "Watchlists", path: "/watchlists", icon: <VisibilityRoundedIcon /> },
+      { label: "Incomes", path: "/incomes", icon: <ReceiptLongRoundedIcon /> },
+    ],
+  },
+  {
+    label: "Planning",
+    items: [
+      { label: "Goals & FIRE", path: "/goals", icon: <FlagRoundedIcon /> },
+      { label: "Simulator", path: "/simulator", icon: <QueryStatsRoundedIcon /> },
+    ],
+  },
+  {
+    label: "Income setup",
+    items: [
+      { label: "Sources", path: "/income-sources", icon: <AccountBalanceRoundedIcon /> },
+      { label: "Tags", path: "/income-tags", icon: <LocalOfferRoundedIcon /> },
+    ],
+  },
 ];
 
 function Layout({ children }: { children: ReactNode }) {
@@ -61,7 +76,7 @@ function Layout({ children }: { children: ReactNode }) {
   const { firebaseUser, userId, logout, preferredCurrency, setPreferredCurrency, refreshAll } = useUser();
   const { showToast } = useToast();
   const { preference, setPreference, privacyMode, togglePrivacy } = useColorMode();
-  const { colors } = useTokens();
+  const { colors, shadow } = useTokens();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -70,7 +85,10 @@ function Layout({ children }: { children: ReactNode }) {
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [pendingImport, setPendingImport] = useState<BackupFile | null>(null);
+  const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const closeUserMenu = () => setUserMenuAnchor(null);
 
   // ⌘K / Ctrl+K opens the global search from anywhere.
   useEffect(() => {
@@ -191,7 +209,7 @@ function Layout({ children }: { children: ReactNode }) {
     <Box sx={{ display: "flex", flexDirection: "column", height: "100%", py: 2.5, px: 2 }}>
       {/* Logo */}
       <Box
-        sx={{ px: 1, mb: 3, display: "flex", alignItems: "center", gap: 1.5, cursor: "pointer" }}
+        sx={{ px: 1, mb: 2.5, display: "flex", alignItems: "center", gap: 1.5, cursor: "pointer" }}
         onClick={() => { navigate("/"); setDrawerOpen(false); }}
       >
         <Box
@@ -232,176 +250,43 @@ function Layout({ children }: { children: ReactNode }) {
         </Tooltip>
       </Box>
 
-      {/* Primary nav */}
-      <Typography variant="overline" sx={{ px: 1.5, mb: 0.5, fontSize: "0.625rem", color: colors.gray400 }}>
-        Main
-      </Typography>
-      <List disablePadding>
-        {PRIMARY_NAV.map(item => (
-          <ListItem key={item.path} disablePadding>
-            <ListItemButton
-              onClick={() => { navigate(item.path); setDrawerOpen(false); }}
-              sx={navItemSx(item.path)}
-            >
-              <ListItemIcon sx={{ minWidth: 34, color: "inherit" }}>{item.icon}</ListItemIcon>
-              <ListItemText
-                primary={item.label}
-                primaryTypographyProps={{ fontSize: "0.85rem", fontWeight: isActive(item.path) ? 650 : 500 }}
-              />
-            </ListItemButton>
-          </ListItem>
+      {/* Navigation — grouped, everything else lives behind the user menu / Settings */}
+      <Box sx={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+        {NAV_GROUPS.map((group, gi) => (
+          <Box key={group.label ?? gi} sx={{ mb: gi < NAV_GROUPS.length - 1 ? 1.5 : 0 }}>
+            {group.label && (
+              <Typography variant="overline" sx={{ px: 1.5, mb: 0.25, display: "block", fontSize: "0.6rem", color: colors.gray400 }}>
+                {group.label}
+              </Typography>
+            )}
+            <List disablePadding>
+              {group.items.map(item => (
+                <ListItem key={item.path} disablePadding>
+                  <ListItemButton
+                    onClick={() => { navigate(item.path); setDrawerOpen(false); }}
+                    sx={navItemSx(item.path)}
+                  >
+                    <ListItemIcon sx={{ minWidth: 34, color: "inherit" }}>{item.icon}</ListItemIcon>
+                    <ListItemText
+                      primary={item.label}
+                      primaryTypographyProps={{ fontSize: "0.85rem", fontWeight: isActive(item.path) ? 650 : 500 }}
+                    />
+                  </ListItemButton>
+                </ListItem>
+              ))}
+            </List>
+          </Box>
         ))}
-      </List>
-
-      <Divider sx={{ my: 2, mx: 1 }} />
-
-      <Typography variant="overline" sx={{ px: 1.5, mb: 0.5, fontSize: "0.625rem", color: colors.gray400 }}>
-        Settings
-      </Typography>
-      <List disablePadding>
-        {SECONDARY_NAV.map(item => (
-          <ListItem key={item.path} disablePadding>
-            <ListItemButton
-              onClick={() => { navigate(item.path); setDrawerOpen(false); }}
-              sx={navItemSx(item.path)}
-            >
-              <ListItemIcon sx={{ minWidth: 34, color: "inherit" }}>{item.icon}</ListItemIcon>
-              <ListItemText
-                primary={item.label}
-                primaryTypographyProps={{ fontSize: "0.85rem", fontWeight: isActive(item.path) ? 650 : 500 }}
-              />
-            </ListItemButton>
-          </ListItem>
-        ))}
-      </List>
-
-      {/* Spacer */}
-      <Box sx={{ flex: 1 }} />
-
-      {/* Refresh */}
-      <Box sx={{ px: 1, mb: 1.5 }}>
-        <Button
-          fullWidth
-          variant="outlined"
-          onClick={handleRefresh}
-          disabled={refreshing}
-          startIcon={
-            <SyncRoundedIcon sx={{
-              fontSize: 18,
-              ...(refreshing ? {
-                animation: "spin 1s linear infinite",
-                "@keyframes spin": { from: { transform: "rotate(0deg)" }, to: { transform: "rotate(360deg)" } },
-              } : {}),
-            }} />
-          }
-          sx={{
-            borderRadius: 2.5, py: 0.75, textTransform: "none",
-            fontSize: "0.8rem", fontWeight: 600,
-            borderColor: colors.gray200, color: colors.gray600,
-            "&:hover": { borderColor: colors.brand, color: colors.brand, bgcolor: alpha(colors.brand, 0.04) },
-          }}
-        >
-          {refreshing ? "Refreshing…" : "Refresh Data"}
-        </Button>
-        <Typography sx={{ fontSize: "0.6rem", color: colors.gray400, textAlign: "center", mt: 0.5 }}>
-          Sync latest prices & balances
-        </Typography>
       </Box>
 
-      {/* Backup / Restore */}
-      <Box sx={{ px: 1, mb: 1.5 }}>
-        <Typography variant="overline" sx={{ px: 1, mb: 0.75, display: "block", fontSize: "0.6rem", color: colors.gray400 }}>
-          Data
-        </Typography>
-        <Box sx={{ display: "flex", gap: 1 }}>
-          <Button
-            fullWidth variant="outlined" onClick={handleExport} disabled={exporting}
-            startIcon={exporting ? <CircularProgress size={14} /> : <FileDownloadRoundedIcon sx={{ fontSize: 18 }} />}
-            sx={{ borderRadius: 2.5, py: 0.6, textTransform: "none", fontSize: "0.75rem", fontWeight: 600, borderColor: colors.gray200, color: colors.gray600, "&:hover": { borderColor: colors.brand, color: colors.brand } }}
-          >
-            Export
-          </Button>
-          <Button
-            fullWidth variant="outlined" onClick={() => fileInputRef.current?.click()} disabled={importing}
-            startIcon={importing ? <CircularProgress size={14} /> : <FileUploadRoundedIcon sx={{ fontSize: 18 }} />}
-            sx={{ borderRadius: 2.5, py: 0.6, textTransform: "none", fontSize: "0.75rem", fontWeight: 600, borderColor: colors.gray200, color: colors.gray600, "&:hover": { borderColor: colors.brand, color: colors.brand } }}
-          >
-            Import
-          </Button>
-        </Box>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="application/json,.json"
-          style={{ display: "none" }}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) handleImportFile(file);
-            e.target.value = "";
-          }}
-        />
-      </Box>
-
-      {/* Display currency */}
-      <Box sx={{ px: 1, mb: 1.5 }}>
-        <Typography variant="overline" sx={{ px: 1, mb: 0.75, display: "block", fontSize: "0.6rem", color: colors.gray400 }}>
-          Display Currency
-        </Typography>
-        <TextField
-          select
-          size="small"
-          fullWidth
-          value={preferredCurrency}
-          disabled={savingCurrency}
-          onChange={(e) => handleCurrencyChange(e.target.value)}
-          sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2.5 } }}
-        >
-          {CURRENCIES.map((c) => (
-            <MenuItem key={c} value={c}>{c}</MenuItem>
-          ))}
-        </TextField>
-        <Typography sx={{ fontSize: "0.6rem", color: colors.gray400, mt: 0.5, px: 1 }}>
-          {savingCurrency ? "Converting amounts…" : "Amounts are shown converted to this currency"}
-        </Typography>
-      </Box>
-
-      {/* Appearance */}
-      <Box sx={{ px: 1, mb: 1.5 }}>
-        <Typography variant="overline" sx={{ px: 1, mb: 0.75, display: "block", fontSize: "0.6rem", color: colors.gray400 }}>
-          Appearance
-        </Typography>
-        <ToggleButtonGroup
-          value={preference}
-          exclusive
-          onChange={(_, val) => { if (val) setPreference(val as ColorModePref); }}
-          size="small"
-          fullWidth
-          sx={{
-            bgcolor: colors.gray100, borderRadius: 2.5, p: "3px", gap: "2px",
-            "& .MuiToggleButtonGroup-grouped": { border: "none !important", m: 0 },
-          }}
-        >
-          {([
-            { value: "light" as const, label: "Light", icon: <LightModeRoundedIcon sx={{ fontSize: 13 }} /> },
-            { value: "system" as const, label: "Auto", icon: <SettingsBrightnessRoundedIcon sx={{ fontSize: 13 }} /> },
-            { value: "dark" as const, label: "Dark", icon: <DarkModeRoundedIcon sx={{ fontSize: 13 }} /> },
-          ]).map(opt => (
-            <ToggleButton key={opt.value} value={opt.value} sx={{
-              borderRadius: "10px !important", py: 0.5, px: 1, minWidth: 0, textTransform: "none",
-              fontSize: "0.7rem", fontWeight: 500, gap: 0.4, lineHeight: 1,
-              "&.Mui-selected": { bgcolor: `${colors.brand} !important`, color: "#fff !important", fontWeight: 600, boxShadow: `0 1px 4px ${alpha(colors.brand, 0.3)}` },
-            }}>
-              {opt.icon} {opt.label}
-            </ToggleButton>
-          ))}
-        </ToggleButtonGroup>
-      </Box>
-
-      {/* User + Sign out */}
+      {/* User — opens a menu with Refresh, Settings, and account actions */}
       {firebaseUser && (
-        <Box sx={{ px: 1, pb: 1 }}>
-          <Divider sx={{ mb: 2, mx: 0.5 }} />
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1, px: 0.5, mb: 1 }}>
+        <Box sx={{ pt: 1 }}>
+          <Divider sx={{ mb: 1, mx: 0.5 }} />
+          <ListItemButton
+            onClick={(e) => setUserMenuAnchor(e.currentTarget)}
+            sx={{ borderRadius: 2.5, py: 0.75, px: 1, gap: 1, "&:hover": { bgcolor: colors.gray100 } }}
+          >
             <Avatar
               src={firebaseUser.photoURL || undefined}
               sx={{ width: 32, height: 32, fontSize: "0.7rem", fontWeight: 700 }}
@@ -416,20 +301,7 @@ function Layout({ children }: { children: ReactNode }) {
                 {firebaseUser.email}
               </Typography>
             </Box>
-          </Box>
-          <ListItemButton
-            onClick={async () => { setDrawerOpen(false); showToast("Signed out successfully", "info"); await logout(); }}
-            sx={{ borderRadius: 2.5, py: 0.75, px: 1.5, color: colors.gray500, "&:hover": { bgcolor: colors.errorBg, color: colors.error } }}
-          >
-            <ListItemIcon sx={{ minWidth: 34, color: "inherit" }}><LogoutRoundedIcon sx={{ fontSize: 20 }} /></ListItemIcon>
-            <ListItemText primary="Sign out" primaryTypographyProps={{ fontSize: "0.85rem", fontWeight: 500 }} />
-          </ListItemButton>
-          <ListItemButton
-            onClick={() => setDeleteDialogOpen(true)}
-            sx={{ borderRadius: 2.5, py: 0.75, px: 1.5, mt: 0.25, color: colors.gray400, "&:hover": { bgcolor: colors.errorBg, color: colors.error } }}
-          >
-            <ListItemIcon sx={{ minWidth: 34, color: "inherit" }}><PersonRemoveRoundedIcon sx={{ fontSize: 20 }} /></ListItemIcon>
-            <ListItemText primary="Delete account" primaryTypographyProps={{ fontSize: "0.8rem", fontWeight: 500 }} />
+            <UnfoldMoreRoundedIcon sx={{ fontSize: 18, color: colors.gray400 }} />
           </ListItemButton>
         </Box>
       )}
@@ -510,6 +382,143 @@ function Layout({ children }: { children: ReactNode }) {
       </Box>
 
       <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
+
+      {/* User menu — refresh, settings, and account actions in one place */}
+      <Menu
+        anchorEl={userMenuAnchor}
+        open={Boolean(userMenuAnchor)}
+        onClose={closeUserMenu}
+        anchorOrigin={{ vertical: "top", horizontal: "center" }}
+        transformOrigin={{ vertical: "bottom", horizontal: "center" }}
+        slotProps={{ paper: { sx: { minWidth: 216, borderRadius: 2.5, mt: -0.5, boxShadow: shadow.lg } } }}
+      >
+        <MenuItem onClick={() => { closeUserMenu(); handleRefresh(); }} disabled={refreshing}>
+          <ListItemIcon>
+            <SyncRoundedIcon sx={{
+              fontSize: 20,
+              ...(refreshing ? { animation: "spin 1s linear infinite", "@keyframes spin": { from: { transform: "rotate(0deg)" }, to: { transform: "rotate(360deg)" } } } : {}),
+            }} />
+          </ListItemIcon>
+          <ListItemText primary={refreshing ? "Refreshing…" : "Refresh data"} primaryTypographyProps={{ fontSize: "0.85rem" }} />
+        </MenuItem>
+        <MenuItem onClick={() => { closeUserMenu(); setDrawerOpen(false); setSettingsOpen(true); }}>
+          <ListItemIcon><SettingsRoundedIcon sx={{ fontSize: 20 }} /></ListItemIcon>
+          <ListItemText primary="Settings" primaryTypographyProps={{ fontSize: "0.85rem" }} />
+        </MenuItem>
+        <Divider />
+        <MenuItem onClick={async () => { closeUserMenu(); setDrawerOpen(false); showToast("Signed out successfully", "info"); await logout(); }}>
+          <ListItemIcon><LogoutRoundedIcon sx={{ fontSize: 20 }} /></ListItemIcon>
+          <ListItemText primary="Sign out" primaryTypographyProps={{ fontSize: "0.85rem" }} />
+        </MenuItem>
+        <MenuItem
+          onClick={() => { closeUserMenu(); setDeleteDialogOpen(true); }}
+          sx={{ color: colors.error, "& .MuiListItemIcon-root": { color: colors.error } }}
+        >
+          <ListItemIcon><PersonRemoveRoundedIcon sx={{ fontSize: 20 }} /></ListItemIcon>
+          <ListItemText primary="Delete account" primaryTypographyProps={{ fontSize: "0.85rem" }} />
+        </MenuItem>
+      </Menu>
+
+      {/* Settings — appearance, display currency, and data backup, grouped in one dialog */}
+      <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)} fullScreen={!isDesktop} fullWidth maxWidth="xs">
+        <DialogTitle sx={{ fontWeight: 700 }}>Settings</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 3, pt: 1 }}>
+            {/* Appearance */}
+            <Box>
+              <Typography variant="overline" sx={{ mb: 1, display: "block", fontSize: "0.65rem", color: colors.gray400 }}>
+                Appearance
+              </Typography>
+              <ToggleButtonGroup
+                value={preference}
+                exclusive
+                onChange={(_, val) => { if (val) setPreference(val as ColorModePref); }}
+                size="small"
+                fullWidth
+                sx={{
+                  bgcolor: colors.gray100, borderRadius: 2.5, p: "3px", gap: "2px",
+                  "& .MuiToggleButtonGroup-grouped": { border: "none !important", m: 0 },
+                }}
+              >
+                {([
+                  { value: "light" as const, label: "Light", icon: <LightModeRoundedIcon sx={{ fontSize: 15 }} /> },
+                  { value: "system" as const, label: "Auto", icon: <SettingsBrightnessRoundedIcon sx={{ fontSize: 15 }} /> },
+                  { value: "dark" as const, label: "Dark", icon: <DarkModeRoundedIcon sx={{ fontSize: 15 }} /> },
+                ]).map(opt => (
+                  <ToggleButton key={opt.value} value={opt.value} sx={{
+                    borderRadius: "10px !important", py: 0.6, px: 1, minWidth: 0, textTransform: "none",
+                    fontSize: "0.75rem", fontWeight: 500, gap: 0.5, lineHeight: 1,
+                    "&.Mui-selected": { bgcolor: `${colors.brand} !important`, color: "#fff !important", fontWeight: 600, boxShadow: `0 1px 4px ${alpha(colors.brand, 0.3)}` },
+                  }}>
+                    {opt.icon} {opt.label}
+                  </ToggleButton>
+                ))}
+              </ToggleButtonGroup>
+            </Box>
+
+            {/* Display currency */}
+            <Box>
+              <Typography variant="overline" sx={{ mb: 1, display: "block", fontSize: "0.65rem", color: colors.gray400 }}>
+                Display currency
+              </Typography>
+              <TextField
+                select
+                size="small"
+                fullWidth
+                value={preferredCurrency}
+                disabled={savingCurrency}
+                onChange={(e) => handleCurrencyChange(e.target.value)}
+                helperText={savingCurrency ? "Converting amounts…" : "Amounts are shown converted to this currency"}
+                sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2.5 } }}
+              >
+                {CURRENCIES.map((c) => (
+                  <MenuItem key={c} value={c}>{c}</MenuItem>
+                ))}
+              </TextField>
+            </Box>
+
+            {/* Data */}
+            <Box>
+              <Typography variant="overline" sx={{ mb: 1, display: "block", fontSize: "0.65rem", color: colors.gray400 }}>
+                Data
+              </Typography>
+              <Box sx={{ display: "flex", gap: 1 }}>
+                <Button
+                  fullWidth variant="outlined" onClick={handleExport} disabled={exporting}
+                  startIcon={exporting ? <CircularProgress size={14} /> : <FileDownloadRoundedIcon sx={{ fontSize: 18 }} />}
+                  sx={{ borderRadius: 2.5, py: 0.7, textTransform: "none", fontSize: "0.8rem", fontWeight: 600, borderColor: colors.gray200, color: colors.gray600, "&:hover": { borderColor: colors.brand, color: colors.brand } }}
+                >
+                  Export
+                </Button>
+                <Button
+                  fullWidth variant="outlined" onClick={() => fileInputRef.current?.click()} disabled={importing}
+                  startIcon={importing ? <CircularProgress size={14} /> : <FileUploadRoundedIcon sx={{ fontSize: 18 }} />}
+                  sx={{ borderRadius: 2.5, py: 0.7, textTransform: "none", fontSize: "0.8rem", fontWeight: 600, borderColor: colors.gray200, color: colors.gray600, "&:hover": { borderColor: colors.brand, color: colors.brand } }}
+                >
+                  Import
+                </Button>
+              </Box>
+              <Typography sx={{ fontSize: "0.68rem", color: colors.gray400, mt: 0.75 }}>
+                Export a JSON backup, or restore from one.
+              </Typography>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/json,.json"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleImportFile(file);
+                  e.target.value = "";
+                }}
+              />
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSettingsOpen(false)}>Done</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Import confirmation */}
       <Dialog open={!!pendingImport} onClose={() => setPendingImport(null)}>
