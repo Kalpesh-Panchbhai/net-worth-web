@@ -40,13 +40,28 @@ export const LEADERBOARD_METRICS: string[] = [
   "volatility", "sharpe", "sortino", "max_drawdown",
 ];
 
-export const HORIZONS = ["1Y", "3Y", "5Y", "7Y", "10Y", "SI"] as const;
+/** The leaderboard metrics split into intuitive groups, for a sectioned picker. */
+export const LEADERBOARD_METRIC_GROUPS: { label: string; metrics: string[] }[] = [
+  { label: "Returns", metrics: ["cagr", "rolling_avg", "rolling_worst", "rolling_share_above_12"] },
+  { label: "Risk & consistency", metrics: ["volatility", "sharpe", "sortino", "max_drawdown"] },
+];
+
+/** Every metric shown on the fund-detail heatmap, grouped, in reading order. */
+export const DETAIL_METRIC_GROUPS: { label: string; metrics: string[] }[] = [
+  { label: "Returns", metrics: ["cagr", "absolute"] },
+  { label: "Rolling returns", metrics: ["rolling_avg", "rolling_worst", "rolling_best", "rolling_share_above_12", "rolling_share_negative"] },
+  { label: "Risk", metrics: ["volatility", "sharpe", "sortino", "max_drawdown", "current_drawdown"] },
+];
+
+export const HORIZONS = ["1Y", "2Y", "3Y", "4Y", "5Y", "7Y", "10Y", "SI"] as const;
 export type Horizon = (typeof HORIZONS)[number];
 
 /** Horizons that make sense for a given metric. Rolling/volatility/ratios need a fixed-length window. */
 export function horizonsFor(metricCode: string): Horizon[] {
-  if (metricCode === "cagr" || metricCode === "absolute") return ["1Y", "3Y", "5Y", "7Y", "10Y", "SI"];
-  return ["1Y", "3Y", "5Y", "7Y", "10Y"];
+  if (metricCode === "cagr" || metricCode === "absolute" || metricCode === "max_drawdown" || metricCode === "current_drawdown") {
+    return ["1Y", "2Y", "3Y", "4Y", "5Y", "7Y", "10Y", "SI"];
+  }
+  return ["1Y", "2Y", "3Y", "4Y", "5Y", "7Y", "10Y"];
 }
 
 export function metricMeta(code: string): MetricMeta {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   Box, Paper, Typography, Stack, Chip, IconButton, Tooltip, useTheme,
@@ -10,9 +10,12 @@ import { getMfFund } from "../api/client";
 import type { MfFundDetail } from "../api/types";
 import { ErrorState, ChartSkeleton } from "../components/shared";
 import { useTokens } from "../context/ColorModeContext";
-import { formatMetricValue, assetClassLabel } from "../utils/mfMetrics";
+import {
+  formatMetricValue, assetClassLabel, isSignedMetric, metricMeta,
+  DETAIL_METRIC_GROUPS, HORIZONS,
+} from "../utils/mfMetrics";
 
-const CAGR_HORIZONS = ["1Y", "3Y", "5Y", "7Y", "10Y", "SI"];
+const CAGR_HORIZONS = ["1Y", "2Y", "3Y", "4Y", "5Y", "7Y", "10Y", "SI"];
 
 function fmtDate(d: string | null): string {
   if (!d) return "—";
@@ -94,6 +97,66 @@ function MutualFundDetail() {
 
   const grid3 = { display: "grid", gridTemplateColumns: { xs: "1fr 1fr", sm: "repeat(3, 1fr)" }, gap: 1.25 };
 
+  // Heatmap cell background/foreground: greener the better a return, redder the worse, with the
+  // tint's strength scaled to the value's size within its own row — so the eye lands on the extremes.
+  const cellColor = (metricCode: string, v: number | undefined, rowMax: number) => {
+    if (v == null) return { bg: "transparent", fg: colors.gray400 };
+    const base = !isSignedMetric(metricCode) ? colors.brand : v >= 0 ? colors.success : colors.error;
+    const intensity = rowMax > 0 ? Math.min(1, Math.abs(v) / rowMax) : 0;
+    return { bg: alpha(base, 0.08 + intensity * 0.30), fg: base };
+  };
+
+  const headCellSx = {
+    px: 1, py: 0.75, fontSize: "0.66rem", fontWeight: 700, textTransform: "uppercase",
+    letterSpacing: "0.04em", color: colors.gray500, textAlign: "center" as const,
+    borderBottom: `1px solid ${colors.gray200}`, borderRight: `1px solid ${colors.gray200}`,
+  };
+  const labelCellSx = {
+    px: 1.25, py: 0.75, fontSize: "0.76rem", fontWeight: 600, display: "flex", alignItems: "center",
+    position: "sticky" as const, left: 0, zIndex: 1,
+    bgcolor: isDark ? "#1e1e1e" : colors.white,
+    borderBottom: `1px solid ${colors.gray200}`, borderRight: `1px solid ${colors.gray200}`,
+  };
+
+  // Metric × horizon heatmap — the whole analysis in one scan, and the reason every horizon is stored.
+  const matrixCols = `minmax(132px, 1.5fr) repeat(${HORIZONS.length}, minmax(46px, 1fr))`;
+  const metricsMatrix = (
+    <Box sx={{ overflowX: "auto", mx: -0.5, px: 0.5 }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: matrixCols, minWidth: 560, border: `1px solid ${colors.gray200}`, borderRadius: 2, overflow: "hidden", bgcolor: isDark ? "#1e1e1e" : colors.white }}>
+        <Box sx={{ ...headCellSx, textAlign: "left", position: "sticky", left: 0, zIndex: 2, bgcolor: isDark ? "#1e1e1e" : colors.white }}>Metric</Box>
+        {HORIZONS.map(h => <Box key={h} sx={headCellSx}>{h === "SI" ? "Incep." : h}</Box>)}
+        {DETAIL_METRIC_GROUPS.map(group => (
+          <Fragment key={group.label}>
+            <Box sx={{ gridColumn: "1 / -1", px: 1.25, py: 0.5, fontSize: "0.62rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: colors.gray400, bgcolor: isDark ? alpha(colors.pureWhite, 0.03) : colors.gray50, borderBottom: `1px solid ${colors.gray200}` }}>
+              {group.label}
+            </Box>
+            {group.metrics.map(mc => {
+              const rowVals = HORIZONS.map(h => val(h, mc));
+              const rowMax = Math.max(0, ...rowVals.filter((x): x is number => x != null).map(Math.abs));
+              const m = metricMeta(mc);
+              return (
+                <Fragment key={mc}>
+                  <Tooltip title={m.help} placement="right">
+                    <Box sx={labelCellSx}>{m.short}</Box>
+                  </Tooltip>
+                  {HORIZONS.map((h, i) => {
+                    const v = rowVals[i];
+                    const c = cellColor(mc, v, rowMax);
+                    return (
+                      <Box key={h} sx={{ px: 0.5, py: 0.75, fontSize: "0.72rem", fontWeight: 600, textAlign: "center", fontVariantNumeric: "tabular-nums", bgcolor: c.bg, color: c.fg, borderBottom: `1px solid ${colors.gray200}`, borderRight: `1px solid ${colors.gray200}` }}>
+                        {v == null ? "—" : formatMetricValue(mc, v)}
+                      </Box>
+                    );
+                  })}
+                </Fragment>
+              );
+            })}
+          </Fragment>
+        ))}
+      </Box>
+    </Box>
+  );
+
   return (
     <Stack spacing={{ xs: 2, sm: 2.5 }}>
       {/* Header */}
@@ -132,6 +195,14 @@ function MutualFundDetail() {
         <StatTile label="Since inception" metric="cagr" horizon="SI" help="Annualised return from the first NAV." />
         <StatTile label="3Y Sharpe" metric="sharpe" horizon="3Y" help="Return per unit of volatility." />
       </Box>
+
+      {/* Everything across every horizon, in one heatmap */}
+      <Section title="All horizons at a glance">
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
+          Every metric across 1Y → since inception. Greener is better, redder is worse; blank cells lack the history to compute. Hover a metric for what it means.
+        </Typography>
+        {metricsMatrix}
+      </Section>
 
       {/* CAGR by horizon chart */}
       <Section title="CAGR by horizon">

@@ -32,8 +32,19 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://kfgx37r84g.execut
 // In-flight requests are tracked separately: the cache used to be written only after a response
 // resolved, so two components mounting in the same tick both hit the network for the same URL.
 const TTL_MS = 60_000;
+/**
+ * The Mutual Fund Analyzer is recomputed once a day by the backend's nightly job, so its responses
+ * are stable for far longer than a minute. A longer TTL keeps category/metric/horizon switching
+ * instant (served from cache) without ever showing meaningfully stale numbers.
+ */
+const LONG_TTL_MS = 15 * 60_000;
+const LONG_TTL_PREFIXES = ["/mf-analysis"];
 /** Live-broker snapshots must never be replayed from cache — they are point-in-time. */
 const NEVER_CACHE = ["/sync-mf"];
+
+function ttlFor(url: string): number {
+  return LONG_TTL_PREFIXES.some(prefix => url.startsWith(prefix)) ? LONG_TTL_MS : TTL_MS;
+}
 
 interface CacheEntry { data: unknown; storedAt: number }
 
@@ -117,7 +128,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const cacheable = isCacheable(url);
   if (cacheable) {
     const hit = cache.get(url);
-    if (hit && Date.now() - hit.storedAt < TTL_MS) return clone(hit.data) as T;
+    if (hit && Date.now() - hit.storedAt < ttlFor(url)) return clone(hit.data) as T;
     if (hit) cache.delete(url);
     const pending = inFlight.get(url);
     if (pending) return clone(await pending) as T;

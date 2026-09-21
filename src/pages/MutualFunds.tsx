@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Box, Paper, Typography, Stack, TextField, InputAdornment, MenuItem,
   ToggleButton, ToggleButtonGroup, Chip, Avatar, Select, FormControl,
-  useMediaQuery, useTheme, Tooltip, CircularProgress,
+  useMediaQuery, useTheme, Tooltip, CircularProgress, ListSubheader, LinearProgress,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
@@ -15,7 +15,7 @@ import type { MfCategory, MfLeaderboard } from "../api/types";
 import { PageHeader, EmptyState, ErrorState, ListSkeleton } from "../components/shared";
 import { useTokens } from "../context/ColorModeContext";
 import {
-  LEADERBOARD_METRICS, HORIZONS, horizonsFor, metricMeta, formatMetricValue,
+  LEADERBOARD_METRIC_GROUPS, HORIZONS, horizonsFor, metricMeta, formatMetricValue,
   isSignedMetric, assetClassLabel, assetClassRank, type Horizon,
 } from "../utils/mfMetrics";
 
@@ -106,6 +106,13 @@ function MutualFunds() {
 
   const meta = metricMeta(metric);
   const totalFunds = useMemo(() => categories.reduce((s, c) => s + c.liveCount, 0), [categories]);
+
+  // Largest magnitude in the visible ranking, so each row's bar shows its strength relative to the
+  // category leader at a glance — the quickest read of "how far ahead is #1".
+  const maxAbs = useMemo(
+    () => board?.entries.reduce((m, e) => Math.max(m, Math.abs(e.value)), 0) ?? 0,
+    [board],
+  );
 
   if (catError && categories.length === 0 && !catLoading) {
     return <ErrorState message={catError} onRetry={() => window.location.reload()} />;
@@ -198,11 +205,16 @@ function MutualFunds() {
                 )}
               </Box>
               <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                <FormControl size="small" sx={{ minWidth: 190 }}>
+                <FormControl size="small" sx={{ minWidth: 210 }}>
                   <Select value={metric} onChange={e => setMetric(e.target.value)}>
-                    {LEADERBOARD_METRICS.map(code => (
-                      <MenuItem key={code} value={code}>{metricMeta(code).label}</MenuItem>
-                    ))}
+                    {LEADERBOARD_METRIC_GROUPS.flatMap(group => [
+                      <ListSubheader key={group.label} sx={{ fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: colors.gray400, lineHeight: 2.2, bgcolor: "transparent" }}>
+                        {group.label}
+                      </ListSubheader>,
+                      ...group.metrics.map(code => (
+                        <MenuItem key={code} value={code} sx={{ fontSize: "0.85rem" }}>{metricMeta(code).label}</MenuItem>
+                      )),
+                    ])}
                   </Select>
                 </FormControl>
               </Stack>
@@ -237,6 +249,7 @@ function MutualFunds() {
                   const signed = isSignedMetric(metric);
                   const valColor = !signed ? colors.brand : e.value >= 0 ? colors.success : colors.error;
                   const badge = rankColor(e.rank, colors.gray400);
+                  const barPct = maxAbs > 0 ? Math.max(4, (Math.abs(e.value) / maxAbs) * 100) : 0;
                   return (
                     <Box
                       key={e.schemeCode}
@@ -255,9 +268,21 @@ function MutualFunds() {
                         <Typography sx={{ fontSize: "0.85rem", fontWeight: 600, lineHeight: 1.3 }} noWrap>{e.name}</Typography>
                         <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>{e.amc}</Typography>
                       </Box>
-                      <Typography sx={{ fontSize: "0.95rem", fontWeight: 750, color: valColor, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
-                        {formatMetricValue(metric, e.value)}
-                      </Typography>
+                      {/* Value + a relative-strength bar so the gap between funds is visible, not just numeric. */}
+                      <Box sx={{ width: { xs: 92, sm: 124 }, flexShrink: 0 }}>
+                        <Typography sx={{ fontSize: "0.95rem", fontWeight: 750, color: valColor, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", textAlign: "right" }}>
+                          {formatMetricValue(metric, e.value)}
+                        </Typography>
+                        <LinearProgress
+                          variant="determinate"
+                          value={barPct}
+                          sx={{
+                            mt: 0.5, height: 4, borderRadius: 2,
+                            bgcolor: alpha(valColor, 0.12),
+                            "& .MuiLinearProgress-bar": { bgcolor: valColor, borderRadius: 2 },
+                          }}
+                        />
+                      </Box>
                       <ChevronRightRoundedIcon sx={{ color: colors.gray400, fontSize: 20 }} />
                     </Box>
                   );
