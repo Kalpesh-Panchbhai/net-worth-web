@@ -19,9 +19,9 @@ import { HORIZONS, assetClassLabel, assetClassRank, type Horizon } from "../util
 // Prefer opening on a category people actually search for, when it exists.
 const PREFERRED_DEFAULTS = ["Large Cap", "Flexi Cap", "Mid Cap"];
 
-// The table shows risk metrics (volatility, Sharpe, …) that only exist for fixed-length windows, so
-// its horizon selector omits "since inception" — every column stays populated.
-const TABLE_HORIZONS = HORIZONS.filter(h => h !== "SI");
+// Full horizon set, including since-inception. Risk metrics have no SI value, so those columns read
+// "—" at SI while CAGR and max-drawdown stay meaningful.
+const TABLE_HORIZONS = HORIZONS;
 
 type View = "category" | "all";
 
@@ -42,6 +42,7 @@ function MutualFunds() {
 
   // All-funds view filters.
   const [allSearch, setAllSearch] = useState("");
+  const [allAsset, setAllAsset] = useState<string>("");
   const [allCategory, setAllCategory] = useState<string>("");
 
   const [table, setTable] = useState<MfTable | null>(null);
@@ -105,15 +106,22 @@ function MutualFunds() {
 
   const totalFunds = useMemo(() => categories.reduce((s, c) => s + c.liveCount, 0), [categories]);
 
-  // All-funds view: apply the search + category filter client-side.
+  // Asset classes present, in display order — powers the "all Equity / Hybrid / …" filter.
+  const assetClasses = useMemo(
+    () => [...new Set(categories.map(c => c.assetClass))].sort((a, b) => assetClassRank(a) - assetClassRank(b)),
+    [categories],
+  );
+
+  // All-funds view: apply the search + asset-class + category filters client-side.
   const allRows: MfTableRow[] = useMemo(() => {
     if (!table) return [];
     const q = allSearch.trim().toLowerCase();
     return table.rows.filter(r =>
+      (!allAsset || r.assetClass === allAsset) &&
       (!allCategory || r.subCategory === allCategory) &&
       (!q || r.name.toLowerCase().includes(q) || r.amc.toLowerCase().includes(q)),
     );
-  }, [table, allSearch, allCategory]);
+  }, [table, allSearch, allAsset, allCategory]);
 
   if (catError && categories.length === 0 && !catLoading) {
     return <ErrorState message={catError} onRetry={() => window.location.reload()} />;
@@ -240,11 +248,19 @@ function MutualFunds() {
               InputProps={{ startAdornment: <InputAdornment position="start"><SearchRoundedIcon sx={{ fontSize: 18, color: colors.gray400 }} /></InputAdornment> }}
               sx={{ flex: 1 }}
             />
-            <FormControl size="small" sx={{ minWidth: 200 }}>
+            <FormControl size="small" sx={{ minWidth: 150 }}>
+              <Select value={allAsset} displayEmpty
+                onChange={e => { setAllAsset(e.target.value); setAllCategory(""); }}
+                renderValue={v => (v ? assetClassLabel(String(v)) : "All asset classes")}>
+                <MenuItem value="">All asset classes</MenuItem>
+                {assetClasses.map(a => <MenuItem key={a} value={a}>{assetClassLabel(a)}</MenuItem>)}
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: 190 }}>
               <Select value={allCategory} displayEmpty onChange={e => setAllCategory(e.target.value)}
                 renderValue={v => (v ? String(v) : "All categories")}>
                 <MenuItem value="">All categories</MenuItem>
-                {grouped.flatMap(({ asset, subs }) => [
+                {grouped.filter(g => !allAsset || g.asset === allAsset).flatMap(({ asset, subs }) => [
                   <ListSubheader key={asset} sx={{ fontSize: "0.7rem", fontWeight: 700, color: colors.gray400, textTransform: "uppercase" }}>{assetClassLabel(asset)}</ListSubheader>,
                   ...subs.map(c => <MenuItem key={c.subCategory} value={c.subCategory} sx={{ pl: 3 }}>{c.subCategory} · {c.liveCount}</MenuItem>),
                 ])}
