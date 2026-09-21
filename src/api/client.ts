@@ -19,6 +19,9 @@ import type {
   SyncMfConfirmResult,
   StockSyncPreview,
   StockSyncConfirmResult,
+  MfCategory,
+  MfLeaderboard,
+  MfFundDetail,
 } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://kfgx37r84g.execute-api.ap-south-1.amazonaws.com/prod";
@@ -437,6 +440,26 @@ export function confirmSyncMf(accountId: number, diffs: SyncMfPreview["diffs"]) 
     method: "POST",
     body: JSON.stringify({ accountId, diffs }),
   });
+}
+
+// Mutual Fund Analyzer — read-only, computed at request time from stored NAV history.
+// Independent of the logged-in user and display currency, so these are plain cacheable GETs.
+export function getMfCategories() {
+  return request<MfCategory[]>("/mf-analysis?action=categories");
+}
+
+export function getMfLeaderboard(params: { subCategory: string; metric?: string; horizon?: string; limit?: number }) {
+  const q = new URLSearchParams();
+  q.set("action", "leaderboard");
+  q.set("subCategory", params.subCategory);
+  if (params.metric) q.set("metric", params.metric);
+  if (params.horizon) q.set("horizon", params.horizon);
+  if (params.limit != null) q.set("limit", String(params.limit));
+  return request<MfLeaderboard>(`/mf-analysis?${q}`);
+}
+
+export function getMfFund(schemeCode: number) {
+  return request<MfFundDetail>(`/mf-analysis?action=fund&schemeCode=${schemeCode}`);
 }
 
 export function getStockSyncPreview(accountId: number) {

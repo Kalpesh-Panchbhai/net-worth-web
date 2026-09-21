@@ -237,3 +237,58 @@ export interface StockSyncConfirmResult {
   synced: boolean;
   date: string;
 }
+
+// ─── Mutual Fund Analyzer ────────────────────────────────────
+// All Direct+Growth funds, analysed at request time from stored NAV history. Every metric `value`
+// is a fraction (0.12 === 12%) except Sharpe/Sortino (a plain ratio) and rolling_windows (a count).
+
+/** One (asset class, sub-category) peer group and how many live funds it holds. */
+export interface MfCategory {
+  assetClass: string;
+  subCategory: string;
+  liveCount: number;
+}
+
+export interface MfLeaderboardEntry {
+  rank: number;
+  schemeCode: number;
+  name: string;
+  amc: string;
+  value: number;
+  launchDate: string | null;
+  lastNavDate: string | null;
+}
+
+/**
+ * A category ranked on one metric over one horizon.
+ * `peerCount` is the live funds in the category; `ranked` is how many had enough history for the
+ * metric — so "3 of {peerCount}" reads honestly even when some funds were dropped.
+ */
+export interface MfLeaderboard {
+  subCategory: string;
+  metric: string;
+  horizon: string;
+  higherIsBetter: boolean;
+  peerCount: number;
+  ranked: number;
+  entries: MfLeaderboardEntry[];
+}
+
+export interface MfFundMetric {
+  horizon: string;
+  metric: string;
+  value: number;
+}
+
+export interface MfFundDetail {
+  schemeCode: number;
+  name: string;
+  amc: string;
+  assetClass: string;
+  subCategory: string;
+  launchDate: string | null;
+  firstNavDate: string;
+  lastNavDate: string;
+  navPoints: number;
+  metrics: MfFundMetric[];
+}
