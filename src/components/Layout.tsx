@@ -99,7 +99,6 @@ function Layout({ children }: { children: ReactNode }) {
   // Hovering a collapsed rail expands it temporarily (overlaying content) without changing the
   // saved preference; the rail is the icon-only mode only while collapsed AND not hovered.
   const [hovering, setHovering] = useState(false);
-  const rail = collapsed && !hovering;
   const sidebarW = collapsed ? SIDEBAR_W_COLLAPSED : SIDEBAR_W;
   const { firebaseUser, userId, logout, preferredCurrency, setPreferredCurrency, refreshAll } = useUser();
   const { showToast } = useToast();
@@ -118,6 +117,11 @@ function Layout({ children }: { children: ReactNode }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const closeUserMenu = () => setUserMenuAnchor(null);
+
+  // Icon-only rail = collapsed, and neither hovered nor showing the user menu. Keeping it expanded
+  // while the menu is open stops the menu's anchor (the avatar) from unmounting mid-open, which
+  // would otherwise make the popover jump to the top-left corner.
+  const rail = collapsed && !hovering && !userMenuAnchor;
 
   // ⌘K / Ctrl+K opens the global search from anywhere.
   useEffect(() => {
@@ -272,9 +276,11 @@ function Layout({ children }: { children: ReactNode }) {
             </Typography>
           </Box>
           {isDesktop && (
-            <Tooltip title="Collapse sidebar">
-              <IconButton size="small" onClick={() => setCollapsed(true)} sx={{ ml: "auto", color: colors.gray400 }}>
-                <ChevronLeftRoundedIcon />
+            // Pins the sidebar: while hover-expanded (saved state still collapsed) it offers to pin
+            // open; when pinned open it offers to collapse.
+            <Tooltip title={collapsed ? "Pin sidebar open" : "Collapse sidebar"}>
+              <IconButton size="small" onClick={() => { setCollapsed(c => !c); setHovering(false); }} sx={{ ml: "auto", color: colors.gray400 }}>
+                {collapsed ? <ChevronRightRoundedIcon /> : <ChevronLeftRoundedIcon />}
               </IconButton>
             </Tooltip>
           )}
@@ -379,20 +385,11 @@ function Layout({ children }: { children: ReactNode }) {
       {firebaseUser && (
         <Box sx={{ pt: 1 }}>
           <Divider sx={{ mb: 1, mx: 0.5 }} />
-          {rail ? (
-            <Box sx={{ display: "flex", justifyContent: "center" }}>
-              <Tooltip title={firebaseUser.displayName || "Account"} placement="right">
-                <IconButton onClick={(e) => setUserMenuAnchor(e.currentTarget)} sx={{ p: 0.5 }}>
-                  <Avatar src={firebaseUser.photoURL || undefined} sx={{ width: 32, height: 32, fontSize: "0.7rem", fontWeight: 700 }}>
-                    {firebaseUser.displayName?.charAt(0) || "U"}
-                  </Avatar>
-                </IconButton>
-              </Tooltip>
-            </Box>
-          ) : (
+          {/* One stable element in both modes so the user-menu anchor never unmounts mid-open. */}
+          <Tooltip title={rail ? (firebaseUser.displayName || "Account") : ""} placement="right" disableHoverListener={!rail}>
             <ListItemButton
               onClick={(e) => setUserMenuAnchor(e.currentTarget)}
-              sx={{ borderRadius: 2.5, py: 0.75, px: 1, gap: 1, "&:hover": { bgcolor: colors.gray100 } }}
+              sx={{ borderRadius: 2.5, py: 0.75, px: rail ? 0 : 1, gap: 1, justifyContent: rail ? "center" : "flex-start", "&:hover": { bgcolor: colors.gray100 } }}
             >
               <Avatar
                 src={firebaseUser.photoURL || undefined}
@@ -400,17 +397,21 @@ function Layout({ children }: { children: ReactNode }) {
               >
                 {firebaseUser.displayName?.charAt(0) || "U"}
               </Avatar>
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography sx={{ fontSize: "0.8rem", fontWeight: 600, color: colors.gray800, lineHeight: 1.2 }} noWrap>
-                  {firebaseUser.displayName || "User"}
-                </Typography>
-                <Typography sx={{ fontSize: "0.68rem", color: colors.gray400, lineHeight: 1.2 }} noWrap>
-                  {firebaseUser.email}
-                </Typography>
-              </Box>
-              <UnfoldMoreRoundedIcon sx={{ fontSize: 18, color: colors.gray400 }} />
+              {!rail && (
+                <>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography sx={{ fontSize: "0.8rem", fontWeight: 600, color: colors.gray800, lineHeight: 1.2 }} noWrap>
+                      {firebaseUser.displayName || "User"}
+                    </Typography>
+                    <Typography sx={{ fontSize: "0.68rem", color: colors.gray400, lineHeight: 1.2 }} noWrap>
+                      {firebaseUser.email}
+                    </Typography>
+                  </Box>
+                  <UnfoldMoreRoundedIcon sx={{ fontSize: 18, color: colors.gray400 }} />
+                </>
+              )}
             </ListItemButton>
-          )}
+          </Tooltip>
         </Box>
       )}
     </Box>
