@@ -23,7 +23,7 @@ import {
   getAccountWatchlists, getWatchlists, linkWatchlistAccount, unlinkWatchlistAccount,
   invalidateMoneyCaches, searchSymbol,
   getSyncMfLoginUrl, getSyncMfPreview, confirmSyncMf,
-  getStockSyncPreview, confirmStockSync,
+  getStockSyncPreview, confirmStockSync, getMfPortfolio,
 } from "../api/client";
 import type { YahooQuote } from "../api/client";
 import Chip from "@mui/material/Chip";
@@ -42,7 +42,9 @@ import XirrBadge from "../components/XirrBadge";
 import { EntitySwitcher, SwitcherArrows, useSwitcher, useSwipeNav, type SwitcherItem } from "../components/EntitySwitcher";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
-import type { AccountSummary, HoldingSummary, Transaction, WatchlistSummary, SyncMfDiff, StockSyncPreview } from "../api/types";
+import type { AccountSummary, HoldingSummary, Transaction, WatchlistSummary, SyncMfDiff, StockSyncPreview, MfPortfolioHolding } from "../api/types";
+import { normalizeFundName } from "../utils/mfMetrics";
+import MfRankBadge from "../components/MfRankBadge";
 import { formatCurrency as fmt, formatUnits as fmtUnits } from "../utils/format";
 import { DEFAULT_CURRENCY } from "../constants";
 import SyncIcon from "@mui/icons-material/Sync";
@@ -85,12 +87,13 @@ interface TxnRow {
 
 // Both list rows live at module scope behind React.memo: the page owns the add-holding search box
 // and the new-transaction form, so every keystroke there used to re-render (and remount) each card.
-const HoldingCard = memo(function HoldingCard({ row, index, accountId, canDelete, onDelete }: {
+const HoldingCard = memo(function HoldingCard({ row, index, accountId, canDelete, onDelete, rank }: {
   row: HoldingRow;
   index: number;
   accountId?: string;
   canDelete: boolean;
   onDelete: (h: HoldingSummary) => void;
+  rank?: MfPortfolioHolding | null;
 }) {
   const { h, gainPct, dayPct } = row;
   const navigate = useNavigate();
@@ -129,6 +132,13 @@ const HoldingCard = memo(function HoldingCard({ row, index, accountId, canDelete
             </IconButton>)}
           </Stack>
         </Box>
+
+        {rank && (
+          <Stack direction="row" spacing={0.75} alignItems="flex-start" sx={{ mb: 1.5 }} useFlexGap flexWrap="wrap">
+            <Chip label={rank.subCategory} size="small" sx={{ height: 20, fontSize: "0.62rem", fontWeight: 600, bgcolor: cardSubtle, color: cardMuted }} />
+            <MfRankBadge info={rank} showSub />
+          </Stack>
+        )}
 
         <Box sx={{ px: 1.5, py: 1, borderRadius: 1.5, bgcolor: cardSubtle, display: "inline-block", mb: 1.5, alignSelf: "flex-start" }}>
           <Typography sx={{ fontSize: "0.6rem", fontWeight: 500, color: cardMuted, textTransform: "uppercase", letterSpacing: "0.04em", mb: 0.15 }}>
@@ -282,6 +292,9 @@ function AccountDetail() {
   // Holdings (broker accounts)
   const [holdings, setHoldings] = useState<HoldingSummary[]>([]);
   const [holdingsLoading, setHoldingsLoading] = useState(false);
+  // Fund rankings keyed by normalised name, so each broker holding that is a mutual fund can show
+  // the same category standing as "My funds". From the per-user analyzer portfolio; empty when none.
+  const [mfRanks, setMfRanks] = useState<Map<string, MfPortfolioHolding>>(new Map());
   const [createHoldingOpen, setCreateHoldingOpen] = useState(false);
   const [holdingSearch, setHoldingSearch] = useState("");
   const [holdingResults, setHoldingResults] = useState<YahooQuote[]>([]);
@@ -365,6 +378,18 @@ function AccountDetail() {
         .then(h => { if (!cancelled) setHoldings(h); })
         .catch(err => { if (!cancelled) showToast(err instanceof Error ? err.message : "Failed to load holdings", "error"); })
         .finally(() => { if (!cancelled) setHoldingsLoading(false); });
+      // Fund rankings are a non-essential enrichment: fetch quietly and fail silently so a hiccup
+      // in the analyzer never blocks the holdings themselves from rendering.
+      if (userId) {
+        getMfPortfolio(userId)
+          .then(pf => {
+            if (cancelled) return;
+            const m = new Map<string, MfPortfolioHolding>();
+            for (const ph of pf.holdings) m.set(normalizeFundName(ph.name), ph);
+            setMfRanks(m);
+          })
+          .catch(() => { /* ranks stay empty; holdings render without a badge */ });
+      }
     } else {
       setTxnLoading(true);
       Promise.all([
@@ -382,7 +407,7 @@ function AccountDetail() {
     return () => { cancelled = true; };
     // `dataVersion` is deliberately absent: the effect above refetches the account on a bump,
     // which replaces the `account` object and re-runs this one. Listing both ran it twice.
-  }, [account, isBroker, numAccountId, showToast]);
+  }, [account, isBroker, numAccountId, userId, showToast]);
 
   // Debounced Yahoo Finance search
   useEffect(() => {
@@ -1042,6 +1067,7 @@ function AccountDetail() {
                         accountId={accountId}
                         canDelete={account.isActive}
                         onDelete={setDeleteHoldingConfirm}
+                        rank={mfRanks.get(normalizeFundName(row.h.name)) ?? null}
                       />
                     ))}
                   </Box>

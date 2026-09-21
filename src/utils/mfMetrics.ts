@@ -99,3 +99,18 @@ export function assetClassRank(code: string): number {
   const i = ASSET_ORDER.indexOf(code);
   return i === -1 ? ASSET_ORDER.length : i;
 }
+
+/**
+ * Normalise a fund name so the analyzer's AMFI scheme name and a synced broker holding name collapse
+ * to the same key — the only way to line a broker holding up with its ranking, since holdings carry
+ * no scheme code. Plan/option words and punctuation carry no identity and are stripped, leaving the
+ * AMC + scheme identity, e.g. "Parag Parikh Flexi Cap Fund - Direct Growth" → "parag parikh flexi cap".
+ */
+export function normalizeFundName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(direct|regular|growth|idcw|dividend|reinvestment|payout|plan|option|scheme|fund|the)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
