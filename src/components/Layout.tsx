@@ -108,6 +108,7 @@ function Layout({ children }: { children: ReactNode }) {
   const [deleting, setDeleting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<number | null>(null);
+  const [nextRefresh, setNextRefresh] = useState<number | null>(null);
   const [savingCurrency, setSavingCurrency] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -139,7 +140,11 @@ function Layout({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     getLastRefreshed()
-      .then(r => { if (!cancelled && r.lastRefreshedAt) setLastRefreshed(r.lastRefreshedAt); })
+      .then(r => {
+        if (cancelled) return;
+        if (r.lastRefreshedAt) setLastRefreshed(r.lastRefreshedAt);
+        if (r.nextRefreshAt) setNextRefresh(r.nextRefreshAt);
+      })
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
@@ -365,18 +370,27 @@ function Layout({ children }: { children: ReactNode }) {
         ))}
       </Box>
 
-      {/* Data freshness — when the last (scheduled or manual) refresh ran, in IST */}
-      {lastRefreshed && (rail ? (
-        <Tooltip title={`Data last refreshed ${formatIST(lastRefreshed)}`} placement="right">
+      {/* Data freshness — last (scheduled or manual) refresh + next scheduled one, in IST */}
+      {(lastRefreshed || nextRefresh) && (rail ? (
+        <Tooltip placement="right" title={
+          `${lastRefreshed ? "Updated " + formatIST(lastRefreshed) : ""}${lastRefreshed && nextRefresh ? " · " : ""}${nextRefresh ? "Next " + formatIST(nextRefresh) : ""}`
+        }>
           <Box sx={{ display: "flex", justifyContent: "center", color: colors.gray400, pt: 1 }}>
             <ScheduleRoundedIcon sx={{ fontSize: 18 }} />
           </Box>
         </Tooltip>
       ) : (
-        <Tooltip title="Auto-refreshes every few hours; use Refresh data to update now">
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.25, pt: 1, color: colors.gray400 }}>
-            <ScheduleRoundedIcon sx={{ fontSize: 14 }} />
-            <Typography sx={{ fontSize: "0.68rem" }} noWrap>Updated {formatIST(lastRefreshed)}</Typography>
+        <Tooltip title="Auto-refreshes on a schedule; use Refresh data to update now">
+          <Box sx={{ px: 1.25, pt: 1, color: colors.gray400 }}>
+            {lastRefreshed && (
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+                <ScheduleRoundedIcon sx={{ fontSize: 14 }} />
+                <Typography sx={{ fontSize: "0.68rem" }} noWrap>Updated {formatIST(lastRefreshed)}</Typography>
+              </Box>
+            )}
+            {nextRefresh && (
+              <Typography sx={{ fontSize: "0.68rem", pl: "22px" }} noWrap>Next {formatIST(nextRefresh)}</Typography>
+            )}
           </Box>
         </Tooltip>
       ))}
@@ -519,9 +533,14 @@ function Layout({ children }: { children: ReactNode }) {
           </ListItemIcon>
           <ListItemText
             primary={refreshing ? "Refreshing…" : "Refresh data"}
-            secondary={lastRefreshed ? `Updated ${formatIST(lastRefreshed)}` : "Not refreshed yet"}
+            secondary={
+              <>
+                {lastRefreshed ? `Updated ${formatIST(lastRefreshed)}` : "Not refreshed yet"}
+                {nextRefresh ? <><br />Next {formatIST(nextRefresh)}</> : null}
+              </>
+            }
             primaryTypographyProps={{ fontSize: "0.85rem" }}
-            secondaryTypographyProps={{ fontSize: "0.68rem" }}
+            secondaryTypographyProps={{ fontSize: "0.68rem", component: "span" }}
           />
         </MenuItem>
         <MenuItem onClick={() => { closeUserMenu(); setDrawerOpen(false); setSettingsOpen(true); }}>

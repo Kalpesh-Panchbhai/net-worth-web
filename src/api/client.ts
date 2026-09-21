@@ -236,9 +236,9 @@ export function refreshData() {
   });
 }
 
-/** Epoch millis of the last successful data refresh (scheduled or manual), or null if never run. */
+/** Epoch millis of the last successful refresh (null if never) and the next scheduled one. */
 export function getLastRefreshed() {
-  return request<{ lastRefreshedAt: number | null }>("/refresh");
+  return request<{ lastRefreshedAt: number | null; nextRefreshAt: number | null }>("/refresh");
 }
 
 // Watchlists
