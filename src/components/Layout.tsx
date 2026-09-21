@@ -32,8 +32,9 @@ import FileDownloadRoundedIcon from "@mui/icons-material/FileDownloadRounded";
 import FileUploadRoundedIcon from "@mui/icons-material/FileUploadRounded";
 import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
 import UnfoldMoreRoundedIcon from "@mui/icons-material/UnfoldMoreRounded";
+import ScheduleRoundedIcon from "@mui/icons-material/ScheduleRounded";
 import { useUser } from "../context/UserContext";
-import { deleteUser, invalidateCache, refreshData } from "../api/client";
+import { deleteUser, invalidateCache, refreshData, getLastRefreshed } from "../api/client";
 import { useToast } from "../context/ToastContext";
 import { useColorMode, useTokens } from "../context/ColorModeContext";
 import type { ColorModePref } from "../context/ColorModeContext";
@@ -44,6 +45,14 @@ import { CURRENCIES } from "../constants";
 const SIDEBAR_W = 252;
 const SIDEBAR_W_COLLAPSED = 76;
 const SIDEBAR_COLLAPSED_KEY = "nw_sidebar_collapsed";
+
+/** Last-refresh epoch millis → "21 Sep, 4:30 PM IST", always in India time regardless of device tz. */
+function formatIST(ms: number): string {
+  return new Date(ms).toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata", day: "numeric", month: "short",
+    hour: "numeric", minute: "2-digit", hour12: true,
+  }) + " IST";
+}
 
 // Navigation grouped by intent so the sidebar reads as a short list of sections rather than one
 // long flat menu: everyday views up top, planning tools next, income taxonomy setup last.
@@ -99,6 +108,7 @@ function Layout({ children }: { children: ReactNode }) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<number | null>(null);
   const [savingCurrency, setSavingCurrency] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -119,6 +129,15 @@ function Layout({ children }: { children: ReactNode }) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  // Show when the data was last refreshed (by the scheduled job or a manual refresh).
+  useEffect(() => {
+    let cancelled = false;
+    getLastRefreshed()
+      .then(r => { if (!cancelled && r.lastRefreshedAt) setLastRefreshed(r.lastRefreshedAt); })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   const handleExport = async () => {
@@ -170,6 +189,8 @@ function Layout({ children }: { children: ReactNode }) {
       setRefreshing(true);
       const result = await refreshData();
       showToast(`Data refreshed in ${(result.durationMs / 1000).toFixed(1)}s`, "success");
+      if (result.lastRefreshedAt) setLastRefreshed(result.lastRefreshedAt);
+      invalidateCache("/refresh");
       // Drops the cached money responses and makes the mounted page refetch in place.
       refreshAll();
     } catch {
@@ -338,6 +359,22 @@ function Layout({ children }: { children: ReactNode }) {
         ))}
       </Box>
 
+      {/* Data freshness — when the last (scheduled or manual) refresh ran, in IST */}
+      {lastRefreshed && (rail ? (
+        <Tooltip title={`Data last refreshed ${formatIST(lastRefreshed)}`} placement="right">
+          <Box sx={{ display: "flex", justifyContent: "center", color: colors.gray400, pt: 1 }}>
+            <ScheduleRoundedIcon sx={{ fontSize: 18 }} />
+          </Box>
+        </Tooltip>
+      ) : (
+        <Tooltip title="Auto-refreshes every few hours; use Refresh data to update now">
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.25, pt: 1, color: colors.gray400 }}>
+            <ScheduleRoundedIcon sx={{ fontSize: 14 }} />
+            <Typography sx={{ fontSize: "0.68rem" }} noWrap>Updated {formatIST(lastRefreshed)}</Typography>
+          </Box>
+        </Tooltip>
+      ))}
+
       {/* User — opens a menu with Refresh, Settings, and account actions */}
       {firebaseUser && (
         <Box sx={{ pt: 1 }}>
@@ -479,7 +516,12 @@ function Layout({ children }: { children: ReactNode }) {
               ...(refreshing ? { animation: "spin 1s linear infinite", "@keyframes spin": { from: { transform: "rotate(0deg)" }, to: { transform: "rotate(360deg)" } } } : {}),
             }} />
           </ListItemIcon>
-          <ListItemText primary={refreshing ? "Refreshing…" : "Refresh data"} primaryTypographyProps={{ fontSize: "0.85rem" }} />
+          <ListItemText
+            primary={refreshing ? "Refreshing…" : "Refresh data"}
+            secondary={lastRefreshed ? `Updated ${formatIST(lastRefreshed)}` : "Not refreshed yet"}
+            primaryTypographyProps={{ fontSize: "0.85rem" }}
+            secondaryTypographyProps={{ fontSize: "0.68rem" }}
+          />
         </MenuItem>
         <MenuItem onClick={() => { closeUserMenu(); setDrawerOpen(false); setSettingsOpen(true); }}>
           <ListItemIcon><SettingsRoundedIcon sx={{ fontSize: 20 }} /></ListItemIcon>

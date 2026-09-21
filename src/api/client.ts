@@ -231,9 +231,14 @@ export function saveUserConfig(userId: number, key: string, value: unknown) {
 
 // Refresh
 export function refreshData() {
-  return request<{ message: string; durationMs: number }>("/refresh", {
+  return request<{ message: string; durationMs: number; lastRefreshedAt: number }>("/refresh", {
     method: "POST",
   });
+}
+
+/** Epoch millis of the last successful data refresh (scheduled or manual), or null if never run. */
+export function getLastRefreshed() {
+  return request<{ lastRefreshedAt: number | null }>("/refresh");
 }
 
 // Watchlists
