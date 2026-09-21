@@ -22,6 +22,7 @@ import type {
   MfCategory,
   MfLeaderboard,
   MfFundDetail,
+  MfTable,
 } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://kfgx37r84g.execute-api.ap-south-1.amazonaws.com/prod";
@@ -471,6 +472,15 @@ export function getMfLeaderboard(params: { subCategory: string; metric?: string;
 
 export function getMfFund(schemeCode: number) {
   return request<MfFundDetail>(`/mf-analysis?action=fund&schemeCode=${schemeCode}`);
+}
+
+/** Sortable browse grid: all column metrics per fund at a horizon. Omit subCategory for all funds. */
+export function getMfTable(params: { subCategory?: string; horizon?: string }) {
+  const q = new URLSearchParams();
+  q.set("action", "table");
+  if (params.subCategory) q.set("subCategory", params.subCategory);
+  if (params.horizon) q.set("horizon", params.horizon);
+  return request<MfTable>(`/mf-analysis?${q}`);
 }
 
 export function getStockSyncPreview(accountId: number) {

@@ -292,3 +292,20 @@ export interface MfFundDetail {
   navPoints: number;
   metrics: MfFundMetric[];
 }
+
+/** One fund's row in the browse table: its identity plus a metric-code → value map. */
+export interface MfTableRow {
+  schemeCode: number;
+  name: string;
+  amc: string;
+  assetClass: string;
+  subCategory: string;
+  values: Record<string, number>;
+}
+
+/** The browse table at one horizon: the metric columns present, and one row per fund. */
+export interface MfTable {
+  horizon: string;
+  metrics: string[];
+  rows: MfTableRow[];
+}
