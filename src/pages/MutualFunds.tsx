@@ -2,19 +2,28 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Box, Paper, Typography, Stack, TextField, InputAdornment, MenuItem,
   ToggleButton, ToggleButtonGroup, Chip, Select, FormControl,
-  useMediaQuery, useTheme, ListSubheader,
+  useMediaQuery, useTheme, ListSubheader, Fab,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import InsightsRoundedIcon from "@mui/icons-material/InsightsRounded";
 import ViewListRoundedIcon from "@mui/icons-material/ViewListRounded";
 import CategoryRoundedIcon from "@mui/icons-material/CategoryRounded";
+import PieChartRoundedIcon from "@mui/icons-material/PieChartRounded";
+import StarRoundedIcon from "@mui/icons-material/StarRounded";
+import CompareArrowsRoundedIcon from "@mui/icons-material/CompareArrowsRounded";
 import { getMfCategories, getMfTable } from "../api/client";
 import type { MfCategory, MfTable, MfTableRow } from "../api/types";
 import { PageHeader, EmptyState, ErrorState, ListSkeleton } from "../components/shared";
 import MfFundTable from "../components/MfFundTable";
+import MfCompareDialog from "../components/MfCompareDialog";
+import MfPortfolioPanel from "../components/MfPortfolioPanel";
 import { useTokens } from "../context/ColorModeContext";
+import { useUser } from "../context/UserContext";
+import { useShortlist } from "../context/ShortlistContext";
 import { HORIZONS, assetClassLabel, assetClassRank, type Horizon } from "../utils/mfMetrics";
+
+const MAX_COMPARE = 4;
 
 // Prefer opening on a category people actually search for, when it exists.
 const PREFERRED_DEFAULTS = ["Large Cap", "Flexi Cap", "Mid Cap"];
@@ -23,13 +32,26 @@ const PREFERRED_DEFAULTS = ["Large Cap", "Flexi Cap", "Mid Cap"];
 // "—" at SI while CAGR and max-drawdown stay meaningful.
 const TABLE_HORIZONS = HORIZONS;
 
-type View = "category" | "all";
+type View = "category" | "all" | "portfolio";
 
 function MutualFunds() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const { colors } = useTokens();
+  const { userId } = useUser();
+  const { starred } = useShortlist();
   const isDark = theme.palette.mode === "dark";
+
+  // Compare basket + starred filter.
+  const [compareSet, setCompareSet] = useState<Set<number>>(new Set());
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [starredOnly, setStarredOnly] = useState(false);
+  const toggleCompare = (code: number) => setCompareSet(prev => {
+    const next = new Set(prev);
+    if (next.has(code)) next.delete(code);
+    else if (next.size < MAX_COMPARE) next.add(code);
+    return next;
+  });
 
   const [categories, setCategories] = useState<MfCategory[]>([]);
   const [catLoading, setCatLoading] = useState(true);
@@ -71,6 +93,7 @@ function MutualFunds() {
 
   // Fetch the table: one category in "category" view, every fund in "all" view.
   useEffect(() => {
+    if (view === "portfolio") return;
     if (view === "category" && !selectedSub) return;
     let cancelled = false;
     (async () => {
@@ -112,16 +135,17 @@ function MutualFunds() {
     [categories],
   );
 
-  // All-funds view: apply the search + asset-class + category filters client-side.
+  // All-funds view: apply the search + asset-class + category + starred filters client-side.
   const allRows: MfTableRow[] = useMemo(() => {
     if (!table) return [];
     const q = allSearch.trim().toLowerCase();
     return table.rows.filter(r =>
       (!allAsset || r.assetClass === allAsset) &&
       (!allCategory || r.subCategory === allCategory) &&
+      (!starredOnly || starred.has(r.schemeCode)) &&
       (!q || r.name.toLowerCase().includes(q) || r.amc.toLowerCase().includes(q)),
     );
-  }, [table, allSearch, allAsset, allCategory]);
+  }, [table, allSearch, allAsset, allCategory, starredOnly, starred]);
 
   if (catError && categories.length === 0 && !catLoading) {
     return <ErrorState message={catError} onRetry={() => window.location.reload()} />;
@@ -189,6 +213,9 @@ function MutualFunds() {
       rows={view === "category" ? table.rows : allRows}
       metrics={table.metrics}
       showCategory={view === "all"}
+      selected={compareSet}
+      onToggleSelect={toggleCompare}
+      selectionFull={compareSet.size >= MAX_COMPARE}
     />
   );
 
@@ -206,11 +233,14 @@ function MutualFunds() {
         <ToggleButtonGroup exclusive size="small" value={view} onChange={(_, v) => { if (v) setView(v); }}>
           <ToggleButton value="category" sx={{ px: 1.75, gap: 0.75 }}><CategoryRoundedIcon sx={{ fontSize: 18 }} /> By category</ToggleButton>
           <ToggleButton value="all" sx={{ px: 1.75, gap: 0.75 }}><ViewListRoundedIcon sx={{ fontSize: 18 }} /> All funds</ToggleButton>
+          <ToggleButton value="portfolio" sx={{ px: 1.75, gap: 0.75 }}><PieChartRoundedIcon sx={{ fontSize: 18 }} /> My funds</ToggleButton>
         </ToggleButtonGroup>
-        <Stack direction="row" spacing={1} alignItems="center">
-          <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>Horizon</Typography>
-          {HorizonSelector}
-        </Stack>
+        {view !== "portfolio" && (
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>Horizon</Typography>
+            {HorizonSelector}
+          </Stack>
+        )}
       </Stack>
 
       {view === "category" ? (
@@ -239,7 +269,7 @@ function MutualFunds() {
             {TableArea}
           </Paper>
         </Box>
-      ) : (
+      ) : view === "all" ? (
         <Paper sx={{ p: { xs: 1.5, sm: 2.5 } }}>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ mb: 2 }}>
             <TextField
@@ -266,13 +296,29 @@ function MutualFunds() {
                 ])}
               </Select>
             </FormControl>
+            <ToggleButton value="starred" selected={starredOnly} size="small"
+              onChange={() => setStarredOnly(s => !s)}
+              sx={{ px: 1.5, gap: 0.5, whiteSpace: "nowrap", ...(starredOnly ? { color: "#F59E0B !important" } : {}) }}>
+              <StarRoundedIcon sx={{ fontSize: 18 }} /> Starred{starred.size ? ` (${starred.size})` : ""}
+            </ToggleButton>
           </Stack>
           <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
             {table ? `${allRows.length.toLocaleString("en-IN")} funds · ${horizon} · tap a column to sort` : "Loading…"}
           </Typography>
           {TableArea}
         </Paper>
+      ) : (
+        userId != null ? <MfPortfolioPanel userId={userId} /> : null
       )}
+
+      {/* Compare basket → floating action, opens the side-by-side dialog */}
+      {compareSet.size >= 2 && (
+        <Fab color="primary" variant="extended" onClick={() => setCompareOpen(true)}
+          sx={{ position: "fixed", bottom: { xs: 24, sm: 32 }, right: { xs: 24, sm: 32 }, zIndex: 1200, textTransform: "none", fontWeight: 700 }}>
+          <CompareArrowsRoundedIcon sx={{ mr: 1 }} /> Compare ({compareSet.size})
+        </Fab>
+      )}
+      <MfCompareDialog schemeCodes={[...compareSet]} open={compareOpen} onClose={() => setCompareOpen(false)} />
     </Stack>
   );
 }

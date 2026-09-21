@@ -2,10 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Box, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  TableSortLabel, TablePagination, Typography, Tooltip, Chip,
+  TableSortLabel, TablePagination, Typography, Tooltip, Chip, Checkbox, IconButton,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
+import StarRoundedIcon from "@mui/icons-material/StarRounded";
+import StarBorderRoundedIcon from "@mui/icons-material/StarBorderRounded";
 import { useTokens } from "../context/ColorModeContext";
+import { useShortlist } from "../context/ShortlistContext";
 import { metricMeta, formatMetricValue, isSignedMetric, assetClassLabel } from "../utils/mfMetrics";
 import type { MfTableRow } from "../api/types";
 
@@ -17,15 +20,22 @@ interface Props {
   metrics: string[];
   /** Show a category column (used by the all-funds view). */
   showCategory?: boolean;
+  /** When set, a compare checkbox column appears; selection is controlled by the parent. */
+  selected?: Set<number>;
+  onToggleSelect?: (schemeCode: number) => void;
+  /** Disable ticking more rows once the compare cap is hit (already-ticked rows stay tickable off). */
+  selectionFull?: boolean;
 }
 
 /**
  * A sortable, paginated grid of funds. Every metric is a column; clicking a header sorts by it,
  * defaulting to the metric's natural "best first" direction. Funds missing a value sort last.
  */
-export default function MfFundTable({ rows, metrics, showCategory = false }: Props) {
+export default function MfFundTable({ rows, metrics, showCategory = false, selected, onToggleSelect, selectionFull = false }: Props) {
   const navigate = useNavigate();
   const { colors } = useTokens();
+  const { isStarred, toggle: toggleStar } = useShortlist();
+  const selectable = !!onToggleSelect;
 
   const [orderBy, setOrderBy] = useState<SortKey>(metrics[0] ?? "name");
   const [order, setOrder] = useState<"asc" | "desc">("desc");
@@ -81,6 +91,8 @@ export default function MfFundTable({ rows, metrics, showCategory = false }: Pro
         <Table size="small" stickyHeader sx={{ minWidth: 620 }}>
           <TableHead>
             <TableRow>
+              {selectable && <TableCell padding="checkbox" sx={{ ...headCell }} />}
+              <TableCell sx={{ ...headCell, width: 36 }} />
               <TableCell sx={{ ...headCell, ...stickyLeft, zIndex: 3, minWidth: 200 }}
                 sortDirection={orderBy === "name" ? order : false}>
                 <TableSortLabel active={orderBy === "name"} direction={orderBy === "name" ? order : "asc"}
@@ -106,6 +118,19 @@ export default function MfFundTable({ rows, metrics, showCategory = false }: Pro
             {paged.map(r => (
               <TableRow key={r.schemeCode} hover onClick={() => navigate(`/mutual-funds/${r.schemeCode}`)}
                 sx={{ cursor: "pointer", "&:last-child td": { borderBottom: 0 } }}>
+                {selectable && (
+                  <TableCell padding="checkbox" sx={{ borderBottom: `1px solid ${colors.gray100}` }} onClick={e => e.stopPropagation()}>
+                    <Checkbox size="small" checked={selected?.has(r.schemeCode) ?? false}
+                      disabled={selectionFull && !(selected?.has(r.schemeCode))}
+                      onChange={() => onToggleSelect!(r.schemeCode)} />
+                  </TableCell>
+                )}
+                <TableCell sx={{ borderBottom: `1px solid ${colors.gray100}`, pr: 0 }} onClick={e => e.stopPropagation()}>
+                  <IconButton size="small" onClick={() => toggleStar(r.schemeCode)}
+                    sx={{ color: isStarred(r.schemeCode) ? "#F59E0B" : colors.gray300 }}>
+                    {isStarred(r.schemeCode) ? <StarRoundedIcon sx={{ fontSize: 18 }} /> : <StarBorderRoundedIcon sx={{ fontSize: 18 }} />}
+                  </IconButton>
+                </TableCell>
                 <TableCell sx={{ ...stickyLeft, borderBottom: `1px solid ${colors.gray100}` }}>
                   <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, lineHeight: 1.25 }} noWrap>{r.name}</Typography>
                   <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>{r.amc}</Typography>

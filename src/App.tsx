@@ -18,6 +18,7 @@ import Login from "./pages/Login";
 import KiteCallback from "./pages/KiteCallback";
 import Layout from "./components/Layout";
 import { UserProvider, useUser } from "./context/UserContext";
+import { ShortlistProvider } from "./context/ShortlistContext";
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -53,6 +54,7 @@ function AuthGate() {
   }
 
   return (
+    <ShortlistProvider userId={userId}>
     <Layout>
       <ScrollToTop />
       <Routes>
@@ -72,6 +74,7 @@ function AuthGate() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>
+    </ShortlistProvider>
   );
 }
 

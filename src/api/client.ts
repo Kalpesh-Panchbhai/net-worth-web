@@ -23,6 +23,8 @@ import type {
   MfLeaderboard,
   MfFundDetail,
   MfTable,
+  MfNavSeries,
+  MfPortfolio,
 } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://kfgx37r84g.execute-api.ap-south-1.amazonaws.com/prod";
@@ -44,7 +46,10 @@ const LONG_TTL_PREFIXES = ["/mf-analysis"];
 const NEVER_CACHE = ["/sync-mf"];
 
 function ttlFor(url: string): number {
-  return LONG_TTL_PREFIXES.some(prefix => url.startsWith(prefix)) ? LONG_TTL_MS : TTL_MS;
+  // The catalog/metrics are recomputed daily, so cache them long — but the personal portfolio
+  // reflects live holdings and value, so it keeps the short default TTL.
+  const longable = LONG_TTL_PREFIXES.some(prefix => url.startsWith(prefix)) && !url.includes("action=portfolio");
+  return longable ? LONG_TTL_MS : TTL_MS;
 }
 
 interface CacheEntry { data: unknown; storedAt: number }
@@ -481,6 +486,16 @@ export function getMfTable(params: { subCategory?: string; horizon?: string }) {
   if (params.subCategory) q.set("subCategory", params.subCategory);
   if (params.horizon) q.set("horizon", params.horizon);
   return request<MfTable>(`/mf-analysis?${q}`);
+}
+
+/** A fund's (downsampled) NAV curve — for the growth chart and the SIP/lumpsum calculator. */
+export function getMfNav(schemeCode: number) {
+  return request<MfNavSeries>(`/mf-analysis?action=nav&schemeCode=${schemeCode}`);
+}
+
+/** The user's held mutual funds, ranked and valued — for "my funds" and the portfolio X-ray. */
+export function getMfPortfolio(userId: number) {
+  return request<MfPortfolio>(`/mf-analysis?action=portfolio&userId=${userId}`);
 }
 
 export function getStockSyncPreview(accountId: number) {

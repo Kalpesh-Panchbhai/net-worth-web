@@ -6,10 +6,15 @@ import {
 import { alpha } from "@mui/material/styles";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Cell, ReferenceLine } from "recharts";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
+import StarRoundedIcon from "@mui/icons-material/StarRounded";
+import StarBorderRoundedIcon from "@mui/icons-material/StarBorderRounded";
+import EmojiEventsRoundedIcon from "@mui/icons-material/EmojiEventsRounded";
 import { getMfFund } from "../api/client";
 import type { MfFundDetail } from "../api/types";
 import { ErrorState, ChartSkeleton } from "../components/shared";
+import MfGrowthAndCalculator from "../components/MfGrowthAndCalculator";
 import { useTokens } from "../context/ColorModeContext";
+import { useShortlist } from "../context/ShortlistContext";
 import {
   formatMetricValue, assetClassLabel, isSignedMetric, metricMeta,
   DETAIL_METRIC_GROUPS, HORIZONS,
@@ -27,6 +32,7 @@ function MutualFundDetail() {
   const navigate = useNavigate();
   const theme = useTheme();
   const { colors, shadow } = useTokens();
+  const { isStarred, toggle } = useShortlist();
   const isDark = theme.palette.mode === "dark";
 
   const [detail, setDetail] = useState<MfFundDetail | null>(null);
@@ -157,6 +163,22 @@ function MutualFundDetail() {
     </Box>
   );
 
+  // "Top X% · <label>" chip from the precomputed category rank, medal-highlighted when near the top.
+  const rankBadge = (horizon: string, metric: string, label: string) => {
+    const r = detail.ranks.find(x => x.horizon === horizon && x.metric === metric);
+    if (!r) return null;
+    const topPct = Math.max(1, Math.round(100 - r.percentile));
+    const strong = r.rank <= 3 || r.percentile >= 90;
+    const color = strong ? "#F59E0B" : colors.brand;
+    return (
+      <Tooltip title={`Rank ${r.rank} of ${r.peerCount} in ${detail.subCategory} · ${label}`}>
+        <Chip size="small" icon={strong ? <EmojiEventsRoundedIcon sx={{ fontSize: 15 }} /> : undefined}
+          label={`Top ${topPct}% · ${label}`}
+          sx={{ bgcolor: alpha(color, 0.12), color, fontWeight: 700, "& .MuiChip-icon": { color } }} />
+      </Tooltip>
+    );
+  };
+
   return (
     <Stack spacing={{ xs: 2, sm: 2.5 }}>
       {/* Header */}
@@ -171,8 +193,17 @@ function MutualFundDetail() {
             <Chip size="small" label={assetClassLabel(detail.assetClass)} sx={{ bgcolor: alpha(colors.brand, 0.1), color: colors.brand, fontWeight: 600 }} />
             <Chip size="small" label={detail.subCategory} sx={{ bgcolor: alpha(colors.accent, 0.1), color: colors.accent, fontWeight: 600 }} />
             <Chip size="small" variant="outlined" label={`Direct · Growth`} />
+            {/* Category standing badges from precomputed ranks */}
+            {rankBadge("5Y", "cagr", "5Y CAGR")}
+            {rankBadge("3Y", "sharpe", "3Y Sharpe")}
           </Stack>
         </Box>
+        <Tooltip title={isStarred(detail.schemeCode) ? "Remove from shortlist" : "Add to shortlist"}>
+          <IconButton onClick={() => toggle(detail.schemeCode)} size="small"
+            sx={{ mt: 0.25, border: `1px solid ${colors.gray200}`, color: isStarred(detail.schemeCode) ? "#F59E0B" : colors.gray400 }}>
+            {isStarred(detail.schemeCode) ? <StarRoundedIcon fontSize="small" /> : <StarBorderRoundedIcon fontSize="small" />}
+          </IconButton>
+        </Tooltip>
       </Box>
 
       {/* Coverage strip */}
@@ -203,6 +234,9 @@ function MutualFundDetail() {
         </Typography>
         {metricsMatrix}
       </Section>
+
+      {/* Growth of ₹10,000 + SIP/lumpsum calculator */}
+      <MfGrowthAndCalculator schemeCode={detail.schemeCode} />
 
       {/* CAGR by horizon chart */}
       <Section title="CAGR by horizon">

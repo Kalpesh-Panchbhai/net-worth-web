@@ -280,6 +280,15 @@ export interface MfFundMetric {
   value: number;
 }
 
+/** One fund's category standing on a (horizon, metric). percentile: 100 = best, rank: 1 = best. */
+export interface MfFundRank {
+  horizon: string;
+  metric: string;
+  rank: number;
+  percentile: number;
+  peerCount: number;
+}
+
 export interface MfFundDetail {
   schemeCode: number;
   name: string;
@@ -291,6 +300,34 @@ export interface MfFundDetail {
   lastNavDate: string;
   navPoints: number;
   metrics: MfFundMetric[];
+  ranks: MfFundRank[];
+}
+
+export interface MfNavPoint { date: string; nav: number; }
+export interface MfNavSeries { schemeCode: number; name: string; points: MfNavPoint[]; }
+
+/** One held fund enriched with current value, headline metrics and category standing. */
+export interface MfPortfolioHolding {
+  schemeCode: number;
+  name: string;
+  amc: string;
+  assetClass: string;
+  subCategory: string;
+  units: number;
+  invested: number;
+  currentValue: number;
+  cagr5y: number | null;
+  cagrSi: number | null;
+  sharpe3y: number | null;
+  rank: number | null;
+  percentile: number | null;
+  peerCount: number | null;
+}
+
+export interface MfPortfolio {
+  totalInvested: number;
+  totalValue: number;
+  holdings: MfPortfolioHolding[];
 }
 
 /** One fund's row in the browse table: its identity plus a metric-code → value map. */
