@@ -34,6 +34,52 @@ export function historyYears(points: MfNavPoint[]): number {
   return (last - first) / (365.25 * 24 * 3600 * 1000);
 }
 
+export interface GrowthPoint { date: string; value: number; invested: number; }
+
+/**
+ * Portfolio value vs cumulative amount invested over the selected window, matching the calculator.
+ * Lumpsum invested is flat; SIP invested steps up each month. Used to plot both lines.
+ */
+export function growthSeries(points: MfNavPoint[], mode: "sip" | "lumpsum", amount: number, years: number): GrowthPoint[] {
+  if (points.length < 2 || amount <= 0) return [];
+  const endIso = points[points.length - 1].date;
+  const startIso = isoMinusYears(endIso, years) < points[0].date ? points[0].date : isoMinusYears(endIso, years);
+  const windowPts = points.filter(p => p.date >= startIso);
+  if (windowPts.length < 2) return [];
+
+  if (mode === "lumpsum") {
+    const startNav = navOnOrBefore(points, startIso) ?? windowPts[0].nav;
+    if (startNav <= 0) return [];
+    const units = amount / startNav;
+    return windowPts.map(p => ({ date: p.date, value: Math.round(units * p.nav), invested: amount }));
+  }
+
+  // SIP: build a monthly schedule of cumulative units + invested, then read it off at each point.
+  const endMs = new Date(endIso).getTime();
+  const schedule: { ms: number; cumUnits: number; cumInvested: number }[] = [];
+  let cumUnits = 0;
+  let cumInvested = 0;
+  const cur = new Date(startIso);
+  while (cur.getTime() < endMs) {
+    const iso = cur.toISOString().slice(0, 10);
+    const nav = navOnOrBefore(points, iso);
+    if (nav != null && nav > 0) { cumUnits += amount / nav; cumInvested += amount; schedule.push({ ms: cur.getTime(), cumUnits, cumInvested }); }
+    cur.setMonth(cur.getMonth() + 1);
+  }
+  if (schedule.length === 0) return [];
+
+  const out: GrowthPoint[] = [];
+  let si = 0;
+  for (const p of windowPts) {
+    const pms = new Date(p.date).getTime();
+    if (pms < schedule[0].ms) continue;
+    while (si + 1 < schedule.length && schedule[si + 1].ms <= pms) si++;
+    const s = schedule[si];
+    out.push({ date: p.date, value: Math.round(s.cumUnits * p.nav), invested: s.cumInvested });
+  }
+  return out;
+}
+
 /** Lumpsum: invest once `years` ago, valued at the latest NAV. */
 export function lumpsum(points: MfNavPoint[], amount: number, years: number): CalcResult | null {
   if (points.length < 2 || amount <= 0) return null;

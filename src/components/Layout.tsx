@@ -87,6 +87,10 @@ function Layout({ children }: { children: ReactNode }) {
   // Desktop-only rail collapse, remembered across sessions.
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
   useEffect(() => { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0"); }, [collapsed]);
+  // Hovering a collapsed rail expands it temporarily (overlaying content) without changing the
+  // saved preference; the rail is the icon-only mode only while collapsed AND not hovered.
+  const [hovering, setHovering] = useState(false);
+  const rail = collapsed && !hovering;
   const sidebarW = collapsed ? SIDEBAR_W_COLLAPSED : SIDEBAR_W;
   const { firebaseUser, userId, logout, preferredCurrency, setPreferredCurrency, refreshAll } = useUser();
   const { showToast } = useToast();
@@ -377,17 +381,22 @@ function Layout({ children }: { children: ReactNode }) {
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "background.default", overflowX: "hidden", maxWidth: "100vw" }}>
-      {/* Desktop sidebar */}
+      {/* Desktop sidebar — a collapsed rail expands on hover, overlaying the content */}
       {isDesktop && (
-        <Box sx={{
-          width: sidebarW, flexShrink: 0,
-          borderRight: `1px solid ${colors.gray200}`,
-          bgcolor: colors.white,
-          position: "fixed", top: 0, left: 0, bottom: 0,
-          overflowY: "auto", overflowX: "hidden", zIndex: 1200,
-          transition: "width 0.2s ease",
-        }}>
-          {renderSidebar(collapsed)}
+        <Box
+          onMouseEnter={() => collapsed && setHovering(true)}
+          onMouseLeave={() => setHovering(false)}
+          sx={{
+            width: rail ? SIDEBAR_W_COLLAPSED : SIDEBAR_W, flexShrink: 0,
+            borderRight: `1px solid ${colors.gray200}`,
+            bgcolor: colors.white,
+            position: "fixed", top: 0, left: 0, bottom: 0,
+            overflowY: "auto", overflowX: "hidden", zIndex: 1200,
+            transition: "width 0.18s ease",
+            boxShadow: collapsed && hovering ? shadow.lg : "none",
+          }}
+        >
+          {renderSidebar(rail)}
         </Box>
       )}
 

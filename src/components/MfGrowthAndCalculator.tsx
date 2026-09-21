@@ -4,17 +4,21 @@ import {
   InputAdornment, MenuItem, Select, FormControl,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip } from "recharts";
+import { ResponsiveContainer, ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Legend } from "recharts";
 import { getMfNav } from "../api/client";
 import type { MfNavSeries } from "../api/types";
 import { ChartSkeleton } from "./shared";
 import { useTokens } from "../context/ColorModeContext";
-import { historyYears, lumpsum, sip, type CalcResult } from "../utils/mfCalc";
+import { historyYears, lumpsum, sip, growthSeries, type CalcResult } from "../utils/mfCalc";
 
 const YEAR_OPTIONS = [1, 2, 3, 5, 7, 10];
 
 function inr(n: number): string {
   return "₹" + Math.round(n).toLocaleString("en-IN");
+}
+
+function axisMoney(v: number): string {
+  return v >= 1e5 ? `₹${(v / 1e5).toFixed(1)}L` : `₹${(v / 1000).toFixed(0)}k`;
 }
 
 export default function MfGrowthAndCalculator({ schemeCode }: { schemeCode: number }) {
@@ -36,11 +40,10 @@ export default function MfGrowthAndCalculator({ schemeCode }: { schemeCode: numb
     return () => { cancelled = true; };
   }, [schemeCode]);
 
-  const growth = useMemo(() => {
-    if (!nav || nav.points.length < 2) return [];
-    const base = nav.points[0].nav;
-    return nav.points.map(p => ({ date: p.date, value: +(10000 * (p.nav / base)).toFixed(0) }));
-  }, [nav]);
+  const growth = useMemo(
+    () => (nav ? growthSeries(nav.points, mode, amount, years) : []),
+    [nav, mode, amount, years],
+  );
 
   const maxYears = nav ? Math.floor(historyYears(nav.points)) : 0;
   const yearChoices = YEAR_OPTIONS.filter(y => y <= maxYears);
@@ -56,7 +59,7 @@ export default function MfGrowthAndCalculator({ schemeCode }: { schemeCode: numb
   }, [nav, mode, amount, years]);
 
   if (loading) return <ChartSkeleton />;
-  if (!nav || growth.length < 2) return null;
+  if (!nav) return null;
 
   const gainColor = result && result.gain >= 0 ? colors.success : colors.error;
 
@@ -64,39 +67,48 @@ export default function MfGrowthAndCalculator({ schemeCode }: { schemeCode: numb
     <Paper sx={{ p: { xs: 2, sm: 2.5 } }}>
       <Typography variant="subtitle1" sx={{ mb: 1.5 }}>Growth & returns calculator</Typography>
 
-      {/* Growth of ₹10,000 */}
+      {/* Value vs amount invested, over the selected period/mode */}
       <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-        Growth of ₹10,000 invested at the start of the fund's history.
+        Value vs amount invested for the {mode === "sip" ? "monthly SIP" : "lumpsum"} over {years} year{years > 1 ? "s" : ""}.
       </Typography>
-      <Box sx={{ height: 220 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={growth} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-            <defs>
-              <linearGradient id="mfgrow" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={colors.brand} stopOpacity={0.35} />
-                <stop offset="100%" stopColor={colors.brand} stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke={colors.gray200} vertical={false} />
-            <XAxis dataKey="date" tick={{ fontSize: 11, fill: colors.gray500 }} axisLine={false} tickLine={false}
-              tickFormatter={(d: string) => d.slice(0, 4)} minTickGap={48} />
-            <YAxis tick={{ fontSize: 11, fill: colors.gray500 }} axisLine={false} tickLine={false}
-              tickFormatter={(v: number) => `₹${(v / 1000).toFixed(0)}k`} width={44} />
-            <RTooltip
-              content={({ active, payload, label }: any) => {
-                if (!active || !payload?.length) return null;
-                return (
-                  <Box sx={{ bgcolor: colors.white, border: `1px solid ${colors.gray200}`, borderRadius: 2, boxShadow: shadow.md, p: 1.25 }}>
-                    <Typography sx={{ fontSize: 11, color: colors.gray400, mb: 0.5 }}>{label}</Typography>
-                    <Typography sx={{ fontSize: 13, fontWeight: 700, color: colors.brand }}>{inr(payload[0].value as number)}</Typography>
-                  </Box>
-                );
-              }}
-            />
-            <Area type="monotone" dataKey="value" stroke={colors.brand} strokeWidth={2} fill="url(#mfgrow)" />
-          </AreaChart>
-        </ResponsiveContainer>
-      </Box>
+      {growth.length < 2 ? (
+        <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>Not enough history for this period.</Typography>
+      ) : (
+        <Box sx={{ height: 240 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={growth} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="mfgrow" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={colors.brand} stopOpacity={0.3} />
+                  <stop offset="100%" stopColor={colors.brand} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke={colors.gray200} vertical={false} />
+              <XAxis dataKey="date" tick={{ fontSize: 11, fill: colors.gray500 }} axisLine={false} tickLine={false}
+                tickFormatter={(d: string) => d.slice(0, 7)} minTickGap={48} />
+              <YAxis tick={{ fontSize: 11, fill: colors.gray500 }} axisLine={false} tickLine={false}
+                tickFormatter={axisMoney} width={48} />
+              <RTooltip
+                content={({ active, payload, label }: any) => {
+                  if (!active || !payload?.length) return null;
+                  const byKey: Record<string, number> = {};
+                  payload.forEach((p: any) => { byKey[p.dataKey] = p.value; });
+                  return (
+                    <Box sx={{ bgcolor: colors.white, border: `1px solid ${colors.gray200}`, borderRadius: 2, boxShadow: shadow.md, p: 1.25 }}>
+                      <Typography sx={{ fontSize: 11, color: colors.gray400, mb: 0.5 }}>{label}</Typography>
+                      <Typography sx={{ fontSize: 13, fontWeight: 700, color: colors.brand }}>Value: {inr(byKey.value)}</Typography>
+                      <Typography sx={{ fontSize: 12, fontWeight: 600, color: colors.gray500 }}>Invested: {inr(byKey.invested)}</Typography>
+                    </Box>
+                  );
+                }}
+              />
+              <Legend formatter={(v: string) => (v === "value" ? "Value" : "Invested")} />
+              <Area type="monotone" dataKey="value" stroke={colors.brand} strokeWidth={2} fill="url(#mfgrow)" />
+              <Line type="monotone" dataKey="invested" stroke={colors.gray400} strokeWidth={2} strokeDasharray="5 4" dot={false} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </Box>
+      )}
 
       {/* Calculator */}
       <Box sx={{ mt: 2, p: { xs: 1.5, sm: 2 }, borderRadius: 2, border: `1px solid ${colors.gray200}`, bgcolor: alpha(colors.brand, 0.02) }}>
