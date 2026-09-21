@@ -55,29 +55,35 @@ export function sip(points: MfNavPoint[], monthly: number, years: number): CalcR
   const startIso = isoMinusYears(endIso, years);
   if (startIso < points[0].date) return null;
 
+  const YEAR_MS = 365.25 * 24 * 3600 * 1000;
+  const startMs = new Date(startIso).getTime();
+  const endMs = new Date(endIso).getTime();
   const flows: { years: number; amt: number }[] = [];
   let units = 0;
   let invested = 0;
+  // One installment per month up to (but not including) the end, so a 5-year SIP is 60 of them.
+  // `years` here is time measured forward from the first installment — the XIRR reference point.
   const cur = new Date(startIso);
-  const end = new Date(endIso);
-  const endMs = end.getTime();
-  while (cur.getTime() <= endMs) {
+  while (cur.getTime() < endMs) {
     const iso = cur.toISOString().slice(0, 10);
     const nav = navOnOrBefore(points, iso);
     if (nav != null && nav > 0) {
       units += monthly / nav;
       invested += monthly;
-      flows.push({ years: (endMs - cur.getTime()) / (365.25 * 24 * 3600 * 1000), amt: -monthly });
+      flows.push({ years: (cur.getTime() - startMs) / YEAR_MS, amt: -monthly });
     }
     cur.setMonth(cur.getMonth() + 1);
   }
   if (invested <= 0) return null;
   const value = units * endNav;
-  flows.push({ years: 0, amt: value });
+  flows.push({ years: (endMs - startMs) / YEAR_MS, amt: value });
   return { invested, value, gain: value - invested, annualized: xirr(flows) };
 }
 
-/** Money-weighted annualised rate: solves NPV(r)=0 by bisection. Flows carry years-to-end. */
+/**
+ * Money-weighted annualised rate: solves NPV(r)=0 by bisection, with each flow's `years` measured
+ * forward from the first flow — investments negative, the closing value positive.
+ */
 function xirr(flows: { years: number; amt: number }[]): number | null {
   const npv = (r: number) => flows.reduce((s, f) => s + f.amt / Math.pow(1 + r, f.years), 0);
   let lo = -0.9999;

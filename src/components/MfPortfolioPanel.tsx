@@ -93,7 +93,7 @@ export default function MfPortfolioPanel({ userId }: { userId: number }) {
         <Paper sx={{ p: { xs: 1.5, sm: 2.5 } }}>
           <Typography variant="subtitle1" sx={{ mb: 0.5 }}>How my funds rank</Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
-            Each fund's standing in its category on 5-year CAGR — where your pick sits among its peers.
+            Each fund's standing in its category on CAGR (5-year where available, else the longest the fund's history supports).
           </Typography>
           <Stack spacing={0.75}>
             {ranked.map(h => {
@@ -114,14 +114,14 @@ export default function MfPortfolioPanel({ userId }: { userId: number }) {
                     {topPct == null ? (
                       <Typography variant="caption" color="text.secondary">Not ranked</Typography>
                     ) : (
-                      <Tooltip title={`Rank ${h.rank} of ${h.peerCount} · 5Y CAGR ${h.cagr5y == null ? "—" : (h.cagr5y * 100).toFixed(1) + "%"}`}>
+                      <Tooltip title={`Rank ${h.rank} of ${h.peerCount} · ${h.rankHorizon ?? ""} CAGR ${h.rankCagr == null ? "—" : (h.rankCagr * 100).toFixed(1) + "%"}`}>
                         <Chip size="small" icon={strong ? <EmojiEventsRoundedIcon sx={{ fontSize: 14 }} /> : undefined}
                           label={`Top ${topPct}%`}
                           sx={{ height: 22, fontWeight: 700, bgcolor: alpha(badgeColor, 0.12), color: badgeColor, "& .MuiChip-icon": { color: badgeColor } }} />
                       </Tooltip>
                     )}
                     <Typography variant="caption" sx={{ display: "block", color: colors.gray400 }}>
-                      {h.rank != null ? `#${h.rank} of ${h.peerCount}` : ""}
+                      {h.rank != null ? `#${h.rank} of ${h.peerCount} · ${h.rankHorizon}` : ""}
                     </Typography>
                   </Box>
                   <ChevronRightRoundedIcon sx={{ color: colors.gray400, fontSize: 20 }} />

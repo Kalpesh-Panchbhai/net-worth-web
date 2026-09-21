@@ -322,6 +322,9 @@ export interface MfPortfolioHolding {
   rank: number | null;
   percentile: number | null;
   peerCount: number | null;
+  /** CAGR horizon the standing was measured over (best available, e.g. "4Y" for a young fund). */
+  rankHorizon: string | null;
+  rankCagr: number | null;
 }
 
 export interface MfPortfolio {
