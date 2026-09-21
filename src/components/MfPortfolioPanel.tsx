@@ -2,15 +2,19 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Box, Paper, Typography, Stack, Chip, LinearProgress, Tooltip,
+  ToggleButton, ToggleButtonGroup,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import EmojiEventsRoundedIcon from "@mui/icons-material/EmojiEventsRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
+import PieChartRoundedIcon from "@mui/icons-material/PieChartRounded";
+import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
 import { getMfPortfolio } from "../api/client";
 import type { MfPortfolio, MfPortfolioHolding } from "../api/types";
 import { EmptyState, ErrorState, ListSkeleton } from "./shared";
 import { useTokens } from "../context/ColorModeContext";
 import { assetClassLabel, assetClassRank } from "../utils/mfMetrics";
+import MfHoldersView from "./MfHoldersView";
 
 function inr(n: number): string {
   return "₹" + Math.round(n).toLocaleString("en-IN");
@@ -28,6 +32,7 @@ export default function MfPortfolioPanel({ userId }: { userId: number }) {
   const [pf, setPf] = useState<MfPortfolio | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sub, setSub] = useState<"overview" | "holders">("overview");
 
   useEffect(() => {
     let cancelled = false;
@@ -73,6 +78,13 @@ export default function MfPortfolioPanel({ userId }: { userId: number }) {
 
   return (
     <Stack spacing={{ xs: 2, sm: 2.5 }}>
+      <ToggleButtonGroup exclusive size="small" value={sub} onChange={(_, v) => { if (v) setSub(v); }}>
+        <ToggleButton value="overview" sx={{ px: 1.75, gap: 0.75 }}><PieChartRoundedIcon sx={{ fontSize: 18 }} /> Overview</ToggleButton>
+        <ToggleButton value="holders" sx={{ px: 1.75, gap: 0.75 }}><GroupsRoundedIcon sx={{ fontSize: 18 }} /> By holder</ToggleButton>
+      </ToggleButtonGroup>
+
+      {sub === "holders" ? <MfHoldersView userId={userId} pf={pf} /> : (
+      <>
       {/* Summary */}
       <Paper sx={{ p: { xs: 1.5, sm: 2 }, display: "flex", flexWrap: "wrap", gap: { xs: 2, sm: 4 } }}>
         {[
@@ -148,6 +160,8 @@ export default function MfPortfolioPanel({ userId }: { userId: number }) {
           </Box>
         </Paper>
       </Box>
+      </>
+      )}
     </Stack>
   );
 }
