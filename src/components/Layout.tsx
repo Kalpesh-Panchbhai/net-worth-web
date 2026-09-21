@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
-  Box, Typography, Avatar, ToggleButtonGroup, ToggleButton,
+  Box, Typography, Avatar, ToggleButtonGroup, ToggleButton, Stack,
   Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText,
   IconButton, Divider, Dialog, DialogTitle, DialogContent, DialogActions, Button,
   TextField, Menu, MenuItem, Tooltip, CircularProgress,
@@ -9,6 +9,8 @@ import {
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import MenuIcon from "@mui/icons-material/Menu";
+import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
+import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import DashboardRoundedIcon from "@mui/icons-material/DashboardRounded";
 import AccountBalanceWalletRoundedIcon from "@mui/icons-material/AccountBalanceWalletRounded";
 import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
@@ -40,6 +42,8 @@ import { exportData, downloadBackup, parseBackup, importData, type BackupFile } 
 import { CURRENCIES } from "../constants";
 
 const SIDEBAR_W = 252;
+const SIDEBAR_W_COLLAPSED = 76;
+const SIDEBAR_COLLAPSED_KEY = "nw_sidebar_collapsed";
 
 // Navigation grouped by intent so the sidebar reads as a short list of sections rather than one
 // long flat menu: everyday views up top, planning tools next, income taxonomy setup last.
@@ -80,6 +84,10 @@ function Layout({ children }: { children: ReactNode }) {
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up("md"));
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // Desktop-only rail collapse, remembered across sessions.
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
+  useEffect(() => { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0"); }, [collapsed]);
+  const sidebarW = collapsed ? SIDEBAR_W_COLLAPSED : SIDEBAR_W;
   const { firebaseUser, userId, logout, preferredCurrency, setPreferredCurrency, refreshAll } = useUser();
   const { showToast } = useToast();
   const { preference, setPreference, privacyMode, togglePrivacy } = useColorMode();
@@ -198,8 +206,10 @@ function Layout({ children }: { children: ReactNode }) {
   const isActive = (path: string) =>
     path === "/" ? location.pathname === "/" : location.pathname.startsWith(path);
 
-  const navItemSx = (path: string) => ({
-    borderRadius: 2.5, py: 1, px: 1.5, mb: 0.25,
+  const navItemSx = (path: string, rail = false) => ({
+    borderRadius: 2.5, py: 1, mb: 0.25,
+    px: rail ? 0 : 1.5,
+    justifyContent: rail ? "center" : "flex-start",
     color: colors.gray600,
     transition: "all 0.15s ease",
     ...(isActive(path) ? {
@@ -212,73 +222,111 @@ function Layout({ children }: { children: ReactNode }) {
     }),
   });
 
-  const sidebarContent = (
-    <Box sx={{ display: "flex", flexDirection: "column", height: "100%", py: 2.5, px: 2 }}>
-      {/* Logo */}
-      <Box
-        sx={{ px: 1, mb: 2.5, display: "flex", alignItems: "center", gap: 1.5, cursor: "pointer" }}
-        onClick={() => { navigate("/"); setDrawerOpen(false); }}
-      >
-        <Box
-          component="img"
-          src="/favicon.svg"
-          alt="Net Worth"
-          sx={{ width: 34, height: 34, borderRadius: 2 }}
-        />
-        <Typography sx={{ fontWeight: 800, fontSize: "1.05rem", letterSpacing: "-0.03em", color: colors.gray900 }}>
-          Net Worth
-        </Typography>
-      </Box>
+  // `rail` renders the icon-only collapsed sidebar (desktop). The mobile drawer always passes false.
+  const renderSidebar = (rail: boolean) => (
+    <Box sx={{ display: "flex", flexDirection: "column", height: "100%", py: 2.5, px: rail ? 1 : 2 }}>
+      {/* Logo + collapse toggle */}
+      {rail ? (
+        <Stack alignItems="center" spacing={1} sx={{ mb: 2 }}>
+          <Box component="img" src="/favicon.svg" alt="Net Worth"
+            onClick={() => navigate("/")}
+            sx={{ width: 34, height: 34, borderRadius: 2, cursor: "pointer" }} />
+          <Tooltip title="Expand sidebar" placement="right">
+            <IconButton size="small" onClick={() => setCollapsed(false)} sx={{ color: colors.gray500 }}>
+              <ChevronRightRoundedIcon />
+            </IconButton>
+          </Tooltip>
+        </Stack>
+      ) : (
+        <Box sx={{ px: 1, mb: 2.5, display: "flex", alignItems: "center", gap: 1.5 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, cursor: "pointer", minWidth: 0 }}
+            onClick={() => { navigate("/"); setDrawerOpen(false); }}>
+            <Box component="img" src="/favicon.svg" alt="Net Worth" sx={{ width: 34, height: 34, borderRadius: 2 }} />
+            <Typography sx={{ fontWeight: 800, fontSize: "1.05rem", letterSpacing: "-0.03em", color: colors.gray900 }} noWrap>
+              Net Worth
+            </Typography>
+          </Box>
+          {isDesktop && (
+            <Tooltip title="Collapse sidebar">
+              <IconButton size="small" onClick={() => setCollapsed(true)} sx={{ ml: "auto", color: colors.gray400 }}>
+                <ChevronLeftRoundedIcon />
+              </IconButton>
+            </Tooltip>
+          )}
+        </Box>
+      )}
 
       {/* Search + privacy */}
-      <Box sx={{ px: 1, mb: 2, display: "flex", gap: 1 }}>
-        <Button
-          onClick={() => { setSearchOpen(true); setDrawerOpen(false); }}
-          startIcon={<SearchRoundedIcon sx={{ fontSize: 18 }} />}
-          sx={{
-            flex: 1, justifyContent: "flex-start", borderRadius: 2.5, py: 0.9, px: 1.5,
-            textTransform: "none", fontSize: "0.8rem", fontWeight: 500,
-            color: colors.gray500, bgcolor: colors.gray100,
-            "&:hover": { bgcolor: colors.gray200 },
-          }}
-        >
-          Search
-          <Box sx={{ ml: "auto", fontSize: "0.65rem", fontWeight: 600, color: colors.gray400, border: `1px solid ${colors.gray200}`, borderRadius: 1, px: 0.5, lineHeight: 1.6 }}>
-            ⌘K
-          </Box>
-        </Button>
-        <Tooltip title={privacyMode ? "Show amounts" : "Hide amounts"}>
-          <IconButton
-            onClick={togglePrivacy}
-            sx={{ borderRadius: 2.5, bgcolor: privacyMode ? colors.brandLight : colors.gray100, color: privacyMode ? colors.brand : colors.gray500, "&:hover": { bgcolor: colors.gray200 } }}
+      {rail ? (
+        <Stack alignItems="center" spacing={1} sx={{ mb: 2 }}>
+          <Tooltip title="Search  (⌘K)" placement="right">
+            <IconButton onClick={() => setSearchOpen(true)}
+              sx={{ borderRadius: 2.5, bgcolor: colors.gray100, color: colors.gray500, "&:hover": { bgcolor: colors.gray200 } }}>
+              <SearchRoundedIcon sx={{ fontSize: 20 }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={privacyMode ? "Show amounts" : "Hide amounts"} placement="right">
+            <IconButton onClick={togglePrivacy}
+              sx={{ borderRadius: 2.5, bgcolor: privacyMode ? colors.brandLight : colors.gray100, color: privacyMode ? colors.brand : colors.gray500, "&:hover": { bgcolor: colors.gray200 } }}>
+              {privacyMode ? <VisibilityOffRoundedIcon sx={{ fontSize: 20 }} /> : <VisibilityRoundedIcon sx={{ fontSize: 20 }} />}
+            </IconButton>
+          </Tooltip>
+        </Stack>
+      ) : (
+        <Box sx={{ px: 1, mb: 2, display: "flex", gap: 1 }}>
+          <Button
+            onClick={() => { setSearchOpen(true); setDrawerOpen(false); }}
+            startIcon={<SearchRoundedIcon sx={{ fontSize: 18 }} />}
+            sx={{
+              flex: 1, justifyContent: "flex-start", borderRadius: 2.5, py: 0.9, px: 1.5,
+              textTransform: "none", fontSize: "0.8rem", fontWeight: 500,
+              color: colors.gray500, bgcolor: colors.gray100,
+              "&:hover": { bgcolor: colors.gray200 },
+            }}
           >
-            {privacyMode ? <VisibilityOffRoundedIcon sx={{ fontSize: 20 }} /> : <VisibilityRoundedIcon sx={{ fontSize: 20 }} />}
-          </IconButton>
-        </Tooltip>
-      </Box>
+            Search
+            <Box sx={{ ml: "auto", fontSize: "0.65rem", fontWeight: 600, color: colors.gray400, border: `1px solid ${colors.gray200}`, borderRadius: 1, px: 0.5, lineHeight: 1.6 }}>
+              ⌘K
+            </Box>
+          </Button>
+          <Tooltip title={privacyMode ? "Show amounts" : "Hide amounts"}>
+            <IconButton
+              onClick={togglePrivacy}
+              sx={{ borderRadius: 2.5, bgcolor: privacyMode ? colors.brandLight : colors.gray100, color: privacyMode ? colors.brand : colors.gray500, "&:hover": { bgcolor: colors.gray200 } }}
+            >
+              {privacyMode ? <VisibilityOffRoundedIcon sx={{ fontSize: 20 }} /> : <VisibilityRoundedIcon sx={{ fontSize: 20 }} />}
+            </IconButton>
+          </Tooltip>
+        </Box>
+      )}
 
       {/* Navigation — grouped, everything else lives behind the user menu / Settings */}
       <Box sx={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
         {NAV_GROUPS.map((group, gi) => (
           <Box key={group.label ?? gi} sx={{ mb: gi < NAV_GROUPS.length - 1 ? 1.5 : 0 }}>
-            {group.label && (
+            {group.label && !rail && (
               <Typography variant="overline" sx={{ px: 1.5, mb: 0.25, display: "block", fontSize: "0.6rem", color: colors.gray400 }}>
                 {group.label}
               </Typography>
             )}
+            {group.label && rail && gi > 0 && <Divider sx={{ my: 1, mx: 0.5 }} />}
             <List disablePadding>
               {group.items.map(item => (
                 <ListItem key={item.path} disablePadding>
-                  <ListItemButton
-                    onClick={() => { navigate(item.path); setDrawerOpen(false); }}
-                    sx={navItemSx(item.path)}
-                  >
-                    <ListItemIcon sx={{ minWidth: 34, color: "inherit" }}>{item.icon}</ListItemIcon>
-                    <ListItemText
-                      primary={item.label}
-                      primaryTypographyProps={{ fontSize: "0.85rem", fontWeight: isActive(item.path) ? 650 : 500 }}
-                    />
-                  </ListItemButton>
+                  <Tooltip title={rail ? item.label : ""} placement="right" disableHoverListener={!rail}>
+                    <ListItemButton
+                      onClick={() => { navigate(item.path); setDrawerOpen(false); }}
+                      sx={navItemSx(item.path, rail)}
+                    >
+                      <ListItemIcon sx={{ minWidth: rail ? 0 : 34, color: "inherit", justifyContent: "center" }}>{item.icon}</ListItemIcon>
+                      {!rail && (
+                        <ListItemText
+                          primary={item.label}
+                          primaryTypographyProps={{ fontSize: "0.85rem", fontWeight: isActive(item.path) ? 650 : 500 }}
+                        />
+                      )}
+                    </ListItemButton>
+                  </Tooltip>
                 </ListItem>
               ))}
             </List>
@@ -290,26 +338,38 @@ function Layout({ children }: { children: ReactNode }) {
       {firebaseUser && (
         <Box sx={{ pt: 1 }}>
           <Divider sx={{ mb: 1, mx: 0.5 }} />
-          <ListItemButton
-            onClick={(e) => setUserMenuAnchor(e.currentTarget)}
-            sx={{ borderRadius: 2.5, py: 0.75, px: 1, gap: 1, "&:hover": { bgcolor: colors.gray100 } }}
-          >
-            <Avatar
-              src={firebaseUser.photoURL || undefined}
-              sx={{ width: 32, height: 32, fontSize: "0.7rem", fontWeight: 700 }}
-            >
-              {firebaseUser.displayName?.charAt(0) || "U"}
-            </Avatar>
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography sx={{ fontSize: "0.8rem", fontWeight: 600, color: colors.gray800, lineHeight: 1.2 }} noWrap>
-                {firebaseUser.displayName || "User"}
-              </Typography>
-              <Typography sx={{ fontSize: "0.68rem", color: colors.gray400, lineHeight: 1.2 }} noWrap>
-                {firebaseUser.email}
-              </Typography>
+          {rail ? (
+            <Box sx={{ display: "flex", justifyContent: "center" }}>
+              <Tooltip title={firebaseUser.displayName || "Account"} placement="right">
+                <IconButton onClick={(e) => setUserMenuAnchor(e.currentTarget)} sx={{ p: 0.5 }}>
+                  <Avatar src={firebaseUser.photoURL || undefined} sx={{ width: 32, height: 32, fontSize: "0.7rem", fontWeight: 700 }}>
+                    {firebaseUser.displayName?.charAt(0) || "U"}
+                  </Avatar>
+                </IconButton>
+              </Tooltip>
             </Box>
-            <UnfoldMoreRoundedIcon sx={{ fontSize: 18, color: colors.gray400 }} />
-          </ListItemButton>
+          ) : (
+            <ListItemButton
+              onClick={(e) => setUserMenuAnchor(e.currentTarget)}
+              sx={{ borderRadius: 2.5, py: 0.75, px: 1, gap: 1, "&:hover": { bgcolor: colors.gray100 } }}
+            >
+              <Avatar
+                src={firebaseUser.photoURL || undefined}
+                sx={{ width: 32, height: 32, fontSize: "0.7rem", fontWeight: 700 }}
+              >
+                {firebaseUser.displayName?.charAt(0) || "U"}
+              </Avatar>
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography sx={{ fontSize: "0.8rem", fontWeight: 600, color: colors.gray800, lineHeight: 1.2 }} noWrap>
+                  {firebaseUser.displayName || "User"}
+                </Typography>
+                <Typography sx={{ fontSize: "0.68rem", color: colors.gray400, lineHeight: 1.2 }} noWrap>
+                  {firebaseUser.email}
+                </Typography>
+              </Box>
+              <UnfoldMoreRoundedIcon sx={{ fontSize: 18, color: colors.gray400 }} />
+            </ListItemButton>
+          )}
         </Box>
       )}
     </Box>
@@ -320,29 +380,31 @@ function Layout({ children }: { children: ReactNode }) {
       {/* Desktop sidebar */}
       {isDesktop && (
         <Box sx={{
-          width: SIDEBAR_W, flexShrink: 0,
+          width: sidebarW, flexShrink: 0,
           borderRight: `1px solid ${colors.gray200}`,
           bgcolor: colors.white,
           position: "fixed", top: 0, left: 0, bottom: 0,
-          overflowY: "auto", zIndex: 1200,
+          overflowY: "auto", overflowX: "hidden", zIndex: 1200,
+          transition: "width 0.2s ease",
         }}>
-          {sidebarContent}
+          {renderSidebar(collapsed)}
         </Box>
       )}
 
       {/* Mobile drawer */}
       <Drawer open={drawerOpen} onClose={() => setDrawerOpen(false)}>
-        <Box sx={{ width: SIDEBAR_W }}>{sidebarContent}</Box>
+        <Box sx={{ width: SIDEBAR_W }}>{renderSidebar(false)}</Box>
       </Drawer>
 
       {/* Main content */}
       <Box component="main" sx={{
         flex: 1,
-        ml: isDesktop ? `${SIDEBAR_W}px` : 0,
+        ml: isDesktop ? `${sidebarW}px` : 0,
         pb: 0,
         minHeight: "100vh",
         overflowX: "hidden",
-        maxWidth: isDesktop ? `calc(100vw - ${SIDEBAR_W}px)` : "100vw",
+        maxWidth: isDesktop ? `calc(100vw - ${sidebarW}px)` : "100vw",
+        transition: "margin-left 0.2s ease, max-width 0.2s ease",
       }}>
         {/* Mobile top bar */}
         {!isDesktop && (
