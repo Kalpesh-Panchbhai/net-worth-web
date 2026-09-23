@@ -33,6 +33,11 @@ import { useToast } from "../context/ToastContext";
 const LAKH = 100000;
 // Categorical palette for donuts / per-series colours — tuned to read well on light & dark surfaces.
 const DONUT_COLORS = ["#6366F1", "#10B981", "#F59E0B", "#EC4899", "#06B6D4", "#8B5CF6", "#F43F5E", "#84CC16", "#0EA5E9", "#D946EF"];
+// Slack channel deep links per market.
+const SLACK_CHANNELS: Record<StockMarket, string> = {
+  in: "https://app.slack.com/client/T0BV1M7J9E0/C0BV1QR6YMA",
+  us: "https://app.slack.com/client/T0BV1M7J9E0/C0BUTPAHUCV",
+};
 // Font stack matching the app shell (Inter first) so chart text isn't the browser default serif/sans.
 const CHART_FONT = "'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
@@ -274,83 +279,112 @@ function PositionDialog({ open, mode, market, initialStock, onClose, onSaved }:
 }
 
 // ── Alert settings dialog (per-market Slack schedule) ────────────────
-function AlertSettingsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+function AlertSettingsDialog({ open, onClose, initialMarket = "in" }: { open: boolean; onClose: () => void; initialMarket?: StockMarket }) {
   const { colors } = useTokens();
   const { showToast } = useToast();
   const [rows, setRows] = useState<StockAlertConfig[] | null>(null);
+  const [sel, setSel] = useState<StockMarket>(initialMarket);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
+    setSel(initialMarket);
     setRows(null);
     getStockAlerts().then(setRows).catch(() => setRows([]));
-  }, [open]);
+  }, [open, initialMarket]);
 
-  const patch = (market: StockMarket, p: Partial<StockAlertConfig>) =>
-    setRows(rs => rs?.map(r => r.market === market ? { ...r, ...p } : r) ?? rs);
+  const cfg = rows?.find(r => r.market === sel) ?? null;
 
-  const save = async (cfg: StockAlertConfig) => {
+  // Auto-save any field change (patch locally for instant feedback, then persist → EventBridge).
+  const apply = async (partial: Partial<StockAlertConfig>) => {
+    if (!cfg) return;
+    const merged = { ...cfg, ...partial };
+    setRows(rs => rs?.map(r => r.market === sel ? merged : r) ?? rs);
     setSaving(true);
     try {
-      const updated = await updateStockAlert({ market: cfg.market, enabled: cfg.enabled, hour: cfg.hour, minute: cfg.minute, timezone: cfg.timezone, weekdaysOnly: cfg.weekdaysOnly });
-      setRows(updated);
-      showToast(`${cfg.market.toUpperCase()} alert saved`, "success");
+      setRows(await updateStockAlert({ market: merged.market, enabled: merged.enabled, hour: merged.hour, minute: merged.minute, timezone: merged.timezone, weekdaysOnly: merged.weekdaysOnly }));
     } catch { showToast("Couldn't save alert", "error"); } finally { setSaving(false); }
   };
 
-  const label = (m: string) => m === "us" ? "🇺🇸 US market" : "🇮🇳 India market";
+  const fmtTime = (h: number, m: number) => new Date(2020, 0, 1, h, m).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true });
+  const tzShort = (tz: string) => tz === "America/New_York" ? "ET" : tz === "UTC" ? "UTC" : "IST";
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
-      <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-        <NotificationsRoundedIcon sx={{ color: colors.brand }} /> Slack Alert Settings
+      <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1, pb: 1.5 }}>
+        <NotificationsRoundedIcon sx={{ color: colors.brand }} />
+        <Typography component="span" sx={{ fontWeight: 800, fontSize: "1.15rem" }}>Slack Alert Settings</Typography>
         <IconButton onClick={onClose} sx={{ position: "absolute", right: 12, top: 12, color: colors.gray400 }}><CloseRoundedIcon /></IconButton>
       </DialogTitle>
       <DialogContent dividers sx={{ bgcolor: colors.gray50 }}>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          A daily BUY/SELL digest is posted to Slack at the time you set (once per day, per market). SELL alerts are limited to stocks you own.
-        </Typography>
-        {rows == null ? <Box sx={{ textAlign: "center", py: 3 }}><CircularProgress /></Box> : (
-          <Stack spacing={1.5}>
-            {rows.map(cfg => (
-              <Paper key={cfg.market} variant="outlined" sx={{ borderRadius: 2.5, p: 2, opacity: cfg.enabled ? 1 : 0.7 }}>
-                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: cfg.enabled ? 1.5 : 0 }}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <Typography sx={{ fontWeight: 700, fontSize: "1rem" }}>{label(cfg.market)}</Typography>
-                    {cfg.lastSentDate && <Chip label={`sent ${cfg.lastSentDate}`} size="small" sx={{ height: 20, fontSize: "0.62rem", bgcolor: alpha(colors.success, 0.12), color: colors.success }} />}
-                  </Stack>
-                  <FormControlLabel labelPlacement="start"
-                    control={<Switch checked={cfg.enabled} onChange={e => { patch(cfg.market, { enabled: e.target.checked }); save({ ...cfg, enabled: e.target.checked }); }} />}
-                    label={<Typography sx={{ fontSize: "0.8rem", color: colors.gray500 }}>{cfg.enabled ? "On" : "Off"}</Typography>} sx={{ mr: 0 }} />
-                </Stack>
-                {cfg.enabled && (
-                  <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
+        {rows == null || !cfg ? <Box sx={{ textAlign: "center", py: 4 }}><CircularProgress /></Box> : (
+          <>
+            {/* market switch */}
+            <ToggleButtonGroup exclusive size="small" value={sel} onChange={(_, v) => v && setSel(v)} fullWidth
+              sx={{ mb: 2, bgcolor: colors.gray100, borderRadius: 2.5, p: "3px", gap: "2px",
+                "& .MuiToggleButtonGroup-grouped": { border: "none !important", borderRadius: "10px !important", textTransform: "none", fontWeight: 600, py: 0.6 },
+                "& .Mui-selected": { bgcolor: `${colors.white} !important`, boxShadow: 1, color: `${colors.gray900} !important` } }}>
+              <ToggleButton value="in">🇮🇳 India</ToggleButton>
+              <ToggleButton value="us">🇺🇸 US</ToggleButton>
+            </ToggleButtonGroup>
+
+            <Paper variant="outlined" sx={{ borderRadius: 3, p: 2.5 }}>
+              {/* header row: status summary + enable */}
+              <Stack direction="row" alignItems="flex-start" justifyContent="space-between" sx={{ mb: cfg.enabled ? 2 : 0 }}>
+                <Box>
+                  <Typography sx={{ fontWeight: 700, fontSize: "0.95rem" }}>Daily digest</Typography>
+                  <Typography sx={{ fontSize: "0.8rem", color: colors.gray500 }}>
+                    {cfg.enabled ? `Posts at ${fmtTime(cfg.hour, cfg.minute)} ${tzShort(cfg.timezone)}${cfg.weekdaysOnly ? " · weekdays" : " · every day"}` : "Alerts are off"}
+                  </Typography>
+                </Box>
+                <FormControlLabel labelPlacement="start" sx={{ mr: 0 }}
+                  control={<Switch checked={cfg.enabled} onChange={e => apply({ enabled: e.target.checked })} />}
+                  label={<Typography sx={{ fontSize: "0.8rem", color: colors.gray500 }}>{cfg.enabled ? "On" : "Off"}</Typography>} />
+              </Stack>
+
+              {cfg.enabled && (
+                <>
+                  <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
                     <TextField label="Time" type="time" size="small"
                       value={`${String(cfg.hour).padStart(2, "0")}:${String(cfg.minute).padStart(2, "0")}`}
-                      onChange={e => { const [h, m] = e.target.value.split(":").map(Number); patch(cfg.market, { hour: h || 0, minute: m || 0 }); }}
-                      InputLabelProps={{ shrink: true }} sx={{ width: 130, "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                    <FormControl size="small" sx={{ minWidth: 170 }}>
-                      <Select value={cfg.timezone} onChange={e => patch(cfg.market, { timezone: e.target.value })} sx={{ borderRadius: 2 }}>
+                      onChange={e => { const [h, m] = e.target.value.split(":").map(Number); apply({ hour: h || 0, minute: m || 0 }); }}
+                      InputLabelProps={{ shrink: true }} sx={{ width: 140, "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                    <FormControl size="small" sx={{ minWidth: 160, flex: 1 }}>
+                      <Select value={cfg.timezone} onChange={e => apply({ timezone: e.target.value })} sx={{ borderRadius: 2 }}>
                         <MenuItem value="Asia/Kolkata">India (IST)</MenuItem>
                         <MenuItem value="America/New_York">US Eastern (ET)</MenuItem>
                         <MenuItem value="UTC">UTC</MenuItem>
                       </Select>
                     </FormControl>
-                    <FormControlLabel control={<Switch size="small" checked={cfg.weekdaysOnly} onChange={e => patch(cfg.market, { weekdaysOnly: e.target.checked })} />} label={<Typography sx={{ fontSize: "0.8rem" }}>Weekdays only</Typography>} />
-                    <Button variant="contained" disableElevation size="small" disabled={saving} onClick={() => save(cfg)}
-                      sx={{ textTransform: "none", borderRadius: 2, ml: "auto", fontWeight: 600, px: 2.5 }}>Save</Button>
                   </Stack>
-                )}
-                {cfg.enabled && cfg.awsCron && (
-                  <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mt: 1.25, flexWrap: "wrap" }}>
-                    <Typography sx={{ fontSize: "0.62rem", color: colors.gray400 }}>AWS EventBridge:</Typography>
-                    <Box component="code" sx={{ fontSize: "0.66rem", fontFamily: "monospace", bgcolor: colors.gray100, color: colors.gray700, px: 0.75, py: 0.25, borderRadius: 1 }}>{cfg.awsCron}</Box>
-                    <Typography sx={{ fontSize: "0.6rem", fontWeight: 700, color: cfg.awsState === "ENABLED" ? colors.success : colors.gray400 }}>{cfg.awsState}</Typography>
+                  <FormControlLabel sx={{ mt: 1 }}
+                    control={<Switch size="small" checked={cfg.weekdaysOnly} onChange={e => apply({ weekdaysOnly: e.target.checked })} />}
+                    label={<Typography sx={{ fontSize: "0.82rem" }}>Weekdays only</Typography>} />
+
+                  <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mt: 1.5, flexWrap: "wrap" }}>
+                    {cfg.lastSentDate && <Chip label={`last sent ${cfg.lastSentDate}`} size="small" sx={{ height: 20, fontSize: "0.62rem", bgcolor: alpha(colors.success, 0.12), color: colors.success }} />}
+                    {cfg.awsCron && <>
+                      <Typography sx={{ fontSize: "0.62rem", color: colors.gray400 }}>AWS:</Typography>
+                      <Box component="code" sx={{ fontSize: "0.64rem", fontFamily: "monospace", bgcolor: colors.gray100, color: colors.gray600, px: 0.75, py: 0.25, borderRadius: 1 }}>{cfg.awsCron}</Box>
+                    </>}
+                    {saving && <CircularProgress size={13} sx={{ ml: 0.5 }} />}
                   </Stack>
-                )}
-              </Paper>
-            ))}
-          </Stack>
+                </>
+              )}
+            </Paper>
+
+            {/* Open Slack channel — only for the selected market */}
+            <Button fullWidth variant="contained" disableElevation
+              href={SLACK_CHANNELS[sel]} target="_blank" rel="noopener"
+              endIcon={<OpenInNewRoundedIcon sx={{ fontSize: 16 }} />}
+              sx={{ mt: 2, py: 1.1, borderRadius: 2.5, textTransform: "none", fontWeight: 700,
+                bgcolor: "#4A154B", "&:hover": { bgcolor: "#611f5f" } }}>
+              Open {sel === "us" ? "US" : "India"} Slack channel
+            </Button>
+            <Typography sx={{ fontSize: "0.72rem", color: colors.gray400, mt: 1.5, textAlign: "center" }}>
+              A daily BUY/SELL digest is posted here. SELL alerts are limited to stocks you own.
+            </Typography>
+          </>
         )}
       </DialogContent>
       <DialogActions><Button onClick={onClose}>Done</Button></DialogActions>
@@ -491,7 +525,7 @@ function Stocks() {
       {/* ── TRADE HISTORY tab ── */}
       {tab === "history" && <HistoryTab positions={closedPos} market={market} currency={currency} onStock={setStockDetail} />}
 
-      <AlertSettingsDialog open={alertsOpen} onClose={() => setAlertsOpen(false)} />
+      <AlertSettingsDialog open={alertsOpen} onClose={() => setAlertsOpen(false)} initialMarket={market} />
       <StockDetailDialog market={market} stock={stockDetail} onClose={() => setStockDetail(null)} />
       <PositionDialog open={buyOpen} mode="buy" market={market} onClose={() => setBuyOpen(false)} onSaved={setPortfolio} />
       <PositionDialog open={!!closePos} mode="close" market={market}

@@ -89,11 +89,15 @@ function RefreshScheduleSection() {
     <Box>
       <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
         <Typography variant="overline" sx={{ display: "block", fontSize: "0.65rem", color: colors.gray400 }}>Data refresh</Typography>
-        {cfg && <Switch size="small" checked={cfg.enabled} onChange={e => saveWith({ enabled: e.target.checked })} />}
+        {cfg && (
+          <FormControlLabel labelPlacement="start" sx={{ m: 0 }}
+            control={<Switch size="small" checked={cfg.enabled} onChange={e => saveWith({ enabled: e.target.checked })} />}
+            label={<Typography sx={{ fontSize: "0.75rem", color: colors.gray500 }}>{cfg.enabled ? "Auto-refresh on" : "Off"}</Typography>} />
+        )}
       </Box>
       {!cfg ? <CircularProgress size={18} /> : (
         <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, opacity: cfg.enabled ? 1 : 0.5, pointerEvents: cfg.enabled ? "auto" : "none" }}>
-          <Box sx={{ display: "flex", gap: 1 }}>
+          <Box sx={{ display: "flex", gap: 1.5 }}>
             <TextField select size="small" label="Frequency" value={cfg.intervalHours} disabled={saving}
               onChange={e => saveWith({ intervalHours: Number(e.target.value) })}
               sx={{ flex: 1, "& .MuiOutlinedInput-root": { borderRadius: 2.5 } }}>
@@ -102,30 +106,32 @@ function RefreshScheduleSection() {
             <TextField size="small" label="Start at" type="time" disabled={saving}
               value={`${String(cfg.anchorHour).padStart(2, "0")}:${String(cfg.anchorMinute).padStart(2, "0")}`}
               onChange={e => { const [h, m] = e.target.value.split(":").map(Number); saveWith({ anchorHour: h || 0, anchorMinute: m || 0 }); }}
-              InputLabelProps={{ shrink: true }} sx={{ width: 120, "& .MuiOutlinedInput-root": { borderRadius: 2.5 } }} />
+              InputLabelProps={{ shrink: true }} sx={{ width: 155, "& .MuiOutlinedInput-root": { borderRadius: 2.5 } }} />
           </Box>
-          <TextField select size="small" label="Timezone" value={cfg.timezone} disabled={saving}
-            onChange={e => saveWith({ timezone: e.target.value })}
-            sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2.5 } }}>
-            <MenuItem value="Asia/Kolkata">India (IST)</MenuItem>
-            <MenuItem value="America/New_York">US Eastern (ET)</MenuItem>
-            <MenuItem value="UTC">UTC</MenuItem>
-          </TextField>
-          <FormControlLabel
-            control={<Switch size="small" checked={!cfg.weekdaysOnly} disabled={saving} onChange={e => saveWith({ weekdaysOnly: !e.target.checked })} />}
-            label={<Typography sx={{ fontSize: "0.85rem" }}>Run on weekends</Typography>} />
+          <Box sx={{ display: "flex", gap: 1.5, alignItems: "center" }}>
+            <TextField select size="small" label="Timezone" value={cfg.timezone} disabled={saving}
+              onChange={e => saveWith({ timezone: e.target.value })}
+              sx={{ flex: 1, "& .MuiOutlinedInput-root": { borderRadius: 2.5 } }}>
+              <MenuItem value="Asia/Kolkata">India (IST)</MenuItem>
+              <MenuItem value="America/New_York">US Eastern (ET)</MenuItem>
+              <MenuItem value="UTC">UTC</MenuItem>
+            </TextField>
+            <FormControlLabel sx={{ m: 0, whiteSpace: "nowrap" }}
+              control={<Switch size="small" checked={!cfg.weekdaysOnly} disabled={saving} onChange={e => saveWith({ weekdaysOnly: !e.target.checked })} />}
+              label={<Typography sx={{ fontSize: "0.8rem" }}>Weekends</Typography>} />
+          </Box>
 
           {cfg.nextRuns?.length > 0 && (
-            <Box sx={{ mt: 0.5, border: `1px solid ${colors.gray100}`, borderRadius: 2.5, p: 1.25, bgcolor: colors.gray50 }}>
-              <Typography sx={{ fontSize: "0.62rem", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: colors.gray500, mb: 0.75 }}>
+            <Box sx={{ mt: 0.5, border: `1px solid ${colors.gray100}`, borderRadius: 2.5, p: 1.5, bgcolor: colors.gray50 }}>
+              <Typography sx={{ fontSize: "0.62rem", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: colors.gray500, mb: 1 }}>
                 Next {cfg.nextRuns.length} runs
               </Typography>
-              <Box sx={{ display: "flex", flexDirection: "column", gap: 0.4, maxHeight: 168, overflowY: "auto" }}>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 0.6, maxHeight: 176, overflowY: "auto" }}>
                 {cfg.nextRuns.map((ms, i) => (
                   <Box key={ms} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    <Box sx={{ width: 5, height: 5, borderRadius: "50%", bgcolor: i === 0 ? colors.brand : colors.gray300 }} />
-                    <Typography sx={{ fontSize: "0.72rem", color: i === 0 ? colors.gray800 : colors.gray500, fontWeight: i === 0 ? 600 : 400 }}>
-                      {fmtRun(ms, cfg.timezone)}
+                    <Box sx={{ width: 6, height: 6, borderRadius: "50%", bgcolor: i === 0 ? colors.brand : colors.gray300, flexShrink: 0 }} />
+                    <Typography sx={{ fontSize: "0.74rem", color: i === 0 ? colors.gray800 : colors.gray500, fontWeight: i === 0 ? 700 : 400 }}>
+                      {fmtRun(ms, cfg.timezone)}{i === 0 ? "  · next" : ""}
                     </Typography>
                   </Box>
                 ))}
@@ -659,8 +665,8 @@ function Layout({ children }: { children: ReactNode }) {
       </Menu>
 
       {/* Settings — appearance, display currency, and data backup, grouped in one dialog */}
-      <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)} fullScreen={!isDesktop} fullWidth maxWidth="xs">
-        <DialogTitle sx={{ fontWeight: 700 }}>Settings</DialogTitle>
+      <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)} fullScreen={!isDesktop} fullWidth maxWidth="sm" PaperProps={{ sx: { borderRadius: isDesktop ? 3 : 0 } }}>
+        <DialogTitle sx={{ fontWeight: 800, fontSize: "1.15rem" }}>Settings</DialogTitle>
         <DialogContent>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 3, pt: 1 }}>
             {/* Appearance */}
