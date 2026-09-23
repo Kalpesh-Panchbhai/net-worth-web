@@ -4,7 +4,7 @@ import {
   ToggleButton, ToggleButtonGroup, Chip, Select, FormControl, IconButton, Button, Link,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs, Tab,
   Dialog, DialogTitle, DialogContent, DialogActions, Tooltip, CircularProgress,
-  TableSortLabel, Collapse, Switch, FormControlLabel, Divider,
+  TableSortLabel, Collapse, Switch, FormControlLabel,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
@@ -306,35 +306,45 @@ function AlertSettingsDialog({ open, onClose }: { open: boolean; onClose: () => 
         <NotificationsRoundedIcon sx={{ color: colors.brand }} /> Slack Alert Settings
         <IconButton onClick={onClose} sx={{ position: "absolute", right: 12, top: 12, color: colors.gray400 }}><CloseRoundedIcon /></IconButton>
       </DialogTitle>
-      <DialogContent dividers>
+      <DialogContent dividers sx={{ bgcolor: colors.gray50 }}>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           A daily BUY/SELL digest is posted to Slack at the time you set (once per day, per market). SELL alerts are limited to stocks you own.
         </Typography>
-        {rows == null ? <Box sx={{ textAlign: "center", py: 3 }}><CircularProgress /></Box> : rows.map((cfg, i) => (
-          <Box key={cfg.market}>
-            {i > 0 && <Divider sx={{ my: 2 }} />}
-            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
-              <Typography sx={{ fontWeight: 700 }}>{label(cfg.market)}</Typography>
-              <FormControlLabel control={<Switch checked={cfg.enabled} onChange={e => patch(cfg.market, { enabled: e.target.checked })} />} label={cfg.enabled ? "Enabled" : "Disabled"} />
-            </Stack>
-            <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
-              <TextField label="Time" type="time" size="small" disabled={!cfg.enabled}
-                value={`${String(cfg.hour).padStart(2, "0")}:${String(cfg.minute).padStart(2, "0")}`}
-                onChange={e => { const [h, m] = e.target.value.split(":").map(Number); patch(cfg.market, { hour: h || 0, minute: m || 0 }); }}
-                InputLabelProps={{ shrink: true }} sx={{ width: 130 }} />
-              <FormControl size="small" sx={{ minWidth: 190 }} disabled={!cfg.enabled}>
-                <Select value={cfg.timezone} onChange={e => patch(cfg.market, { timezone: e.target.value })}>
-                  <MenuItem value="Asia/Kolkata">India (IST)</MenuItem>
-                  <MenuItem value="America/New_York">US Eastern (ET)</MenuItem>
-                  <MenuItem value="UTC">UTC</MenuItem>
-                </Select>
-              </FormControl>
-              <FormControlLabel control={<Switch size="small" checked={cfg.weekdaysOnly} disabled={!cfg.enabled} onChange={e => patch(cfg.market, { weekdaysOnly: e.target.checked })} />} label="Weekdays only" />
-              <Button variant="contained" disableElevation size="small" disabled={saving} onClick={() => save(cfg)} sx={{ textTransform: "none", borderRadius: 2, ml: "auto" }}>Save</Button>
-            </Stack>
-            {cfg.lastSentDate && <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>Last sent: {cfg.lastSentDate}</Typography>}
-          </Box>
-        ))}
+        {rows == null ? <Box sx={{ textAlign: "center", py: 3 }}><CircularProgress /></Box> : (
+          <Stack spacing={1.5}>
+            {rows.map(cfg => (
+              <Paper key={cfg.market} variant="outlined" sx={{ borderRadius: 2.5, p: 2, opacity: cfg.enabled ? 1 : 0.7 }}>
+                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: cfg.enabled ? 1.5 : 0 }}>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <Typography sx={{ fontWeight: 700, fontSize: "1rem" }}>{label(cfg.market)}</Typography>
+                    {cfg.lastSentDate && <Chip label={`sent ${cfg.lastSentDate}`} size="small" sx={{ height: 20, fontSize: "0.62rem", bgcolor: alpha(colors.success, 0.12), color: colors.success }} />}
+                  </Stack>
+                  <FormControlLabel labelPlacement="start"
+                    control={<Switch checked={cfg.enabled} onChange={e => { patch(cfg.market, { enabled: e.target.checked }); save({ ...cfg, enabled: e.target.checked }); }} />}
+                    label={<Typography sx={{ fontSize: "0.8rem", color: colors.gray500 }}>{cfg.enabled ? "On" : "Off"}</Typography>} sx={{ mr: 0 }} />
+                </Stack>
+                {cfg.enabled && (
+                  <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
+                    <TextField label="Time" type="time" size="small"
+                      value={`${String(cfg.hour).padStart(2, "0")}:${String(cfg.minute).padStart(2, "0")}`}
+                      onChange={e => { const [h, m] = e.target.value.split(":").map(Number); patch(cfg.market, { hour: h || 0, minute: m || 0 }); }}
+                      InputLabelProps={{ shrink: true }} sx={{ width: 130, "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                    <FormControl size="small" sx={{ minWidth: 170 }}>
+                      <Select value={cfg.timezone} onChange={e => patch(cfg.market, { timezone: e.target.value })} sx={{ borderRadius: 2 }}>
+                        <MenuItem value="Asia/Kolkata">India (IST)</MenuItem>
+                        <MenuItem value="America/New_York">US Eastern (ET)</MenuItem>
+                        <MenuItem value="UTC">UTC</MenuItem>
+                      </Select>
+                    </FormControl>
+                    <FormControlLabel control={<Switch size="small" checked={cfg.weekdaysOnly} onChange={e => patch(cfg.market, { weekdaysOnly: e.target.checked })} />} label={<Typography sx={{ fontSize: "0.8rem" }}>Weekdays only</Typography>} />
+                    <Button variant="contained" disableElevation size="small" disabled={saving} onClick={() => save(cfg)}
+                      sx={{ textTransform: "none", borderRadius: 2, ml: "auto", fontWeight: 600, px: 2.5 }}>Save</Button>
+                  </Stack>
+                )}
+              </Paper>
+            ))}
+          </Stack>
+        )}
       </DialogContent>
       <DialogActions><Button onClick={onClose}>Done</Button></DialogActions>
     </Dialog>

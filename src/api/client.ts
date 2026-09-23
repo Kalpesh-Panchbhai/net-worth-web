@@ -255,7 +255,7 @@ export function getRefreshSchedule() {
   return request<import("./types").RefreshScheduleConfig>("/refresh-schedule");
 }
 
-export function updateRefreshSchedule(cfg: { intervalHours: number; weekdaysOnly: boolean; enabled: boolean }) {
+export function updateRefreshSchedule(cfg: { intervalHours: number; anchorHour: number; anchorMinute: number; timezone: string; weekdaysOnly: boolean; enabled: boolean }) {
   invalidateCache("/refresh-schedule", "/refresh");
   return request<import("./types").RefreshScheduleConfig>("/refresh-schedule", { method: "PUT", body: JSON.stringify(cfg) });
 }

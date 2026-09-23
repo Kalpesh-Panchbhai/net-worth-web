@@ -478,11 +478,15 @@ export interface StockClosedResponse { market: StockMarket; trades: StockTrade[]
 /** Data-refresh schedule (global), editable from Settings. */
 export interface RefreshScheduleConfig {
   intervalHours: number;
+  anchorHour: number;
+  anchorMinute: number;
+  timezone: string;
   weekdaysOnly: boolean;
   enabled: boolean;
   allowedIntervals: number[];
   lastRefreshedAt: number | null;
   nextRefreshAt: number | null;
+  nextRuns: number[];
 }
 
 /** Per-market Slack alert schedule (editable from the UI). */
