@@ -4,7 +4,7 @@ import {
   ToggleButton, ToggleButtonGroup, Chip, Select, FormControl, IconButton, Button, Link,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs, Tab,
   Dialog, DialogTitle, DialogContent, DialogActions, Tooltip, CircularProgress,
-  TableSortLabel, Collapse,
+  TableSortLabel, Collapse, Switch, FormControlLabel, Divider,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
@@ -14,14 +14,16 @@ import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import NotificationsRoundedIcon from "@mui/icons-material/NotificationsRounded";
 import {
   getStockSignals, getStockDetail, getStockEquity, getStockClosed,
   getStockPortfolio, addStockPosition, updateStockPosition, deleteStockPosition,
+  getStockAlerts, updateStockAlert,
 } from "../api/client";
 import type {
   StockMarket, EnrichedStockSignal, StockSignalsResponse,
   StockDetailResponse, StockTrade,
-  StockEquityPoint, StockPortfolioResponse, ValuedPosition,
+  StockEquityPoint, StockPortfolioResponse, ValuedPosition, StockAlertConfig,
 } from "../api/types";
 import { PageHeader, EmptyState, ErrorState, ListSkeleton } from "../components/shared";
 import { formatCurrency } from "../utils/format";
@@ -271,6 +273,74 @@ function PositionDialog({ open, mode, market, initialStock, onClose, onSaved }:
   );
 }
 
+// ── Alert settings dialog (per-market Slack schedule) ────────────────
+function AlertSettingsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { colors } = useTokens();
+  const { showToast } = useToast();
+  const [rows, setRows] = useState<StockAlertConfig[] | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setRows(null);
+    getStockAlerts().then(setRows).catch(() => setRows([]));
+  }, [open]);
+
+  const patch = (market: StockMarket, p: Partial<StockAlertConfig>) =>
+    setRows(rs => rs?.map(r => r.market === market ? { ...r, ...p } : r) ?? rs);
+
+  const save = async (cfg: StockAlertConfig) => {
+    setSaving(true);
+    try {
+      const updated = await updateStockAlert({ market: cfg.market, enabled: cfg.enabled, hour: cfg.hour, minute: cfg.minute, timezone: cfg.timezone, weekdaysOnly: cfg.weekdaysOnly });
+      setRows(updated);
+      showToast(`${cfg.market.toUpperCase()} alert saved`, "success");
+    } catch { showToast("Couldn't save alert", "error"); } finally { setSaving(false); }
+  };
+
+  const label = (m: string) => m === "us" ? "🇺🇸 US market" : "🇮🇳 India market";
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+      <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+        <NotificationsRoundedIcon sx={{ color: colors.brand }} /> Slack Alert Settings
+        <IconButton onClick={onClose} sx={{ position: "absolute", right: 12, top: 12, color: colors.gray400 }}><CloseRoundedIcon /></IconButton>
+      </DialogTitle>
+      <DialogContent dividers>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          A daily BUY/SELL digest is posted to Slack at the time you set (once per day, per market). SELL alerts are limited to stocks you own.
+        </Typography>
+        {rows == null ? <Box sx={{ textAlign: "center", py: 3 }}><CircularProgress /></Box> : rows.map((cfg, i) => (
+          <Box key={cfg.market}>
+            {i > 0 && <Divider sx={{ my: 2 }} />}
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
+              <Typography sx={{ fontWeight: 700 }}>{label(cfg.market)}</Typography>
+              <FormControlLabel control={<Switch checked={cfg.enabled} onChange={e => patch(cfg.market, { enabled: e.target.checked })} />} label={cfg.enabled ? "Enabled" : "Disabled"} />
+            </Stack>
+            <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
+              <TextField label="Time" type="time" size="small" disabled={!cfg.enabled}
+                value={`${String(cfg.hour).padStart(2, "0")}:${String(cfg.minute).padStart(2, "0")}`}
+                onChange={e => { const [h, m] = e.target.value.split(":").map(Number); patch(cfg.market, { hour: h || 0, minute: m || 0 }); }}
+                InputLabelProps={{ shrink: true }} sx={{ width: 130 }} />
+              <FormControl size="small" sx={{ minWidth: 190 }} disabled={!cfg.enabled}>
+                <Select value={cfg.timezone} onChange={e => patch(cfg.market, { timezone: e.target.value })}>
+                  <MenuItem value="Asia/Kolkata">India (IST)</MenuItem>
+                  <MenuItem value="America/New_York">US Eastern (ET)</MenuItem>
+                  <MenuItem value="UTC">UTC</MenuItem>
+                </Select>
+              </FormControl>
+              <FormControlLabel control={<Switch size="small" checked={cfg.weekdaysOnly} disabled={!cfg.enabled} onChange={e => patch(cfg.market, { weekdaysOnly: e.target.checked })} />} label="Weekdays only" />
+              <Button variant="contained" disableElevation size="small" disabled={saving} onClick={() => save(cfg)} sx={{ textTransform: "none", borderRadius: 2, ml: "auto" }}>Save</Button>
+            </Stack>
+            {cfg.lastSentDate && <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>Last sent: {cfg.lastSentDate}</Typography>}
+          </Box>
+        ))}
+      </DialogContent>
+      <DialogActions><Button onClick={onClose}>Done</Button></DialogActions>
+    </Dialog>
+  );
+}
+
 // ── main page ────────────────────────────────────────────────────────
 type TabKey = "buy" | "sell" | "hold" | "portfolio" | "closed" | "history";
 
@@ -291,6 +361,7 @@ function Stocks() {
   const [stockDetail, setStockDetail] = useState<string | null>(null);
   const [buyOpen, setBuyOpen] = useState(false);
   const [closePos, setClosePos] = useState<ValuedPosition | null>(null);
+  const [alertsOpen, setAlertsOpen] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true); setError(null);
@@ -315,15 +386,22 @@ function Stocks() {
   if (loading) return <Box><PageHeader title="Stock Analyzer" /><ListSkeleton rows={8} /></Box>;
   if (error) return <Box><PageHeader title="Stock Analyzer" /><ErrorState message={error} onRetry={load} /></Box>;
 
-  const marketToggle = (
-    <ToggleButtonGroup size="small" exclusive value={market} onChange={(_, v) => v && setMarket(v)}>
-      <ToggleButton value="in">🇮🇳 India</ToggleButton><ToggleButton value="us">🇺🇸 US</ToggleButton>
-    </ToggleButtonGroup>
+  const headerActions = (
+    <Stack direction="row" spacing={1} alignItems="center">
+      <ToggleButtonGroup size="small" exclusive value={market} onChange={(_, v) => v && setMarket(v)}>
+        <ToggleButton value="in">🇮🇳 India</ToggleButton><ToggleButton value="us">🇺🇸 US</ToggleButton>
+      </ToggleButtonGroup>
+      <Tooltip title="Slack alert settings">
+        <IconButton onClick={() => setAlertsOpen(true)} sx={{ border: `1px solid ${colors.gray200}`, borderRadius: 2 }}>
+          <NotificationsRoundedIcon sx={{ fontSize: 20, color: colors.gray600 }} />
+        </IconButton>
+      </Tooltip>
+    </Stack>
   );
 
   return (
     <Box>
-      <PageHeader title="Stock Analyzer" action={marketToggle} />
+      <PageHeader title="Stock Analyzer" action={headerActions} />
 
       {/* 4 status cards with accent stripe */}
       <Stack direction="row" spacing={1.5} sx={{ mb: 2 }} flexWrap="wrap">
@@ -396,6 +474,7 @@ function Stocks() {
       {/* ── TRADE HISTORY tab ── */}
       {tab === "history" && <HistoryTab positions={closedPos} market={market} currency={currency} onStock={setStockDetail} />}
 
+      <AlertSettingsDialog open={alertsOpen} onClose={() => setAlertsOpen(false)} />
       <StockDetailDialog market={market} stock={stockDetail} onClose={() => setStockDetail(null)} />
       <PositionDialog open={buyOpen} mode="buy" market={market} onClose={() => setBuyOpen(false)} onSaved={setPortfolio} />
       <PositionDialog open={!!closePos} mode="close" market={market}

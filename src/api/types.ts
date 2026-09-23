@@ -474,3 +474,14 @@ export interface StockPortfolioResponse {
 }
 
 export interface StockClosedResponse { market: StockMarket; trades: StockTrade[]; }
+
+/** Per-market Slack alert schedule (editable from the UI). */
+export interface StockAlertConfig {
+  market: StockMarket;
+  enabled: boolean;
+  hour: number;
+  minute: number;
+  timezone: string;
+  weekdaysOnly: boolean;
+  lastSentDate: string | null;
+}

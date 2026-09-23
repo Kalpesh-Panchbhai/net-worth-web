@@ -33,6 +33,7 @@ import type {
   StockEquityResponse,
   StockPortfolioResponse,
   StockClosedResponse,
+  StockAlertConfig,
 } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://kfgx37r84g.execute-api.ap-south-1.amazonaws.com/prod";
@@ -571,4 +572,14 @@ export function updateStockPosition(data: { id: string; market: StockMarket; sto
 export function deleteStockPosition(id: string) {
   invalidateCache("/stock-portfolio");
   return request<StockPortfolioResponse>("/stock-portfolio", { method: "DELETE", body: JSON.stringify({ id }) });
+}
+
+// Slack alert schedule (per market), editable from the UI.
+export function getStockAlerts() {
+  return request<StockAlertConfig[]>("/stock-alerts");
+}
+
+export function updateStockAlert(cfg: { market: StockMarket; enabled: boolean; hour: number; minute: number; timezone?: string; weekdaysOnly: boolean }) {
+  invalidateCache("/stock-alerts");
+  return request<StockAlertConfig[]>("/stock-alerts", { method: "PUT", body: JSON.stringify(cfg) });
 }
