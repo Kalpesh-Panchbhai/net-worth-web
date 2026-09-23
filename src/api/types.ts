@@ -487,6 +487,11 @@ export interface RefreshScheduleConfig {
   lastRefreshedAt: number | null;
   nextRefreshAt: number | null;
   nextRuns: number[];
+  /** Live view of the actual AWS EventBridge rule that triggers the scheduler. */
+  awsCron: string | null;
+  awsState: string | null;
+  awsRuleName?: string;
+  warning?: string;
 }
 
 /** Per-market Slack alert schedule (editable from the UI). */

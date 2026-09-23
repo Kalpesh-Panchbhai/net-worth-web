@@ -132,6 +132,18 @@ function RefreshScheduleSection() {
               </Box>
             </Box>
           )}
+
+          {cfg.awsCron && (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, flexWrap: "wrap" }}>
+              <Typography sx={{ fontSize: "0.62rem", color: colors.gray400 }}>AWS EventBridge:</Typography>
+              <Box component="code" sx={{ fontSize: "0.66rem", fontFamily: "monospace", bgcolor: colors.gray100, color: colors.gray700, px: 0.75, py: 0.25, borderRadius: 1 }}>
+                {cfg.awsCron}
+              </Box>
+              <Typography sx={{ fontSize: "0.6rem", fontWeight: 700, color: cfg.awsState === "ENABLED" ? colors.success : colors.gray400 }}>
+                {cfg.awsState}
+              </Typography>
+            </Box>
+          )}
         </Box>
       )}
     </Box>
