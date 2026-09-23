@@ -349,3 +349,128 @@ export interface MfTable {
   metrics: string[];
   rows: MfTableRow[];
 }
+
+// Stock Analyzer — read-only current BUY/SELL/HOLD signals, precomputed daily by the backend by
+// replaying each sector's winning strategy over live Yahoo bars.
+export type StockSignalType = "BUY" | "SELL" | "HOLD";
+export type StockMarket = "in" | "us";
+
+export interface StockSignal {
+  market: StockMarket;
+  dataDate: string;
+  sector: string;
+  strategy: string;
+  stock: string;
+  type: StockSignalType;
+  price: number;
+  stopLoss: number | null;
+  takeProfit: number | null;
+  entryPrice: number | null;
+  entryDate: string | null;
+  unrealizedPnlPct: number | null;
+  comment: string | null;
+  /** true = signal fired on the last close and fills at the next session's open. */
+  actionableTomorrow: boolean;
+  prevClose: number | null;
+  dayChangePct: number | null;
+}
+
+export interface StockSignalSnapshot {
+  market: StockMarket;
+  /** Date of the last bar the signals were read from (null when never refreshed). */
+  asOf: string | null;
+  total: number;
+  counts: Partial<Record<StockSignalType, number>>;
+  signals: StockSignal[];
+}
+
+/** A signal plus its per-stock backtest stats (for the Signals table columns). */
+export interface EnrichedStockSignal {
+  signal: StockSignal;
+  btWr: number | null;
+  btPf: number | null;
+  btCagr: number | null;
+  btAvgPnl: number | null;
+  btAvgMae: number | null;
+  btAvgMfe: number | null;
+  btAvgHoldDays: number | null;
+}
+
+export interface StockSignalsResponse {
+  market: StockMarket;
+  asOf: string | null;
+  total: number;
+  counts: Partial<Record<StockSignalType, number>>;
+  signals: EnrichedStockSignal[];
+}
+
+export interface StockWinnerRow {
+  sector: string;
+  strategy: string;
+  portfolioCagr: number | null;
+  avgPf: number | null;
+  avgWr: number | null;
+  avgTradePct: number | null;
+  avgMaePct: number | null;
+  avgMfePct: number | null;
+  totalTrades: number;
+  composite: number | null;
+  stocksUsed: number;
+}
+
+export interface StockWinnersResponse {
+  market: StockMarket;
+  aggregate: {
+    invested: number; currentValue: number; overallCagr: number; totalTrades: number; sectors: number;
+  };
+  rows: StockWinnerRow[];
+}
+
+export interface StockPerformanceRow {
+  market: StockMarket;
+  sector: string;
+  strategy: string;
+  stock: string;
+  cagr: number | null; mdd: number | null; wr: number | null; pf: number | null;
+  trades: number | null; winners: number | null; losers: number | null;
+  netProfit: number | null; finalEquity: number | null; sharpe: number | null;
+  avgBarsHeld: number | null; avgTradePct: number | null; avgMaePct: number | null;
+  avgMfePct: number | null; avgHoldDays: number | null;
+}
+
+export interface StockTrade {
+  market: StockMarket; sector: string; strategy: string; stock: string;
+  tradeNum: number; entryDate: string | null; exitDate: string | null;
+  entryPrice: number | null; exitPrice: number | null;
+  pnl: number | null; pnlPct: number | null; maePct: number | null; mfePct: number | null;
+  barsHeld: number | null; comment: string | null;
+}
+
+export interface StockSectorResponse { market: StockMarket; sector: string; stocks: StockPerformanceRow[]; }
+export interface StockDetailResponse { market: StockMarket; stock: string; performance: StockPerformanceRow | null; trades: StockTrade[]; }
+export interface StockEquityPoint { date: string; equity: number; }
+export interface StockEquityResponse { market: StockMarket; points: StockEquityPoint[]; }
+
+/** One "My Portfolio" position with valuation. */
+export interface StockPositionRaw {
+  id: string; market: StockMarket; stock: string; sector: string | null; strategy: string | null;
+  entryDate: string | null; entryPrice: number | null; quantity: number | null;
+  notes: string | null; status: "open" | "closed"; exitPrice: number | null; exitDate: string | null;
+}
+export interface ValuedPosition {
+  position: StockPositionRaw;
+  invested: number | null; currentValue: number | null; currentPrice: number | null;
+  unrealizedPct: number | null; realizedPnl: number | null; realizedPct: number | null;
+  dayChangePct: number | null; dayPnl: number | null;
+}
+export interface StockPortfolioResponse {
+  market: StockMarket;
+  summary: {
+    open: number; closed: number; invested: number; currentValue: number;
+    unrealized: number; unrealizedPct: number | null; realized: number;
+    todaysPnl: number; todaysPnlPct: number | null;
+  };
+  positions: ValuedPosition[];
+}
+
+export interface StockClosedResponse { market: StockMarket; trades: StockTrade[]; }

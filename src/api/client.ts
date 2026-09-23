@@ -25,6 +25,14 @@ import type {
   MfTable,
   MfNavSeries,
   MfPortfolio,
+  StockMarket,
+  StockSignalsResponse,
+  StockWinnersResponse,
+  StockSectorResponse,
+  StockDetailResponse,
+  StockEquityResponse,
+  StockPortfolioResponse,
+  StockClosedResponse,
 } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://kfgx37r84g.execute-api.ap-south-1.amazonaws.com/prod";
@@ -41,7 +49,7 @@ const TTL_MS = 60_000;
  * instant (served from cache) without ever showing meaningfully stale numbers.
  */
 const LONG_TTL_MS = 15 * 60_000;
-const LONG_TTL_PREFIXES = ["/mf-analysis"];
+const LONG_TTL_PREFIXES = ["/mf-analysis", "/stock-analysis"];
 /** Live-broker snapshots must never be replayed from cache — they are point-in-time. */
 const NEVER_CACHE = ["/sync-mf"];
 
@@ -512,4 +520,55 @@ export function confirmStockSync(accountId: number, invested: number, value: num
     method: "POST",
     body: JSON.stringify({ accountId, invested, value }),
   });
+}
+
+// Stock Analyzer — read-only analytics, recomputed by the nightly job / imported from the VM, so
+// these are plain cacheable GETs (long TTL, like the MF analyzer).
+export function getStockSignals(market: StockMarket = "in", type?: "BUY" | "SELL" | "HOLD") {
+  const q = new URLSearchParams({ action: "signals", market });
+  if (type) q.set("type", type);
+  return request<StockSignalsResponse>(`/stock-analysis?${q}`);
+}
+
+export function getStockWinners(market: StockMarket = "in") {
+  return request<StockWinnersResponse>(`/stock-analysis?action=winners&market=${market}`);
+}
+
+export function getStockSector(market: StockMarket, sector: string) {
+  return request<StockSectorResponse>(`/stock-analysis?action=sector&market=${market}&sector=${encodeURIComponent(sector)}`);
+}
+
+export function getStockDetail(market: StockMarket, stock: string) {
+  return request<StockDetailResponse>(`/stock-analysis?action=stock&market=${market}&stock=${encodeURIComponent(stock)}`);
+}
+
+export function getStockClosed(market: StockMarket = "in") {
+  return request<StockClosedResponse>(`/stock-analysis?action=closed&market=${market}`);
+}
+
+export function getStockEquity(market: StockMarket, opts?: { sector?: string; stock?: string }) {
+  const q = new URLSearchParams({ action: "equity", market });
+  if (opts?.sector) q.set("sector", opts.sector);
+  if (opts?.stock) q.set("stock", opts.stock);
+  return request<StockEquityResponse>(`/stock-analysis?${q}`);
+}
+
+// My Portfolio — positions with live-ish valuation. Mutations, so not cached.
+export function getStockPortfolio(market: StockMarket = "in") {
+  return request<StockPortfolioResponse>(`/stock-portfolio?market=${market}`);
+}
+
+export function addStockPosition(data: { market: StockMarket; stock: string; sector?: string; strategy?: string; entryDate?: string; entryPrice?: number; quantity?: number; notes?: string }) {
+  invalidateCache("/stock-portfolio");
+  return request<StockPortfolioResponse>("/stock-portfolio", { method: "POST", body: JSON.stringify(data) });
+}
+
+export function updateStockPosition(data: { id: string; market: StockMarket; stock: string; sector?: string | null; strategy?: string | null; entryDate?: string | null; entryPrice?: number | null; quantity?: number | null; notes?: string | null; status: "open" | "closed"; exitPrice?: number | null; exitDate?: string | null }) {
+  invalidateCache("/stock-portfolio");
+  return request<StockPortfolioResponse>("/stock-portfolio", { method: "PUT", body: JSON.stringify(data) });
+}
+
+export function deleteStockPosition(id: string) {
+  invalidateCache("/stock-portfolio");
+  return request<StockPortfolioResponse>("/stock-portfolio", { method: "DELETE", body: JSON.stringify({ id }) });
 }

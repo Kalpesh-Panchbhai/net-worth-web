@@ -9,6 +9,7 @@ import Watchlists from "./pages/Watchlists";
 import WatchlistDetail from "./pages/WatchlistDetail";
 import MutualFunds from "./pages/MutualFunds";
 import MutualFundDetail from "./pages/MutualFundDetail";
+import Stocks from "./pages/Stocks";
 import Incomes from "./pages/Incomes";
 import Simulator from "./pages/Simulator";
 import Goals from "./pages/Goals";
@@ -66,6 +67,7 @@ function AuthGate() {
         <Route path="/watchlists/:watchlistId" element={<WatchlistDetail />} />
         <Route path="/mutual-funds" element={<MutualFunds />} />
         <Route path="/mutual-funds/:schemeCode" element={<MutualFundDetail />} />
+        <Route path="/stocks" element={<Stocks />} />
         <Route path="/incomes" element={<Incomes />} />
         <Route path="/goals" element={<Goals />} />
         <Route path="/simulator" element={<Simulator />} />

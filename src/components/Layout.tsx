@@ -27,6 +27,7 @@ import SyncRoundedIcon from "@mui/icons-material/SyncRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import QueryStatsRoundedIcon from "@mui/icons-material/QueryStatsRounded";
 import ShowChartRoundedIcon from "@mui/icons-material/ShowChartRounded";
+import CandlestickChartRoundedIcon from "@mui/icons-material/CandlestickChartRounded";
 import FlagRoundedIcon from "@mui/icons-material/FlagRounded";
 import FileDownloadRoundedIcon from "@mui/icons-material/FileDownloadRounded";
 import FileUploadRoundedIcon from "@mui/icons-material/FileUploadRounded";
@@ -69,6 +70,7 @@ const NAV_GROUPS: { label?: string; items: { label: string; path: string; icon: 
     label: "Research",
     items: [
       { label: "MF Analyzer", path: "/mutual-funds", icon: <ShowChartRoundedIcon /> },
+      { label: "Stock Analyzer", path: "/stocks", icon: <CandlestickChartRoundedIcon /> },
     ],
   },
   {
