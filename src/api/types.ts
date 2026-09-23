@@ -503,4 +503,7 @@ export interface StockAlertConfig {
   timezone: string;
   weekdaysOnly: boolean;
   lastSentDate: string | null;
+  /** Live view of this market's AWS EventBridge rule. */
+  awsCron?: string | null;
+  awsState?: string | null;
 }

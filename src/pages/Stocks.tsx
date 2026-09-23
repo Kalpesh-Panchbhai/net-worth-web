@@ -341,6 +341,13 @@ function AlertSettingsDialog({ open, onClose }: { open: boolean; onClose: () => 
                       sx={{ textTransform: "none", borderRadius: 2, ml: "auto", fontWeight: 600, px: 2.5 }}>Save</Button>
                   </Stack>
                 )}
+                {cfg.enabled && cfg.awsCron && (
+                  <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mt: 1.25, flexWrap: "wrap" }}>
+                    <Typography sx={{ fontSize: "0.62rem", color: colors.gray400 }}>AWS EventBridge:</Typography>
+                    <Box component="code" sx={{ fontSize: "0.66rem", fontFamily: "monospace", bgcolor: colors.gray100, color: colors.gray700, px: 0.75, py: 0.25, borderRadius: 1 }}>{cfg.awsCron}</Box>
+                    <Typography sx={{ fontSize: "0.6rem", fontWeight: 700, color: cfg.awsState === "ENABLED" ? colors.success : colors.gray400 }}>{cfg.awsState}</Typography>
+                  </Stack>
+                )}
               </Paper>
             ))}
           </Stack>
