@@ -475,6 +475,16 @@ export interface StockPortfolioResponse {
 
 export interface StockClosedResponse { market: StockMarket; trades: StockTrade[]; }
 
+/** Data-refresh schedule (global), editable from Settings. */
+export interface RefreshScheduleConfig {
+  intervalHours: number;
+  weekdaysOnly: boolean;
+  enabled: boolean;
+  allowedIntervals: number[];
+  lastRefreshedAt: number | null;
+  nextRefreshAt: number | null;
+}
+
 /** Per-market Slack alert schedule (editable from the UI). */
 export interface StockAlertConfig {
   market: StockMarket;

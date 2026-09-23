@@ -250,6 +250,16 @@ export function getLastRefreshed() {
   return request<{ lastRefreshedAt: number | null; nextRefreshAt: number | null }>("/refresh");
 }
 
+// Data refresh schedule (global): interval, weekend policy, enabled.
+export function getRefreshSchedule() {
+  return request<import("./types").RefreshScheduleConfig>("/refresh-schedule");
+}
+
+export function updateRefreshSchedule(cfg: { intervalHours: number; weekdaysOnly: boolean; enabled: boolean }) {
+  invalidateCache("/refresh-schedule", "/refresh");
+  return request<import("./types").RefreshScheduleConfig>("/refresh-schedule", { method: "PUT", body: JSON.stringify(cfg) });
+}
+
 // Watchlists
 export function getWatchlists(userId: number) {
   return request<WatchlistSummary[]>(`/watchlists/${userId}`);

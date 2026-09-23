@@ -4,7 +4,7 @@ import {
   Box, Typography, Avatar, ToggleButtonGroup, ToggleButton, Stack,
   Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText,
   IconButton, Divider, Dialog, DialogTitle, DialogContent, DialogActions, Button,
-  TextField, Menu, MenuItem, Tooltip, CircularProgress,
+  TextField, Menu, MenuItem, Tooltip, CircularProgress, Switch, FormControlLabel,
   useMediaQuery, useTheme,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
@@ -35,7 +35,8 @@ import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
 import UnfoldMoreRoundedIcon from "@mui/icons-material/UnfoldMoreRounded";
 import ScheduleRoundedIcon from "@mui/icons-material/ScheduleRounded";
 import { useUser } from "../context/UserContext";
-import { deleteUser, invalidateCache, refreshData, getLastRefreshed } from "../api/client";
+import { deleteUser, invalidateCache, refreshData, getLastRefreshed, getRefreshSchedule, updateRefreshSchedule } from "../api/client";
+import type { RefreshScheduleConfig } from "../api/types";
 import { useToast } from "../context/ToastContext";
 import { useColorMode, useTokens } from "../context/ColorModeContext";
 import type { ColorModePref } from "../context/ColorModeContext";
@@ -53,6 +54,60 @@ function formatIST(ms: number): string {
     timeZone: "Asia/Kolkata", day: "numeric", month: "short",
     hour: "numeric", minute: "2-digit", hour12: true,
   }) + " IST";
+}
+
+/** Self-contained "Data refresh" schedule control for the Settings dialog. */
+function RefreshScheduleSection() {
+  const { colors } = useTokens();
+  const { showToast } = useToast();
+  const [cfg, setCfg] = useState<RefreshScheduleConfig | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { getRefreshSchedule().then(setCfg).catch(() => {}); }, []);
+
+  const save = async (next: { intervalHours: number; weekdaysOnly: boolean; enabled: boolean }) => {
+    setSaving(true);
+    try {
+      setCfg(await updateRefreshSchedule(next));
+      showToast("Refresh schedule updated", "success");
+    } catch {
+      showToast("Couldn't update schedule. Try again.", "error");
+    } finally { setSaving(false); }
+  };
+
+  const intervalLabel = (h: number) => h === 24 ? "Once a day" : h === 1 ? "Every hour" : `Every ${h} hours`;
+
+  return (
+    <Box>
+      <Typography variant="overline" sx={{ mb: 1, display: "block", fontSize: "0.65rem", color: colors.gray400 }}>
+        Data refresh
+      </Typography>
+      {!cfg ? <CircularProgress size={18} /> : (
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+          <FormControlLabel
+            control={<Switch checked={cfg.enabled} onChange={e => save({ intervalHours: cfg.intervalHours, weekdaysOnly: cfg.weekdaysOnly, enabled: e.target.checked })} />}
+            label={<Typography sx={{ fontSize: "0.85rem" }}>{cfg.enabled ? "Auto-refresh on" : "Auto-refresh off"}</Typography>}
+          />
+          <TextField
+            select size="small" fullWidth label="Frequency"
+            value={cfg.intervalHours} disabled={!cfg.enabled || saving}
+            onChange={e => save({ intervalHours: Number(e.target.value), weekdaysOnly: cfg.weekdaysOnly, enabled: cfg.enabled })}
+            sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2.5 } }}
+          >
+            {cfg.allowedIntervals.map(h => <MenuItem key={h} value={h}>{intervalLabel(h)}</MenuItem>)}
+          </TextField>
+          <FormControlLabel
+            control={<Switch checked={!cfg.weekdaysOnly} disabled={!cfg.enabled || saving}
+              onChange={e => save({ intervalHours: cfg.intervalHours, weekdaysOnly: !e.target.checked, enabled: cfg.enabled })} />}
+            label={<Typography sx={{ fontSize: "0.85rem" }}>Run on weekends</Typography>}
+          />
+          {cfg.enabled && cfg.nextRefreshAt && (
+            <Typography sx={{ fontSize: "0.68rem", color: colors.gray400 }}>Next refresh {formatIST(cfg.nextRefreshAt)}</Typography>
+          )}
+        </Box>
+      )}
+    </Box>
+  );
 }
 
 // Navigation grouped by intent so the sidebar reads as a short list of sections rather than one
@@ -657,6 +712,9 @@ function Layout({ children }: { children: ReactNode }) {
                 }}
               />
             </Box>
+
+            {/* Data refresh schedule */}
+            {settingsOpen && <RefreshScheduleSection />}
           </Box>
         </DialogContent>
         <DialogActions>
