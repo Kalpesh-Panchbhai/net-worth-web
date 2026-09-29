@@ -767,14 +767,9 @@ function Layout({ children }: { children: ReactNode }) {
               <Typography variant="overline" sx={{ mb: 1, display: "block", fontSize: "0.65rem", color: colors.gray400 }}>
                 About
               </Typography>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, flexWrap: "wrap" }}>
-                <Typography sx={{ fontSize: "0.75rem", color: colors.gray500 }}>
-                  Deployed {formatIST(new Date(__BUILD_TIME__).getTime())}
-                </Typography>
-                <Box component="code" sx={{ fontSize: "0.66rem", fontFamily: "monospace", bgcolor: colors.gray100, color: colors.gray700, px: 0.75, py: 0.25, borderRadius: 1 }}>
-                  {__BUILD_SHA__}
-                </Box>
-              </Box>
+              <Typography sx={{ fontSize: "0.75rem", color: colors.gray500 }}>
+                Deployed {formatIST(new Date(__BUILD_TIME__).getTime())}
+              </Typography>
             </Box>
           </Box>
         </DialogContent>
