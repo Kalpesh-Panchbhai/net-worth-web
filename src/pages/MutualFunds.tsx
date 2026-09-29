@@ -51,10 +51,19 @@ function MutualFunds() {
   const horizon = (searchParams.get("horizon") as Horizon) || "5Y";
   const setHorizon = (h: Horizon) => updateParams({ horizon: h === "5Y" ? null : h });
   const allSearch = searchParams.get("q") ?? "";
-  const setAllSearch = (q: string) => updateParams({ q: q || null });
   const allAsset = searchParams.get("asset") ?? "";
   const allCategory = searchParams.get("category") ?? "";
   const starredOnly = searchParams.get("starred") === "1";
+
+  // The search box types into local state instantly; only after a pause does it write to the URL
+  // and re-run the filter/sort over the (potentially thousands-of-rows) fund table.
+  const [searchInput, setSearchInput] = useState(() => searchParams.get("q") ?? "");
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (searchInput !== (searchParams.get("q") ?? "")) updateParams({ q: searchInput || null });
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchInput]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Compare basket — a transient overlay, not part of the URL-persisted view state.
   const [compareSet, setCompareSet] = useState<Set<number>>(new Set());
@@ -199,8 +208,8 @@ function MutualFunds() {
         <Paper sx={{ p: { xs: 1.5, sm: 2.5 } }}>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ mb: 2 }}>
             <TextField
-              size="small" placeholder="Search funds or AMCs…" value={allSearch}
-              onChange={e => setAllSearch(e.target.value)}
+              size="small" placeholder="Search funds or AMCs…" value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
               InputProps={{ startAdornment: <InputAdornment position="start"><SearchRoundedIcon sx={{ fontSize: 18, color: colors.gray400 }} /></InputAdornment> }}
               sx={{ flex: 1 }}
             />
