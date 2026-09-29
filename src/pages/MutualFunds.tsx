@@ -10,7 +10,6 @@ import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import InsightsRoundedIcon from "@mui/icons-material/InsightsRounded";
 import ViewListRoundedIcon from "@mui/icons-material/ViewListRounded";
 import PieChartRoundedIcon from "@mui/icons-material/PieChartRounded";
-import EmojiEventsRoundedIcon from "@mui/icons-material/EmojiEventsRounded";
 import StarRoundedIcon from "@mui/icons-material/StarRounded";
 import CompareArrowsRoundedIcon from "@mui/icons-material/CompareArrowsRounded";
 import { getMfCategories, getMfTable } from "../api/client";
@@ -32,7 +31,7 @@ const MAX_COMPARE = 4;
 // metrics that also have no SI value, so it naturally goes unscored at that horizon too.
 const TABLE_HORIZONS = HORIZONS;
 
-type View = "all" | "leaderboard" | "portfolio";
+type View = "all" | "portfolio";
 
 function MutualFunds() {
   const { colors } = useTokens();
@@ -49,7 +48,7 @@ function MutualFunds() {
       return next;
     }, { replace: true });
   };
-  const view = (["leaderboard", "portfolio"].includes(searchParams.get("view") ?? "") ? searchParams.get("view") : "all") as View;
+  const view = (searchParams.get("view") === "portfolio" ? "portfolio" : "all") as View;
   const setView = (v: View) => updateParams({ view: v === "all" ? null : v });
   const horizon = (searchParams.get("horizon") as Horizon) || "5Y";
   const setHorizon = (h: Horizon) => updateParams({ horizon: h === "5Y" ? null : h });
@@ -154,8 +153,7 @@ function MutualFunds() {
     });
   }, [table, scores]);
 
-  // All-funds / leaderboard views: apply the search + asset-class + category + starred filters
-  // client-side. Leaderboard is the same filtered set, narrowed to funds that actually got a score.
+  // All-funds view: apply the search + asset-class + category + starred filters client-side.
   const allRows: MfTableRow[] = useMemo(() => {
     const q = allSearch.trim().toLowerCase();
     return rowsWithScore.filter(r =>
@@ -165,11 +163,6 @@ function MutualFunds() {
       (!q || r.name.toLowerCase().includes(q) || r.amc.toLowerCase().includes(q)),
     );
   }, [rowsWithScore, allSearch, allAsset, allCategory, starredOnly, starred]);
-
-  const leaderboardRows: MfTableRow[] = useMemo(
-    () => allRows.filter(r => r.values.score != null),
-    [allRows],
-  );
 
   if (catError && categories.length === 0 && !catLoading) {
     return <ErrorState message={catError} onRetry={() => window.location.reload()} />;
@@ -183,8 +176,6 @@ function MutualFunds() {
     </Box>
   );
 
-  // Shared search/asset/category/starred filter bar — identical for All Funds and Leaderboard,
-  // since a leaderboard is just the same filtered set, ranked.
   const FiltersBar = (
     <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ mb: 2 }}>
       <TextField
@@ -237,26 +228,6 @@ function MutualFunds() {
     />
   );
 
-  const LeaderboardArea = tableLoading ? (
-    <ListSkeleton rows={8} />
-  ) : tableError ? (
-    <ErrorState message={tableError} onRetry={() => setRetryTick(t => t + 1)} />
-  ) : !table || leaderboardRows.length === 0 ? (
-    <EmptyState icon={<EmojiEventsRoundedIcon />} title="No scored funds"
-      description="Funds need enough history at this horizon to score — try a shorter horizon or a different filter." />
-  ) : (
-    <MfFundTable
-      rows={leaderboardRows}
-      metrics={["score", ...table.metrics]}
-      defaultSort="score"
-      showCategory
-      selected={compareSet}
-      onToggleSelect={toggleCompare}
-      selectionFull={compareSet.size >= MAX_COMPARE}
-      paramPrefix="lb"
-    />
-  );
-
   return (
     <Stack spacing={{ xs: 2, sm: 2.5 }}>
       <PageHeader title="Mutual Fund Analyzer" action={
@@ -270,7 +241,6 @@ function MutualFunds() {
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} justifyContent="space-between" alignItems={{ xs: "stretch", sm: "center" }}>
         <ToggleButtonGroup exclusive size="small" value={view} onChange={(_, v) => { if (v) setView(v); }}>
           <ToggleButton value="all" sx={{ px: 1.75, gap: 0.75 }}><ViewListRoundedIcon sx={{ fontSize: 18 }} /> All funds</ToggleButton>
-          <ToggleButton value="leaderboard" sx={{ px: 1.75, gap: 0.75 }}><EmojiEventsRoundedIcon sx={{ fontSize: 18 }} /> Leaderboard</ToggleButton>
           <ToggleButton value="portfolio" sx={{ px: 1.75, gap: 0.75 }}><PieChartRoundedIcon sx={{ fontSize: 18 }} /> My funds</ToggleButton>
         </ToggleButtonGroup>
         {view !== "portfolio" && (
@@ -288,14 +258,6 @@ function MutualFunds() {
             {table ? `${allRows.length.toLocaleString("en-IN")} funds · ${horizon} · tap a column to sort` : "Loading…"}
           </Typography>
           {TableArea}
-        </Paper>
-      ) : view === "leaderboard" ? (
-        <Paper sx={{ p: { xs: 1.5, sm: 2.5 } }}>
-          {FiltersBar}
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
-            {table ? `${leaderboardRows.length.toLocaleString("en-IN")} scored funds · ${horizon} · ranked against subCategory peers` : "Loading…"}
-          </Typography>
-          {LeaderboardArea}
         </Paper>
       ) : (
         userId != null ? <MfPortfolioPanel userId={userId} /> : null
