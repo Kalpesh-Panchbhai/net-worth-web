@@ -25,17 +25,24 @@ interface Props {
   onToggleSelect?: (schemeCode: number) => void;
   /** Disable ticking more rows once the compare cap is hit (already-ticked rows stay tickable off). */
   selectionFull?: boolean;
+  /**
+   * Prefix for this instance's sort/page URL keys (e.g. "lb" → "lbsort"/"lbdir"/"lbpage"/"lbsize").
+   * Needed when a page renders more than one MfFundTable (e.g. All Funds + Leaderboard tabs) so
+   * each keeps its own sort/page instead of one instance's state leaking into the other's URL keys.
+   */
+  paramPrefix?: string;
 }
 
 /**
  * A sortable, paginated grid of funds. Every metric is a column; clicking a header sorts by it,
  * defaulting to the metric's natural "best first" direction. Funds missing a value sort last.
  */
-export default function MfFundTable({ rows, metrics, showCategory = false, selected, onToggleSelect, selectionFull = false }: Props) {
+export default function MfFundTable({ rows, metrics, showCategory = false, selected, onToggleSelect, selectionFull = false, paramPrefix = "" }: Props) {
   const navigate = useNavigate();
   const { colors } = useTokens();
   const { isStarred, toggle: toggleStar } = useShortlist();
   const selectable = !!onToggleSelect;
+  const keys = { sort: `${paramPrefix}sort`, dir: `${paramPrefix}dir`, page: `${paramPrefix}page`, size: `${paramPrefix}size` };
 
   // Sort/page live in the URL so navigating to a fund and back restores them (browser back
   // returns to this same history entry, query string intact).
@@ -48,15 +55,15 @@ export default function MfFundTable({ rows, metrics, showCategory = false, selec
     }, { replace: true });
   };
 
-  const orderBy: SortKey = searchParams.get("sort") || metrics[0] || "name";
-  const order: "asc" | "desc" = searchParams.get("dir") === "asc" ? "asc" : "desc";
-  const page = Number(searchParams.get("page") ?? 0) || 0;
-  const rowsPerPage = Number(searchParams.get("size") ?? 25) || 25;
+  const orderBy: SortKey = searchParams.get(keys.sort) || metrics[0] || "name";
+  const order: "asc" | "desc" = searchParams.get(keys.dir) === "asc" ? "asc" : "desc";
+  const page = Number(searchParams.get(keys.page) ?? 0) || 0;
+  const rowsPerPage = Number(searchParams.get(keys.size) ?? 25) || 25;
 
   const handleSort = (key: SortKey) => {
-    if (key === orderBy) { updateParams({ dir: order === "asc" ? "desc" : "asc" }); return; }
+    if (key === orderBy) { updateParams({ [keys.dir]: order === "asc" ? "desc" : "asc" }); return; }
     const dir = key === "name" || key === "category" ? "asc" : metricMeta(key).higherIsBetter ? "desc" : "asc";
-    updateParams({ sort: key, dir, page: null });
+    updateParams({ [keys.sort]: key, [keys.dir]: dir, [keys.page]: null });
   };
 
   // A changed dataset (new filters / horizon) should start back on the first page — but not on
@@ -64,7 +71,7 @@ export default function MfFundTable({ rows, metrics, showCategory = false, selec
   const mounted = useRef(false);
   useEffect(() => {
     if (!mounted.current) { mounted.current = true; return; }
-    if (page !== 0) updateParams({ page: null });
+    if (page !== 0) updateParams({ [keys.page]: null });
   }, [rows]);
 
   const sorted = useMemo(() => {
@@ -178,9 +185,9 @@ export default function MfFundTable({ rows, metrics, showCategory = false, selec
         component="div"
         count={sorted.length}
         page={page}
-        onPageChange={(_, p) => updateParams({ page: p === 0 ? null : String(p) })}
+        onPageChange={(_, p) => updateParams({ [keys.page]: p === 0 ? null : String(p) })}
         rowsPerPage={rowsPerPage}
-        onRowsPerPageChange={e => updateParams({ size: e.target.value === "25" ? null : e.target.value, page: null })}
+        onRowsPerPageChange={e => updateParams({ [keys.size]: e.target.value === "25" ? null : e.target.value, [keys.page]: null })}
         rowsPerPageOptions={[25, 50, 100]}
         sx={{ ".MuiTablePagination-toolbar": { minHeight: 44 } }}
       />

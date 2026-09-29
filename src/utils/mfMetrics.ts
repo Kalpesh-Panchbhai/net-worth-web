@@ -3,7 +3,7 @@
 // Every backend metric value is a fraction (0.12 === 12%) except Sharpe/Sortino (a unitless ratio)
 // and rolling_windows (a count). Formatting and sign-colouring both branch on that kind.
 
-export type MetricKind = "pct" | "ratio" | "count";
+export type MetricKind = "pct" | "ratio" | "count" | "score";
 
 export interface MetricMeta {
   code: string;
@@ -32,6 +32,7 @@ export const MF_METRICS: Record<string, MetricMeta> = {
   sortino: { code: "sortino", label: "Sortino ratio", short: "Sortino", kind: "ratio", higherIsBetter: true, help: "Excess return per unit of downside volatility only." },
   max_drawdown: { code: "max_drawdown", label: "Maximum drawdown", short: "Max DD", kind: "pct", higherIsBetter: true, help: "Largest peak-to-trough fall over the full history (a negative number)." },
   current_drawdown: { code: "current_drawdown", label: "Current drawdown", short: "Cur DD", kind: "pct", higherIsBetter: true, help: "How far below its all-time high the fund currently sits." },
+  score: { code: "score", label: "Composite score", short: "Score", kind: "score", higherIsBetter: true, help: "Weighted blend of category-relative percentiles: returns (CAGR, rolling avg/worst), risk-adjusted return (Sharpe, Sortino), downside protection (max drawdown, % negative windows), and consistency (% windows above 12%). 0-100, ranked against subCategory peers at this horizon." },
 };
 
 /** Metrics offered in the leaderboard's metric picker, in a sensible order. */
@@ -68,10 +69,11 @@ export function metricMeta(code: string): MetricMeta {
   return MF_METRICS[code] ?? { code, label: code, short: code, kind: "pct", higherIsBetter: true, help: "" };
 }
 
-/** Human-readable metric value: 12.34%, a 1.42 ratio, or a 107 count. */
+/** Human-readable metric value: 12.34%, a 1.42 ratio, a 107 count, or a 78.3 score. */
 export function formatMetricValue(code: string, value: number): string {
   const meta = metricMeta(code);
   if (meta.kind === "count") return String(Math.round(value));
+  if (meta.kind === "score") return value.toFixed(1);
   if (meta.kind === "ratio") return value.toFixed(2);
   const pct = value * 100;
   const sign = pct > 0 ? "+" : "";
@@ -80,10 +82,11 @@ export function formatMetricValue(code: string, value: number): string {
 
 /**
  * Whether this metric's value carries a good/bad sense worth colouring.
- * Returns and ratios do (green up / red down); volatility and window counts are neutral.
+ * Returns and ratios do (green up / red down); volatility, window counts and the composite score
+ * (always 0-100, never negative) are neutral.
  */
 export function isSignedMetric(code: string): boolean {
-  return code !== "volatility" && code !== "rolling_windows" && code !== "rolling_share_negative";
+  return code !== "volatility" && code !== "rolling_windows" && code !== "rolling_share_negative" && code !== "score";
 }
 
 const ASSET_ORDER = ["EQUITY", "HYBRID", "DEBT", "SOLUTION", "OTHER", "UNKNOWN"];

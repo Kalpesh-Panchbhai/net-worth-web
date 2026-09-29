@@ -10,6 +10,7 @@ import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import InsightsRoundedIcon from "@mui/icons-material/InsightsRounded";
 import ViewListRoundedIcon from "@mui/icons-material/ViewListRounded";
 import PieChartRoundedIcon from "@mui/icons-material/PieChartRounded";
+import EmojiEventsRoundedIcon from "@mui/icons-material/EmojiEventsRounded";
 import StarRoundedIcon from "@mui/icons-material/StarRounded";
 import CompareArrowsRoundedIcon from "@mui/icons-material/CompareArrowsRounded";
 import { getMfCategories, getMfTable } from "../api/client";
@@ -22,14 +23,16 @@ import { useTokens } from "../context/ColorModeContext";
 import { useUser } from "../context/UserContext";
 import { useShortlist } from "../context/ShortlistContext";
 import { HORIZONS, assetClassLabel, assetClassRank, type Horizon } from "../utils/mfMetrics";
+import { scoreMfRows } from "../utils/mfScore";
 
 const MAX_COMPARE = 4;
 
 // Full horizon set, including since-inception. Risk metrics have no SI value, so those columns read
-// "—" at SI while CAGR and max-drawdown stay meaningful.
+// "—" at SI while CAGR and max-drawdown stay meaningful. The composite score needs rolling/ratio
+// metrics that also have no SI value, so it naturally goes unscored at that horizon too.
 const TABLE_HORIZONS = HORIZONS;
 
-type View = "all" | "portfolio";
+type View = "all" | "leaderboard" | "portfolio";
 
 function MutualFunds() {
   const { colors } = useTokens();
@@ -46,7 +49,7 @@ function MutualFunds() {
       return next;
     }, { replace: true });
   };
-  const view = (searchParams.get("view") === "portfolio" ? "portfolio" : "all") as View;
+  const view = (["leaderboard", "portfolio"].includes(searchParams.get("view") ?? "") ? searchParams.get("view") : "all") as View;
   const setView = (v: View) => updateParams({ view: v === "all" ? null : v });
   const horizon = (searchParams.get("horizon") as Horizon) || "5Y";
   const setHorizon = (h: Horizon) => updateParams({ horizon: h === "5Y" ? null : h });
@@ -140,17 +143,33 @@ function MutualFunds() {
     [categories],
   );
 
-  // All-funds view: apply the search + asset-class + category + starred filters client-side.
-  const allRows: MfTableRow[] = useMemo(() => {
+  // Composite score, computed against the FULL unfiltered table so a fund's category-relative
+  // percentile isn't skewed by whatever search/asset/category filter happens to be applied.
+  const scores = useMemo(() => scoreMfRows(table?.rows ?? []), [table]);
+  const rowsWithScore: MfTableRow[] = useMemo(() => {
     if (!table) return [];
+    return table.rows.map(r => {
+      const s = scores.get(r.schemeCode);
+      return s ? { ...r, values: { ...r.values, score: s.score } } : r;
+    });
+  }, [table, scores]);
+
+  // All-funds / leaderboard views: apply the search + asset-class + category + starred filters
+  // client-side. Leaderboard is the same filtered set, narrowed to funds that actually got a score.
+  const allRows: MfTableRow[] = useMemo(() => {
     const q = allSearch.trim().toLowerCase();
-    return table.rows.filter(r =>
+    return rowsWithScore.filter(r =>
       (!allAsset || r.assetClass === allAsset) &&
       (!allCategory || r.subCategory === allCategory) &&
       (!starredOnly || starred.has(r.schemeCode)) &&
       (!q || r.name.toLowerCase().includes(q) || r.amc.toLowerCase().includes(q)),
     );
-  }, [table, allSearch, allAsset, allCategory, starredOnly, starred]);
+  }, [rowsWithScore, allSearch, allAsset, allCategory, starredOnly, starred]);
+
+  const leaderboardRows: MfTableRow[] = useMemo(
+    () => allRows.filter(r => r.values.score != null),
+    [allRows],
+  );
 
   if (catError && categories.length === 0 && !catLoading) {
     return <ErrorState message={catError} onRetry={() => window.location.reload()} />;
@@ -164,6 +183,42 @@ function MutualFunds() {
     </Box>
   );
 
+  // Shared search/asset/category/starred filter bar — identical for All Funds and Leaderboard,
+  // since a leaderboard is just the same filtered set, ranked.
+  const FiltersBar = (
+    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ mb: 2 }}>
+      <TextField
+        size="small" placeholder="Search funds or AMCs…" value={searchInput}
+        onChange={e => setSearchInput(e.target.value)}
+        InputProps={{ startAdornment: <InputAdornment position="start"><SearchRoundedIcon sx={{ fontSize: 18, color: colors.gray400 }} /></InputAdornment> }}
+        sx={{ flex: 1 }}
+      />
+      <FormControl size="small" sx={{ minWidth: 150 }}>
+        <Select value={allAsset} displayEmpty
+          onChange={e => updateParams({ asset: e.target.value || null, category: null })}
+          renderValue={v => (v ? assetClassLabel(String(v)) : "All asset classes")}>
+          <MenuItem value="">All asset classes</MenuItem>
+          {assetClasses.map(a => <MenuItem key={a} value={a}>{assetClassLabel(a)}</MenuItem>)}
+        </Select>
+      </FormControl>
+      <FormControl size="small" sx={{ minWidth: 190 }}>
+        <Select value={allCategory} displayEmpty onChange={e => updateParams({ category: e.target.value || null })}
+          renderValue={v => (v ? String(v) : "All categories")}>
+          <MenuItem value="">All categories</MenuItem>
+          {grouped.filter(g => !allAsset || g.asset === allAsset).flatMap(({ asset, subs }) => [
+            <ListSubheader key={asset} sx={{ fontSize: "0.7rem", fontWeight: 700, color: colors.gray400, textTransform: "uppercase" }}>{assetClassLabel(asset)}</ListSubheader>,
+            ...subs.map(c => <MenuItem key={c.subCategory} value={c.subCategory} sx={{ pl: 3 }}>{c.subCategory} · {c.liveCount}</MenuItem>),
+          ])}
+        </Select>
+      </FormControl>
+      <ToggleButton value="starred" selected={starredOnly} size="small"
+        onChange={() => updateParams({ starred: starredOnly ? null : "1" })}
+        sx={{ px: 1.5, gap: 0.5, whiteSpace: "nowrap", ...(starredOnly ? { color: "#F59E0B !important" } : {}) }}>
+        <StarRoundedIcon sx={{ fontSize: 18 }} /> Starred{starred.size ? ` (${starred.size})` : ""}
+      </ToggleButton>
+    </Stack>
+  );
+
   const TableArea = tableLoading ? (
     <ListSkeleton rows={8} />
   ) : tableError ? (
@@ -173,11 +228,30 @@ function MutualFunds() {
   ) : (
     <MfFundTable
       rows={allRows}
-      metrics={table.metrics}
+      metrics={[...table.metrics, "score"]}
       showCategory
       selected={compareSet}
       onToggleSelect={toggleCompare}
       selectionFull={compareSet.size >= MAX_COMPARE}
+    />
+  );
+
+  const LeaderboardArea = tableLoading ? (
+    <ListSkeleton rows={8} />
+  ) : tableError ? (
+    <ErrorState message={tableError} onRetry={() => setRetryTick(t => t + 1)} />
+  ) : !table || leaderboardRows.length === 0 ? (
+    <EmptyState icon={<EmojiEventsRoundedIcon />} title="No scored funds"
+      description="Funds need enough history at this horizon to score — try a shorter horizon or a different filter." />
+  ) : (
+    <MfFundTable
+      rows={leaderboardRows}
+      metrics={["score", ...table.metrics]}
+      showCategory
+      selected={compareSet}
+      onToggleSelect={toggleCompare}
+      selectionFull={compareSet.size >= MAX_COMPARE}
+      paramPrefix="lb"
     />
   );
 
@@ -194,6 +268,7 @@ function MutualFunds() {
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} justifyContent="space-between" alignItems={{ xs: "stretch", sm: "center" }}>
         <ToggleButtonGroup exclusive size="small" value={view} onChange={(_, v) => { if (v) setView(v); }}>
           <ToggleButton value="all" sx={{ px: 1.75, gap: 0.75 }}><ViewListRoundedIcon sx={{ fontSize: 18 }} /> All funds</ToggleButton>
+          <ToggleButton value="leaderboard" sx={{ px: 1.75, gap: 0.75 }}><EmojiEventsRoundedIcon sx={{ fontSize: 18 }} /> Leaderboard</ToggleButton>
           <ToggleButton value="portfolio" sx={{ px: 1.75, gap: 0.75 }}><PieChartRoundedIcon sx={{ fontSize: 18 }} /> My funds</ToggleButton>
         </ToggleButtonGroup>
         {view !== "portfolio" && (
@@ -206,41 +281,19 @@ function MutualFunds() {
 
       {view === "all" ? (
         <Paper sx={{ p: { xs: 1.5, sm: 2.5 } }}>
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ mb: 2 }}>
-            <TextField
-              size="small" placeholder="Search funds or AMCs…" value={searchInput}
-              onChange={e => setSearchInput(e.target.value)}
-              InputProps={{ startAdornment: <InputAdornment position="start"><SearchRoundedIcon sx={{ fontSize: 18, color: colors.gray400 }} /></InputAdornment> }}
-              sx={{ flex: 1 }}
-            />
-            <FormControl size="small" sx={{ minWidth: 150 }}>
-              <Select value={allAsset} displayEmpty
-                onChange={e => updateParams({ asset: e.target.value || null, category: null })}
-                renderValue={v => (v ? assetClassLabel(String(v)) : "All asset classes")}>
-                <MenuItem value="">All asset classes</MenuItem>
-                {assetClasses.map(a => <MenuItem key={a} value={a}>{assetClassLabel(a)}</MenuItem>)}
-              </Select>
-            </FormControl>
-            <FormControl size="small" sx={{ minWidth: 190 }}>
-              <Select value={allCategory} displayEmpty onChange={e => updateParams({ category: e.target.value || null })}
-                renderValue={v => (v ? String(v) : "All categories")}>
-                <MenuItem value="">All categories</MenuItem>
-                {grouped.filter(g => !allAsset || g.asset === allAsset).flatMap(({ asset, subs }) => [
-                  <ListSubheader key={asset} sx={{ fontSize: "0.7rem", fontWeight: 700, color: colors.gray400, textTransform: "uppercase" }}>{assetClassLabel(asset)}</ListSubheader>,
-                  ...subs.map(c => <MenuItem key={c.subCategory} value={c.subCategory} sx={{ pl: 3 }}>{c.subCategory} · {c.liveCount}</MenuItem>),
-                ])}
-              </Select>
-            </FormControl>
-            <ToggleButton value="starred" selected={starredOnly} size="small"
-              onChange={() => updateParams({ starred: starredOnly ? null : "1" })}
-              sx={{ px: 1.5, gap: 0.5, whiteSpace: "nowrap", ...(starredOnly ? { color: "#F59E0B !important" } : {}) }}>
-              <StarRoundedIcon sx={{ fontSize: 18 }} /> Starred{starred.size ? ` (${starred.size})` : ""}
-            </ToggleButton>
-          </Stack>
+          {FiltersBar}
           <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
             {table ? `${allRows.length.toLocaleString("en-IN")} funds · ${horizon} · tap a column to sort` : "Loading…"}
           </Typography>
           {TableArea}
+        </Paper>
+      ) : view === "leaderboard" ? (
+        <Paper sx={{ p: { xs: 1.5, sm: 2.5 } }}>
+          {FiltersBar}
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
+            {table ? `${leaderboardRows.length.toLocaleString("en-IN")} scored funds · ${horizon} · ranked against subCategory peers` : "Loading…"}
+          </Typography>
+          {LeaderboardArea}
         </Paper>
       ) : (
         userId != null ? <MfPortfolioPanel userId={userId} /> : null
