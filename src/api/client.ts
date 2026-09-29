@@ -152,18 +152,21 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const startedAt = generation;
   const promise = fetchJson<T>(url, options, false)
     .then(data => {
-      // Only cache, and only clear the dedup slot, if nothing was invalidated while this was in
-      // flight. Otherwise a response describing the superseded state would land in the cache with
-      // a full fresh TTL, and would evict the entry belonging to the newer request.
-      if (generation === startedAt) {
-        if (cacheable && data !== undefined) cache.set(url, { data, storedAt: Date.now() });
-        inFlight.delete(url);
+      // Only cache if nothing was invalidated while this was in flight. Otherwise a response
+      // describing the superseded state would land in the cache with a full fresh TTL.
+      if (generation === startedAt && cacheable && data !== undefined) {
+        cache.set(url, { data, storedAt: Date.now() });
       }
       return data;
     })
-    .catch(err => {
-      if (generation === startedAt) inFlight.delete(url);
-      throw err;
+    .finally(() => {
+      // The dedup slot must always be cleared once the request settles (success or failure),
+      // regardless of generation. Gating this on `generation === startedAt` left a request whose
+      // generation moved out from under it (an unrelated invalidation fired while it was on the
+      // wire) permanently stuck in `inFlight`, serving frozen data until a full invalidateCache()
+      // or reload. Guard against removing a newer entry: an invalidation may already have dropped
+      // this URL's slot and a fresh request may have taken its place in the map.
+      if (inFlight.get(url) === promise) inFlight.delete(url);
     });
 
   if (cacheable) inFlight.set(url, promise as Promise<unknown>);
