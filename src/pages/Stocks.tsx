@@ -493,23 +493,26 @@ function Stocks() {
 
       {/* ── SELL tab ── */}
       {tab === "sell" && (
-        <TableContainer component={Paper}>
-          <Table size="small">
-            <TableHead><TableRow><TableCell>Stock</TableCell><TableCell>Sector</TableCell><TableCell align="right">Price</TableCell><TableCell>Strategy</TableCell><TableCell>Comment</TableCell></TableRow></TableHead>
-            <TableBody>
-              {sells.filter(r => matchQ(r.signal.stock, r.signal.sector, r.signal.strategy)).map(r => (
-                <TableRow key={r.signal.stock} hover>
-                  <TableCell><ClickableStock stock={r.signal.stock} market={market} onOpen={setStockDetail} /></TableCell>
-                  <TableCell sx={{ color: colors.gray500 }}>{prettySector(r.signal.sector)}</TableCell>
-                  <TableCell align="right">{formatCurrency(r.signal.price, currency)}</TableCell>
-                  <TableCell sx={{ color: colors.brand, fontSize: "0.8rem" }}>{r.signal.strategy}</TableCell>
-                  <TableCell sx={{ color: colors.gray500, fontSize: "0.8rem" }}>{r.signal.comment}</TableCell>
-                </TableRow>
-              ))}
-              {sells.length === 0 && <TableRow><TableCell colSpan={5} align="center" sx={{ color: colors.gray500, py: 3 }}>No actionable SELL signals.</TableCell></TableRow>}
-            </TableBody>
-          </Table>
-        </TableContainer>
+        sells.length === 0
+          ? <EmptyState icon={<ShowChartRoundedIcon />} title="No actionable SELL signals" description="No exits to execute at next open." />
+          : (
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead><TableRow><TableCell>Stock</TableCell><TableCell>Sector</TableCell><TableCell align="right">Price</TableCell><TableCell>Strategy</TableCell><TableCell>Comment</TableCell></TableRow></TableHead>
+                <TableBody>
+                  {sells.filter(r => matchQ(r.signal.stock, r.signal.sector, r.signal.strategy)).map(r => (
+                    <TableRow key={r.signal.stock} hover>
+                      <TableCell><ClickableStock stock={r.signal.stock} market={market} onOpen={setStockDetail} /></TableCell>
+                      <TableCell sx={{ color: colors.gray500 }}>{prettySector(r.signal.sector)}</TableCell>
+                      <TableCell align="right">{formatCurrency(r.signal.price, currency)}</TableCell>
+                      <TableCell sx={{ color: colors.brand, fontSize: "0.8rem" }}>{r.signal.strategy}</TableCell>
+                      <TableCell sx={{ color: colors.gray500, fontSize: "0.8rem" }}>{r.signal.comment}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )
       )}
 
       {/* ── HOLD tab ── */}
