@@ -584,6 +584,8 @@ function c2(v: number | null, colors: ReturnType<typeof useTokens>["colors"]) { 
 // ── HOLD tab (₹1L/stock hypothetical positions) ──────────────────────
 function HoldTab({ rows, market, currency, onStock }: { rows: EnrichedStockSignal[]; market: StockMarket; currency: string; onStock: (s: string) => void }) {
   const { colors } = useTokens();
+  const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "", dir: "asc" });
+  const onSort = (k: string) => setSort(p => p.key === k ? { key: k, dir: p.dir === "asc" ? "desc" : "asc" } : { key: k, dir: "desc" });
   const computed = rows.map(r => {
     const s = r.signal;
     const entry = s.entryPrice ?? s.price;
@@ -594,6 +596,20 @@ function HoldTab({ rows, market, currency, onStock }: { rows: EnrichedStockSigna
     const dayAbs = s.dayChangePct != null ? value * s.dayChangePct / 100 : null;
     return { r, entry, value, pnlPct, pnlAbs, dayPct: s.dayChangePct, dayAbs };
   });
+  const sortedComputed = useMemo(() => {
+    if (!sort.key) return computed;
+    const val = (x: typeof computed[number], k: string): number | string => {
+      switch (k) {
+        case "stock": return x.r.signal.stock; case "sector": return x.r.signal.sector; case "entryDate": return x.r.signal.entryDate || "";
+        case "entry": return x.entry; case "cmp": return x.r.signal.price; case "value": return x.value;
+        case "pnlPct": return x.pnlPct; case "pnlAbs": return x.pnlAbs; case "dayPct": return x.dayPct ?? -Infinity;
+        case "sl": return x.r.signal.stopLoss ?? -Infinity; case "tp": return x.r.signal.takeProfit ?? -Infinity; default: return "";
+      }
+    };
+    const arr = [...computed];
+    arr.sort((a, b) => { const va = val(a, sort.key), vb = val(b, sort.key); if (va < vb) return sort.dir === "asc" ? -1 : 1; if (va > vb) return sort.dir === "asc" ? 1 : -1; return 0; });
+    return arr;
+  }, [computed, sort]);
   const totPnl = computed.reduce((a, x) => a + x.pnlAbs, 0);
   const totInv = computed.length * LAKH;
   const totVal = computed.reduce((a, x) => a + x.value, 0);
@@ -614,12 +630,20 @@ function HoldTab({ rows, market, currency, onStock }: { rows: EnrichedStockSigna
       <TableContainer component={Paper}>
         <Table size="small">
           <TableHead><TableRow>
-            <TableCell>Stock</TableCell><TableCell>Sector</TableCell><TableCell>Entry Date</TableCell><TableCell align="right">Entry</TableCell>
-            <TableCell align="right">CMP</TableCell><TableCell align="right">Value (₹1L)</TableCell><TableCell align="right">P&L %</TableCell>
-            <TableCell align="right">P&L ₹</TableCell><TableCell align="right">1D %</TableCell><TableCell align="right">SL</TableCell><TableCell align="right">TP</TableCell><TableCell>Strategy</TableCell>
+            <SortTh id="stock" label="Stock" sort={sort} onSort={onSort} />
+            <SortTh id="sector" label="Sector" sort={sort} onSort={onSort} />
+            <SortTh id="entryDate" label="Entry Date" sort={sort} onSort={onSort} />
+            <SortTh id="entry" label="Entry" align="right" sort={sort} onSort={onSort} />
+            <SortTh id="cmp" label="CMP" align="right" sort={sort} onSort={onSort} />
+            <SortTh id="value" label="Value (₹1L)" align="right" sort={sort} onSort={onSort} />
+            <SortTh id="pnlPct" label="P&L %" align="right" sort={sort} onSort={onSort} />
+            <SortTh id="pnlAbs" label="P&L ₹" align="right" sort={sort} onSort={onSort} />
+            <SortTh id="dayPct" label="1D %" align="right" sort={sort} onSort={onSort} />
+            <SortTh id="sl" label="SL" align="right" sort={sort} onSort={onSort} />
+            <SortTh id="tp" label="TP" align="right" sort={sort} onSort={onSort} />
           </TableRow></TableHead>
           <TableBody>
-            {computed.map(({ r, entry, value, pnlPct, pnlAbs, dayPct }) => (
+            {sortedComputed.map(({ r, entry, value, pnlPct, pnlAbs, dayPct }) => (
               <TableRow key={r.signal.stock} hover>
                 <TableCell><ClickableStock stock={r.signal.stock} market={market} onOpen={onStock} /></TableCell>
                 <TableCell sx={{ color: colors.gray500 }}>{prettySector(r.signal.sector)}</TableCell>
@@ -632,7 +656,6 @@ function HoldTab({ rows, market, currency, onStock }: { rows: EnrichedStockSigna
                 <TableCell align="right" sx={{ color: (dayPct ?? 0) >= 0 ? colors.success : colors.error }}>{pct(dayPct)}</TableCell>
                 <TableCell align="right">{r.signal.stopLoss != null ? formatCurrency(r.signal.stopLoss, currency) : "—"}</TableCell>
                 <TableCell align="right">{r.signal.takeProfit != null ? formatCurrency(r.signal.takeProfit, currency) : "—"}</TableCell>
-                <TableCell sx={{ color: colors.brand, fontSize: "0.72rem" }}>{r.signal.strategy}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -646,6 +669,8 @@ function HoldTab({ rows, market, currency, onStock }: { rows: EnrichedStockSigna
 function PortfolioTab({ data, market, currency, onStock, onClose, onDelete }:
   { data: StockPortfolioResponse | null; market: StockMarket; currency: string; onStock: (s: string) => void; onClose: (p: ValuedPosition) => void; onDelete: (id: string) => void }) {
   const { colors } = useTokens();
+  const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "", dir: "asc" });
+  const onSort = (k: string) => setSort(p => p.key === k ? { key: k, dir: p.dir === "asc" ? "desc" : "asc" } : { key: k, dir: "desc" });
   if (!data || data.positions.filter(p => p.position.status === "open").length === 0)
     return <EmptyState icon={<ShowChartRoundedIcon />} title="No open positions" description="Use Buy Stock, or add from the Signals tab." />;
   const s = data.summary;
@@ -661,6 +686,28 @@ function PortfolioTab({ data, market, currency, onStock, onClose, onDelete }:
   const sectorRows = [...bySector.entries()].map(([sec, e]) => ({ sec, ...e, pnlPct: e.inv ? (e.cur - e.inv) / e.inv * 100 : 0 }));
   const donut = sectorRows.map((r, i) => ({ name: prettySector(r.sec), value: r.inv, fill: DONUT_COLORS[i % DONUT_COLORS.length] }));
   const perStock = open.map(v => ({ name: v.position.stock.replace(".NS", ""), pnl: v.unrealizedPct ?? 0 })).sort((a, b) => b.pnl - a.pnl);
+  const openComputed = open.map(v => {
+    const p = v.position;
+    const pnl = v.currentValue != null && v.invested != null ? v.currentValue - v.invested : null;
+    const days = daysBetween(p.entryDate, null);
+    return { v, p, pnl, days };
+  });
+  const sortedOpen = useMemo(() => {
+    if (!sort.key) return openComputed;
+    const val = (x: typeof openComputed[number], k: string): number | string => {
+      switch (k) {
+        case "stock": return x.p.stock; case "sector": return x.p.sector || ""; case "entryDate": return x.p.entryDate || "";
+        case "days": return x.days ?? -Infinity; case "qty": return x.p.quantity ?? -Infinity;
+        case "entry": return x.p.entryPrice ?? -Infinity; case "cmp": return x.v.currentPrice ?? -Infinity;
+        case "invested": return x.v.invested ?? -Infinity; case "current": return x.v.currentValue ?? -Infinity;
+        case "pnlPct": return x.v.unrealizedPct ?? -Infinity; case "pnlAbs": return x.pnl ?? -Infinity; case "dayPct": return x.v.dayChangePct ?? -Infinity;
+        default: return "";
+      }
+    };
+    const arr = [...openComputed];
+    arr.sort((a, b) => { const va = val(a, sort.key), vb = val(b, sort.key); if (va < vb) return sort.dir === "asc" ? -1 : 1; if (va > vb) return sort.dir === "asc" ? 1 : -1; return 0; });
+    return arr;
+  }, [openComputed, sort]);
 
   return (
     <>
@@ -728,21 +775,28 @@ function PortfolioTab({ data, market, currency, onStock, onClose, onDelete }:
       <TableContainer component={Paper}>
         <Table size="small">
           <TableHead><TableRow>
-            <TableCell>Stock</TableCell><TableCell>Sector</TableCell><TableCell>Entry Date</TableCell><TableCell align="right">Days</TableCell>
-            <TableCell align="right">Qty</TableCell><TableCell align="right">Entry</TableCell><TableCell align="right">CMP</TableCell>
-            <TableCell align="right">Invested</TableCell><TableCell align="right">Current</TableCell><TableCell align="right">P&L %</TableCell>
-            <TableCell align="right">P&L ₹</TableCell><TableCell align="right">1D %</TableCell><TableCell align="right" />
+            <SortTh id="stock" label="Stock" sort={sort} onSort={onSort} />
+            <SortTh id="sector" label="Sector" sort={sort} onSort={onSort} />
+            <SortTh id="entryDate" label="Entry Date" sort={sort} onSort={onSort} />
+            <SortTh id="days" label="Days" align="right" sort={sort} onSort={onSort} />
+            <SortTh id="qty" label="Qty" align="right" sort={sort} onSort={onSort} />
+            <SortTh id="entry" label="Entry" align="right" sort={sort} onSort={onSort} />
+            <SortTh id="cmp" label="CMP" align="right" sort={sort} onSort={onSort} />
+            <SortTh id="invested" label="Invested" align="right" sort={sort} onSort={onSort} />
+            <SortTh id="current" label="Current" align="right" sort={sort} onSort={onSort} />
+            <SortTh id="pnlPct" label="P&L %" align="right" sort={sort} onSort={onSort} />
+            <SortTh id="pnlAbs" label="P&L ₹" align="right" sort={sort} onSort={onSort} />
+            <SortTh id="dayPct" label="1D %" align="right" sort={sort} onSort={onSort} />
+            <TableCell align="right" />
           </TableRow></TableHead>
           <TableBody>
-            {open.map(v => {
-              const p = v.position;
-              const pnl = v.currentValue != null && v.invested != null ? v.currentValue - v.invested : null;
+            {sortedOpen.map(({ v, p, pnl, days }) => {
               return (
                 <TableRow key={p.id} hover>
                   <TableCell><ClickableStock stock={p.stock} market={market} onOpen={onStock} /></TableCell>
                   <TableCell sx={{ color: colors.gray500 }}>{prettySector(p.sector || "")}</TableCell>
                   <TableCell>{p.entryDate ?? "—"}</TableCell>
-                  <TableCell align="right">{daysBetween(p.entryDate, null) ?? "—"}</TableCell>
+                  <TableCell align="right">{days ?? "—"}</TableCell>
                   <TableCell align="right">{p.quantity ?? "—"}</TableCell>
                   <TableCell align="right">{p.entryPrice != null ? formatCurrency(p.entryPrice, currency) : "—"}</TableCell>
                   <TableCell align="right">{v.currentPrice != null ? formatCurrency(v.currentPrice, currency) : "—"}</TableCell>
