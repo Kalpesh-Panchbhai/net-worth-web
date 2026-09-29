@@ -1060,6 +1060,8 @@ function ClosedTab({ trades, market, currency, onStock }: { trades: StockTrade[]
 // ── TRADE HISTORY tab (my closed positions) ──────────────────────────
 function HistoryTab({ positions, market, currency, onStock }: { positions: ValuedPosition[]; market: StockMarket; currency: string; onStock: (s: string) => void }) {
   const { colors } = useTokens();
+  const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "", dir: "asc" });
+  const onSort = (k: string) => setSort(p => p.key === k ? { key: k, dir: p.dir === "asc" ? "desc" : "asc" } : { key: k, dir: "desc" });
   if (positions.length === 0) return <EmptyState icon={<ShowChartRoundedIcon />} title="No closed trades" description="Sell a position to see it here." />;
   let realised = 0, wins = 0, sumRet = 0; let best = { s: "", v: -Infinity }, worst = { s: "", v: Infinity };
   for (const v of positions) {
@@ -1068,6 +1070,21 @@ function HistoryTab({ positions, market, currency, onStock }: { positions: Value
     if (rp < worst.v) worst = { s: v.position.stock.replace(".NS", ""), v: rp };
   }
   const n = positions.length;
+  const computed = positions.map(v => ({ v, p: v.position, days: daysBetween(v.position.entryDate, v.position.exitDate) }));
+  const sortedComputed = useMemo(() => {
+    if (!sort.key) return computed;
+    const val = (x: typeof computed[number], k: string): number | string => {
+      switch (k) {
+        case "stock": return x.p.stock; case "sector": return x.p.sector || ""; case "entryDate": return x.p.entryDate || ""; case "exitDate": return x.p.exitDate || "";
+        case "entryPrice": return x.p.entryPrice ?? -Infinity; case "exitPrice": return x.p.exitPrice ?? -Infinity; case "qty": return x.p.quantity ?? -Infinity;
+        case "pnlPct": return x.v.realizedPct ?? -Infinity; case "pnlAbs": return x.v.realizedPnl ?? -Infinity; case "days": return x.days ?? -Infinity;
+        default: return "";
+      }
+    };
+    const arr = [...computed];
+    arr.sort((a, b) => { const va = val(a, sort.key), vb = val(b, sort.key); if (va < vb) return sort.dir === "asc" ? -1 : 1; if (va > vb) return sort.dir === "asc" ? 1 : -1; return 0; });
+    return arr;
+  }, [computed, sort]);
   return (
     <>
       <Paper variant="outlined" sx={{ p: 2.5, mb: 2, textAlign: "center", borderRadius: 2.5,
@@ -1087,13 +1104,19 @@ function HistoryTab({ positions, market, currency, onStock }: { positions: Value
       <TableContainer component={Paper}>
         <Table size="small">
           <TableHead><TableRow>
-            <TableCell>Stock</TableCell><TableCell>Sector</TableCell><TableCell>Entry</TableCell><TableCell>Exit</TableCell>
-            <TableCell align="right">Entry ₹</TableCell><TableCell align="right">Exit ₹</TableCell><TableCell align="right">Qty</TableCell>
-            <TableCell align="right">P&L %</TableCell><TableCell align="right">P&L ₹</TableCell><TableCell align="right">Days</TableCell>
+            <SortTh id="stock" label="Stock" sort={sort} onSort={onSort} />
+            <SortTh id="sector" label="Sector" sort={sort} onSort={onSort} />
+            <SortTh id="entryDate" label="Entry" sort={sort} onSort={onSort} />
+            <SortTh id="exitDate" label="Exit" sort={sort} onSort={onSort} />
+            <SortTh id="entryPrice" label="Entry ₹" align="right" sort={sort} onSort={onSort} />
+            <SortTh id="exitPrice" label="Exit ₹" align="right" sort={sort} onSort={onSort} />
+            <SortTh id="qty" label="Qty" align="right" sort={sort} onSort={onSort} />
+            <SortTh id="pnlPct" label="P&L %" align="right" sort={sort} onSort={onSort} />
+            <SortTh id="pnlAbs" label="P&L ₹" align="right" sort={sort} onSort={onSort} />
+            <SortTh id="days" label="Days" align="right" sort={sort} onSort={onSort} />
           </TableRow></TableHead>
           <TableBody>
-            {positions.map(v => {
-              const p = v.position;
+            {sortedComputed.map(({ v, p, days }) => {
               return (
                 <TableRow key={p.id} hover>
                   <TableCell><ClickableStock stock={p.stock} market={market} onOpen={onStock} /></TableCell>
@@ -1104,7 +1127,7 @@ function HistoryTab({ positions, market, currency, onStock }: { positions: Value
                   <TableCell align="right">{p.quantity ?? "—"}</TableCell>
                   <TableCell align="right" sx={{ color: (v.realizedPct ?? 0) >= 0 ? colors.success : colors.error, fontWeight: 600 }}>{pct(v.realizedPct)}</TableCell>
                   <TableCell align="right" sx={{ color: (v.realizedPnl ?? 0) >= 0 ? colors.success : colors.error }}>{v.realizedPnl != null ? formatCurrency(v.realizedPnl, currency) : "—"}</TableCell>
-                  <TableCell align="right">{daysBetween(p.entryDate, p.exitDate) ?? "—"}</TableCell>
+                  <TableCell align="right">{days ?? "—"}</TableCell>
                 </TableRow>
               );
             })}
