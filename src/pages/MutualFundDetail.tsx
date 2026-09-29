@@ -16,7 +16,7 @@ import MfGrowthAndCalculator from "../components/MfGrowthAndCalculator";
 import { useTokens } from "../context/ColorModeContext";
 import { useShortlist } from "../context/ShortlistContext";
 import {
-  formatMetricValue, assetClassLabel, isSignedMetric, metricMeta,
+  formatMetricValue, assetClassLabel, isSignedMetric, metricMeta, rankBadgeInfo,
   DETAIL_METRIC_GROUPS, HORIZONS,
 } from "../utils/mfMetrics";
 
@@ -167,8 +167,7 @@ function MutualFundDetail() {
   const rankBadge = (horizon: string, metric: string, label: string) => {
     const r = detail.ranks.find(x => x.horizon === horizon && x.metric === metric);
     if (!r) return null;
-    const topPct = Math.max(1, Math.round(100 - r.percentile));
-    const strong = r.rank <= 3 || r.percentile >= 90;
+    const { topPct, strong } = rankBadgeInfo(r.rank, r.percentile);
     const color = strong ? "#F59E0B" : colors.brand;
     return (
       <Tooltip title={`Rank ${r.rank} of ${r.peerCount} in ${detail.subCategory} · ${label}`}>

@@ -81,3 +81,38 @@ export function scoreMfRows(rows: MfTableRow[]): Map<number, MfScore> {
   }
   return out;
 }
+
+export interface CategoryRank {
+  /** 1 = best in the subCategory. */
+  rank: number;
+  /** 100 = best, matching the backend's MfFundRank scale. */
+  percentile: number;
+  peerCount: number;
+}
+
+/**
+ * Ranks every row against its subCategory peers on a single metric — the same shape as the
+ * backend's per-fund MfFundRank, computed client-side from a whole MfTable so a list view can
+ * show every row's standing (e.g. a "Top X%" badge) without one API call per fund.
+ */
+export function rankWithinCategory(rows: MfTableRow[], metric: string): Map<number, CategoryRank> {
+  const higherIsBetter = metricMeta(metric).higherIsBetter;
+  const bySubCategory = new Map<string, MfTableRow[]>();
+  for (const r of rows) {
+    if (r.values[metric] == null) continue;
+    if (!bySubCategory.has(r.subCategory)) bySubCategory.set(r.subCategory, []);
+    bySubCategory.get(r.subCategory)!.push(r);
+  }
+
+  const out = new Map<number, CategoryRank>();
+  for (const peers of bySubCategory.values()) {
+    const sorted = [...peers].sort((a, b) =>
+      higherIsBetter ? b.values[metric] - a.values[metric] : a.values[metric] - b.values[metric]);
+    sorted.forEach((r, i) => {
+      const rank = i + 1;
+      const percentile = peers.length <= 1 ? 50 : ((peers.length - rank) / (peers.length - 1)) * 100;
+      out.set(r.schemeCode, { rank, percentile, peerCount: peers.length });
+    });
+  }
+  return out;
+}

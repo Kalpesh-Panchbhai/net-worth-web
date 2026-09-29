@@ -22,7 +22,7 @@ import { useTokens } from "../context/ColorModeContext";
 import { useUser } from "../context/UserContext";
 import { useShortlist } from "../context/ShortlistContext";
 import { HORIZONS, assetClassLabel, assetClassRank, type Horizon } from "../utils/mfMetrics";
-import { scoreMfRows } from "../utils/mfScore";
+import { scoreMfRows, rankWithinCategory } from "../utils/mfScore";
 
 const MAX_COMPARE = 4;
 
@@ -121,6 +121,31 @@ function MutualFunds() {
     })();
     return () => { cancelled = true; };
   }, [view, horizon, retryTick]);
+
+  // Category-standing badges ("Top X% · 5Y CAGR" / "Top X% · 3Y Sharpe") on the fund detail page
+  // come from fixed horizons, not whatever horizon the table toggle is on — so fetch those two
+  // tables once per "all" visit (the api client's own cache dedupes this against the main table
+  // fetch above when horizon already happens to be 5Y or 3Y).
+  const [table5y, setTable5y] = useState<MfTable | null>(null);
+  const [table3y, setTable3y] = useState<MfTable | null>(null);
+  useEffect(() => {
+    if (view === "portfolio") return;
+    let cancelled = false;
+    Promise.all([getMfTable({ horizon: "5Y" }), getMfTable({ horizon: "3Y" })])
+      .then(([t5, t3]) => { if (!cancelled) { setTable5y(t5); setTable3y(t3); } })
+      .catch(() => { if (!cancelled) { setTable5y(null); setTable3y(null); } });
+    return () => { cancelled = true; };
+  }, [view, retryTick]);
+  const cagr5yRanks = useMemo(() => rankWithinCategory(table5y?.rows ?? [], "cagr"), [table5y]);
+  const sharpe3yRanks = useMemo(() => rankWithinCategory(table3y?.rows ?? [], "sharpe"), [table3y]);
+  const badgesFor = (row: MfTableRow) => {
+    const badges: { key: string; label: string; rank: number; percentile: number }[] = [];
+    const c5 = cagr5yRanks.get(row.schemeCode);
+    if (c5) badges.push({ key: "cagr5y", label: "5Y CAGR", rank: c5.rank, percentile: c5.percentile });
+    const s3 = sharpe3yRanks.get(row.schemeCode);
+    if (s3) badges.push({ key: "sharpe3y", label: "3Y Sharpe", rank: s3.rank, percentile: s3.percentile });
+    return badges;
+  };
 
   // Group categories by asset class — powers the "All categories" filter dropdown.
   const grouped = useMemo(() => {
@@ -225,6 +250,7 @@ function MutualFunds() {
       selected={compareSet}
       onToggleSelect={toggleCompare}
       selectionFull={compareSet.size >= MAX_COMPARE}
+      badgesFor={badgesFor}
     />
   );
 

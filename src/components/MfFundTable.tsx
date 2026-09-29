@@ -2,14 +2,15 @@ import { useEffect, useMemo, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Box, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  TableSortLabel, TablePagination, Typography, Tooltip, Chip, Checkbox, IconButton,
+  TableSortLabel, TablePagination, Typography, Tooltip, Chip, Checkbox, IconButton, Stack,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import StarRoundedIcon from "@mui/icons-material/StarRounded";
 import StarBorderRoundedIcon from "@mui/icons-material/StarBorderRounded";
+import EmojiEventsRoundedIcon from "@mui/icons-material/EmojiEventsRounded";
 import { useTokens } from "../context/ColorModeContext";
 import { useShortlist } from "../context/ShortlistContext";
-import { metricMeta, formatMetricValue, isSignedMetric, assetClassLabel } from "../utils/mfMetrics";
+import { metricMeta, formatMetricValue, isSignedMetric, assetClassLabel, rankBadgeInfo } from "../utils/mfMetrics";
 import type { MfTableRow } from "../api/types";
 
 type SortKey = "name" | "category" | string;
@@ -29,13 +30,16 @@ interface Props {
    * this explicitly when a metric other than the first column should be the default sort, e.g.
    * Score is the leftmost column but shouldn't silently become the default sort everywhere. */
   defaultSort?: string;
+  /** Category-standing chips ("Top X% · 5Y CAGR") shown under a row's fund name, e.g. the same
+   * badges the fund detail page shows, computed here for every row instead of one API call each. */
+  badgesFor?: (row: MfTableRow) => { key: string; label: string; rank: number; percentile: number }[];
 }
 
 /**
  * A sortable, paginated grid of funds. Every metric is a column; clicking a header sorts by it,
  * defaulting to the metric's natural "best first" direction. Funds missing a value sort last.
  */
-export default function MfFundTable({ rows, metrics, showCategory = false, selected, onToggleSelect, selectionFull = false, defaultSort }: Props) {
+export default function MfFundTable({ rows, metrics, showCategory = false, selected, onToggleSelect, selectionFull = false, defaultSort, badgesFor }: Props) {
   const navigate = useNavigate();
   const { colors } = useTokens();
   const { isStarred, toggle: toggleStar } = useShortlist();
@@ -113,7 +117,7 @@ export default function MfFundTable({ rows, metrics, showCategory = false, selec
             <TableRow>
               {selectable && <TableCell padding="checkbox" sx={{ ...headCell }} />}
               <TableCell sx={{ ...headCell, width: 36 }} />
-              <TableCell sx={{ ...headCell, ...stickyLeft, zIndex: 3, minWidth: 200 }}
+              <TableCell sx={{ ...headCell, ...stickyLeft, zIndex: 3, minWidth: badgesFor ? 240 : 200 }}
                 sortDirection={orderBy === "name" ? order : false}>
                 <TableSortLabel active={orderBy === "name"} direction={orderBy === "name" ? order : "asc"}
                   onClick={() => handleSort("name")}>Fund</TableSortLabel>
@@ -154,6 +158,25 @@ export default function MfFundTable({ rows, metrics, showCategory = false, selec
                 <TableCell sx={{ ...stickyLeft, borderBottom: `1px solid ${colors.gray100}` }}>
                   <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, lineHeight: 1.25 }} noWrap>{r.name}</Typography>
                   <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>{r.amc}</Typography>
+                  {badgesFor && badgesFor(r).length > 0 && (
+                    <Stack direction="row" spacing={0.5} sx={{ mt: 0.4 }} flexWrap="wrap" useFlexGap>
+                      {badgesFor(r).map(b => {
+                        const { topPct, strong } = rankBadgeInfo(b.rank, b.percentile);
+                        const color = strong ? "#F59E0B" : colors.brand;
+                        return (
+                          <Chip key={b.key} size="small"
+                            icon={strong ? <EmojiEventsRoundedIcon sx={{ fontSize: 12 }} /> : undefined}
+                            label={`Top ${topPct}% · ${b.label}`}
+                            sx={{
+                              height: 18, fontSize: "0.6rem", fontWeight: 700,
+                              bgcolor: alpha(color, 0.12), color,
+                              "& .MuiChip-icon": { color, fontSize: 12, ml: "4px" },
+                              "& .MuiChip-label": { px: "6px" },
+                            }} />
+                        );
+                      })}
+                    </Stack>
+                  )}
                 </TableCell>
                 {showCategory && (
                   <TableCell sx={{ borderBottom: `1px solid ${colors.gray100}` }}>

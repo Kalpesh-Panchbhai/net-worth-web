@@ -89,6 +89,11 @@ export function isSignedMetric(code: string): boolean {
   return code !== "volatility" && code !== "rolling_windows" && code !== "rolling_share_negative" && code !== "score";
 }
 
+/** "Top X%" badge presentation from a category rank: the display % and whether it's medal-worthy. */
+export function rankBadgeInfo(rank: number, percentile: number): { topPct: number; strong: boolean } {
+  return { topPct: Math.max(1, Math.round(100 - percentile)), strong: rank <= 3 || percentile >= 90 };
+}
+
 const ASSET_ORDER = ["EQUITY", "HYBRID", "DEBT", "SOLUTION", "OTHER", "UNKNOWN"];
 
 export function assetClassLabel(code: string): string {
