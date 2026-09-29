@@ -412,6 +412,7 @@ function Stocks() {
   const [stockDetail, setStockDetail] = useState<string | null>(null);
   const [buyOpen, setBuyOpen] = useState(false);
   const [closePos, setClosePos] = useState<ValuedPosition | null>(null);
+  const [deletePos, setDeletePos] = useState<ValuedPosition | null>(null);
   const [alertsOpen, setAlertsOpen] = useState(false);
 
   const load = useCallback(() => {
@@ -520,7 +521,7 @@ function Stocks() {
 
       {/* ── MY PORTFOLIO tab ── */}
       {tab === "portfolio" && <PortfolioTab data={portfolio} market={market} currency={currency} onStock={setStockDetail} onClose={setClosePos}
-        onDelete={async (id) => { try { setPortfolio(await deleteStockPosition(id)); } catch { showToast("Delete failed", "error"); } }} />}
+        onDelete={setDeletePos} />}
 
       {/* ── CLOSED tab ── */}
       {tab === "closed" && <ClosedTab trades={(closed ?? []).filter(t => matchQ(t.stock, t.sector, t.strategy))} allTrades={closed ?? []} market={market} currency={currency} onStock={setStockDetail} />}
@@ -534,6 +535,28 @@ function Stocks() {
       <PositionDialog open={!!closePos} mode="close" market={market}
         initialStock={closePos ? { stock: closePos.position.stock, id: closePos.position.id, price: closePos.currentPrice ?? undefined } : undefined}
         onClose={() => setClosePos(null)} onSaved={setPortfolio} />
+
+      <Dialog open={!!deletePos} onClose={() => setDeletePos(null)}>
+        <DialogTitle sx={{ fontWeight: 700 }}>Delete position?</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ color: colors.gray600 }}>
+            This permanently removes {deletePos?.position.stock} from My Portfolio. This can't be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeletePos(null)}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={async () => {
+            const pos = deletePos!;
+            setDeletePos(null);
+            try {
+              setPortfolio(await deleteStockPosition(pos.position.id));
+              showToast(`Removed ${pos.position.stock}`, "success");
+            } catch {
+              showToast("Delete failed", "error");
+            }
+          }}>Delete</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 
@@ -670,7 +693,7 @@ function HoldTab({ rows, market, currency, onStock }: { rows: EnrichedStockSigna
 
 // ── MY PORTFOLIO tab ─────────────────────────────────────────────────
 function PortfolioTab({ data, market, currency, onStock, onClose, onDelete }:
-  { data: StockPortfolioResponse | null; market: StockMarket; currency: string; onStock: (s: string) => void; onClose: (p: ValuedPosition) => void; onDelete: (id: string) => void }) {
+  { data: StockPortfolioResponse | null; market: StockMarket; currency: string; onStock: (s: string) => void; onClose: (p: ValuedPosition) => void; onDelete: (p: ValuedPosition) => void }) {
   const { colors } = useTokens();
   const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "", dir: "asc" });
   const onSort = (k: string) => setSort(p => p.key === k ? { key: k, dir: p.dir === "asc" ? "desc" : "asc" } : { key: k, dir: "desc" });
@@ -810,7 +833,7 @@ function PortfolioTab({ data, market, currency, onStock, onClose, onDelete }:
                   <TableCell align="right" sx={{ color: (v.dayChangePct ?? 0) >= 0 ? colors.success : colors.error }}>{pct(v.dayChangePct)}</TableCell>
                   <TableCell align="right">
                     <Button size="small" onClick={() => onClose(v)}>Sell</Button>
-                    <IconButton size="small" onClick={() => onDelete(p.id)}><DeleteOutlineRoundedIcon sx={{ fontSize: 18 }} /></IconButton>
+                    <IconButton size="small" onClick={() => onDelete(v)}><DeleteOutlineRoundedIcon sx={{ fontSize: 18 }} /></IconButton>
                   </TableCell>
                 </TableRow>
               );
