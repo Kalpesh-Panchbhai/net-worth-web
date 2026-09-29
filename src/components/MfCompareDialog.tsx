@@ -24,10 +24,14 @@ const ROWS: { label: string; metric: string; horizon: string }[] = [
   { label: "Max drawdown", metric: "max_drawdown", horizon: "SI" },
 ];
 
-function navOnOrBefore(points: { date: string; nav: number }[], iso: string): number | null {
-  let found: number | null = null;
-  for (const p of points) { if (p.date <= iso) found = p.nav; else break; }
-  return found;
+// `points` must be date-sorted ascending. `cursor` is a per-fund pointer that this
+// function only ever advances forward, so callers must invoke it with a non-decreasing
+// `iso` across successive calls sharing the same cursor (as `growth` below does, walking
+// `commonStart` then the sorted `dates`). That turns the lookup into a single forward
+// walk instead of rescanning `points` from index 0 on every call.
+function navOnOrBefore(points: { date: string; nav: number }[], iso: string, cursor: { i: number }): number | null {
+  while (cursor.i + 1 < points.length && points[cursor.i + 1].date <= iso) cursor.i++;
+  return cursor.i >= 0 ? points[cursor.i].nav : null;
 }
 
 export default function MfCompareDialog({ schemeCodes, open, onClose }: {
@@ -60,12 +64,15 @@ export default function MfCompareDialog({ schemeCodes, open, onClose }: {
   const growth = useMemo(() => {
     if (navs.length === 0 || navs.some(n => n.points.length < 2)) return [];
     const commonStart = navs.reduce((mx, n) => (n.points[0].date > mx ? n.points[0].date : mx), navs[0].points[0].date);
-    const bases = navs.map(n => navOnOrBefore(n.points, commonStart) ?? n.points.find(p => p.date >= commonStart)?.nav ?? n.points[0].nav);
+    // One cursor per fund, shared between the `bases` lookup and the per-date walk below
+    // so each fund's `points` array is only ever scanned forward, once.
+    const cursors = navs.map(() => ({ i: -1 }));
+    const bases = navs.map((n, i) => navOnOrBefore(n.points, commonStart, cursors[i]) ?? n.points.find(p => p.date >= commonStart)?.nav ?? n.points[0].nav);
     const dates = [...new Set(navs.flatMap(n => n.points.map(p => p.date)).filter(d => d >= commonStart))].sort();
     return dates.map(date => {
       const row: Record<string, number | string> = { date };
       navs.forEach((n, i) => {
-        const nav = navOnOrBefore(n.points, date);
+        const nav = navOnOrBefore(n.points, date, cursors[i]);
         if (nav != null && bases[i] > 0) row[`f${i}`] = +(10000 * (nav / bases[i])).toFixed(0);
       });
       return row;
