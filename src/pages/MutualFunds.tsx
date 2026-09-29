@@ -2,13 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Box, Paper, Typography, Stack, TextField, InputAdornment, MenuItem,
   ToggleButton, ToggleButtonGroup, Chip, Select, FormControl,
-  useMediaQuery, useTheme, ListSubheader, Fab,
+  ListSubheader, Fab,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import InsightsRoundedIcon from "@mui/icons-material/InsightsRounded";
 import ViewListRoundedIcon from "@mui/icons-material/ViewListRounded";
-import CategoryRoundedIcon from "@mui/icons-material/CategoryRounded";
 import PieChartRoundedIcon from "@mui/icons-material/PieChartRounded";
 import StarRoundedIcon from "@mui/icons-material/StarRounded";
 import CompareArrowsRoundedIcon from "@mui/icons-material/CompareArrowsRounded";
@@ -25,22 +24,16 @@ import { HORIZONS, assetClassLabel, assetClassRank, type Horizon } from "../util
 
 const MAX_COMPARE = 4;
 
-// Prefer opening on a category people actually search for, when it exists.
-const PREFERRED_DEFAULTS = ["Large Cap", "Flexi Cap", "Mid Cap"];
-
 // Full horizon set, including since-inception. Risk metrics have no SI value, so those columns read
 // "—" at SI while CAGR and max-drawdown stay meaningful.
 const TABLE_HORIZONS = HORIZONS;
 
-type View = "category" | "all" | "portfolio";
+type View = "all" | "portfolio";
 
 function MutualFunds() {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const { colors } = useTokens();
   const { userId } = useUser();
   const { starred } = useShortlist();
-  const isDark = theme.palette.mode === "dark";
 
   // Compare basket + starred filter.
   const [compareSet, setCompareSet] = useState<Set<number>>(new Set());
@@ -56,10 +49,8 @@ function MutualFunds() {
   const [categories, setCategories] = useState<MfCategory[]>([]);
   const [catLoading, setCatLoading] = useState(true);
   const [catError, setCatError] = useState<string | null>(null);
-  const [catSearch, setCatSearch] = useState("");
 
-  const [view, setView] = useState<View>("category");
-  const [selectedSub, setSelectedSub] = useState<string | null>(null);
+  const [view, setView] = useState<View>("all");
   const [horizon, setHorizon] = useState<Horizon>("5Y");
 
   // All-funds view filters.
@@ -80,8 +71,6 @@ function MutualFunds() {
         const data = await getMfCategories();
         if (cancelled) return;
         setCategories(data);
-        const preferred = PREFERRED_DEFAULTS.map(p => data.find(c => c.subCategory === p)).find(Boolean);
-        setSelectedSub((preferred ?? data[0])?.subCategory ?? null);
       } catch (err) {
         if (!cancelled) setCatError(err instanceof Error ? err.message : "Failed to load categories");
       } finally {
@@ -91,18 +80,14 @@ function MutualFunds() {
     return () => { cancelled = true; };
   }, []);
 
-  // Fetch the table: one category in "category" view, every fund in "all" view.
+  // Fetch every fund's table once (the "all" view filters it client-side); skipped in "portfolio" view.
   useEffect(() => {
     if (view === "portfolio") return;
-    if (view === "category" && !selectedSub) return;
     let cancelled = false;
     (async () => {
       try {
         setTableLoading(true); setTableError(null);
-        const data = await getMfTable({
-          subCategory: view === "category" ? selectedSub! : undefined,
-          horizon,
-        });
+        const data = await getMfTable({ horizon });
         if (!cancelled) setTable(data);
       } catch (err) {
         if (!cancelled) { setTable(null); setTableError(err instanceof Error ? err.message : "Failed to load"); }
@@ -111,21 +96,19 @@ function MutualFunds() {
       }
     })();
     return () => { cancelled = true; };
-  }, [view, selectedSub, horizon]);
+  }, [view, horizon]);
 
-  // Group categories by asset class, filtered by the sidebar search.
+  // Group categories by asset class — powers the "All categories" filter dropdown.
   const grouped = useMemo(() => {
-    const q = catSearch.trim().toLowerCase();
-    const filtered = q ? categories.filter(c => c.subCategory.toLowerCase().includes(q) || assetClassLabel(c.assetClass).toLowerCase().includes(q)) : categories;
     const byAsset = new Map<string, MfCategory[]>();
-    for (const c of filtered) {
+    for (const c of categories) {
       if (!byAsset.has(c.assetClass)) byAsset.set(c.assetClass, []);
       byAsset.get(c.assetClass)!.push(c);
     }
     return [...byAsset.entries()]
       .sort((a, b) => assetClassRank(a[0]) - assetClassRank(b[0]))
       .map(([asset, subs]) => ({ asset, subs: subs.sort((a, b) => b.liveCount - a.liveCount) }));
-  }, [categories, catSearch]);
+  }, [categories]);
 
   const totalFunds = useMemo(() => categories.reduce((s, c) => s + c.liveCount, 0), [categories]);
 
@@ -151,48 +134,6 @@ function MutualFunds() {
     return <ErrorState message={catError} onRetry={() => window.location.reload()} />;
   }
 
-  const CategoryPanel = (
-    <Paper sx={{ p: { xs: 1.5, sm: 2 }, height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <TextField
-        size="small" placeholder="Search categories…" value={catSearch}
-        onChange={e => setCatSearch(e.target.value)}
-        InputProps={{ startAdornment: <InputAdornment position="start"><SearchRoundedIcon sx={{ fontSize: 18, color: colors.gray400 }} /></InputAdornment> }}
-        sx={{ mb: 1.5 }} fullWidth
-      />
-      <Box sx={{ overflowY: "auto", flex: 1, minHeight: 0, mx: -0.5, px: 0.5 }}>
-        {catLoading ? (
-          <Stack spacing={1}>{Array.from({ length: 8 }).map((_, i) => <Box key={i} sx={{ height: 34, borderRadius: 1, bgcolor: colors.gray100 }} />)}</Stack>
-        ) : grouped.length === 0 ? (
-          <Typography variant="body2" color="text.secondary" sx={{ p: 2, textAlign: "center" }}>No categories match "{catSearch}"</Typography>
-        ) : grouped.map(({ asset, subs }) => (
-          <Box key={asset} sx={{ mb: 1.5 }}>
-            <Typography variant="overline" sx={{ px: 1, color: colors.gray400 }}>{assetClassLabel(asset)}</Typography>
-            <Stack spacing={0.25} sx={{ mt: 0.25 }}>
-              {subs.map(c => {
-                const active = c.subCategory === selectedSub;
-                return (
-                  <Box
-                    key={c.subCategory}
-                    onClick={() => setSelectedSub(c.subCategory)}
-                    sx={{
-                      display: "flex", alignItems: "center", gap: 1, px: 1, py: 0.75, borderRadius: 1.5, cursor: "pointer",
-                      bgcolor: active ? alpha(colors.brand, isDark ? 0.18 : 0.1) : "transparent",
-                      color: active ? colors.brand : "text.primary",
-                      "&:hover": { bgcolor: active ? alpha(colors.brand, isDark ? 0.22 : 0.14) : alpha(colors.gray400, 0.1) },
-                    }}
-                  >
-                    <Typography sx={{ flex: 1, fontSize: "0.83rem", fontWeight: active ? 700 : 500, minWidth: 0 }} noWrap>{c.subCategory}</Typography>
-                    <Chip label={c.liveCount} size="small" sx={{ height: 18, fontSize: "0.65rem", fontWeight: 600, bgcolor: active ? alpha(colors.brand, 0.15) : colors.gray100, color: active ? colors.brand : colors.gray500 }} />
-                  </Box>
-                );
-              })}
-            </Stack>
-          </Box>
-        ))}
-      </Box>
-    </Paper>
-  );
-
   const HorizonSelector = (
     <Box sx={{ overflowX: "auto" }}>
       <ToggleButtonGroup exclusive size="small" value={horizon} onChange={(_, v) => { if (v) setHorizon(v); }}>
@@ -205,14 +146,13 @@ function MutualFunds() {
     <ListSkeleton rows={8} />
   ) : tableError ? (
     <ErrorState message={tableError} onRetry={() => setHorizon(h => h)} />
-  ) : !table || (view === "category" ? table.rows.length === 0 : allRows.length === 0) ? (
-    <EmptyState icon={<InsightsRoundedIcon />} title="No funds"
-      description={view === "category" ? `No fund in ${selectedSub ?? "this category"} has enough history over ${horizon}.` : "No funds match your filters."} />
+  ) : !table || allRows.length === 0 ? (
+    <EmptyState icon={<InsightsRoundedIcon />} title="No funds" description="No funds match your filters." />
   ) : (
     <MfFundTable
-      rows={view === "category" ? table.rows : allRows}
+      rows={allRows}
       metrics={table.metrics}
-      showCategory={view === "all"}
+      showCategory
       selected={compareSet}
       onToggleSelect={toggleCompare}
       selectionFull={compareSet.size >= MAX_COMPARE}
@@ -231,7 +171,6 @@ function MutualFunds() {
       {/* View toggle + horizon */}
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} justifyContent="space-between" alignItems={{ xs: "stretch", sm: "center" }}>
         <ToggleButtonGroup exclusive size="small" value={view} onChange={(_, v) => { if (v) setView(v); }}>
-          <ToggleButton value="category" sx={{ px: 1.75, gap: 0.75 }}><CategoryRoundedIcon sx={{ fontSize: 18 }} /> By category</ToggleButton>
           <ToggleButton value="all" sx={{ px: 1.75, gap: 0.75 }}><ViewListRoundedIcon sx={{ fontSize: 18 }} /> All funds</ToggleButton>
           <ToggleButton value="portfolio" sx={{ px: 1.75, gap: 0.75 }}><PieChartRoundedIcon sx={{ fontSize: 18 }} /> My funds</ToggleButton>
         </ToggleButtonGroup>
@@ -243,33 +182,7 @@ function MutualFunds() {
         )}
       </Stack>
 
-      {view === "category" ? (
-        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "300px 1fr" }, gap: 2, alignItems: "start" }}>
-          {isMobile ? (
-            <FormControl fullWidth size="small">
-              <Select value={selectedSub ?? ""} displayEmpty onChange={e => setSelectedSub(e.target.value)}
-                renderValue={v => (v ? String(v) : "Select a category")}>
-                {grouped.flatMap(({ asset, subs }) => [
-                  <ListSubheader key={asset} sx={{ fontSize: "0.7rem", fontWeight: 700, color: colors.gray400, textTransform: "uppercase" }}>{assetClassLabel(asset)}</ListSubheader>,
-                  ...subs.map(c => <MenuItem key={c.subCategory} value={c.subCategory} sx={{ pl: 3 }}>{c.subCategory} · {c.liveCount}</MenuItem>),
-                ])}
-              </Select>
-            </FormControl>
-          ) : (
-            <Box sx={{ position: "sticky", top: 16, height: "calc(100vh - 160px)" }}>{CategoryPanel}</Box>
-          )}
-
-          <Paper sx={{ p: { xs: 1.5, sm: 2.5 }, minWidth: 0 }}>
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="h6" noWrap>{selectedSub ?? "Select a category"}</Typography>
-              <Typography variant="caption" color="text.secondary">
-                {table ? `${table.rows.length} funds · ${horizon} · tap a column to sort` : "Loading…"}
-              </Typography>
-            </Box>
-            {TableArea}
-          </Paper>
-        </Box>
-      ) : view === "all" ? (
+      {view === "all" ? (
         <Paper sx={{ p: { xs: 1.5, sm: 2.5 } }}>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ mb: 2 }}>
             <TextField
