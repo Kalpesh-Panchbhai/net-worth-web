@@ -31,13 +31,17 @@ interface Props {
    * each keeps its own sort/page instead of one instance's state leaking into the other's URL keys.
    */
   paramPrefix?: string;
+  /** Metric to sort by on first visit (no `sort` URL param yet). Defaults to `metrics[0]` — set
+   * this explicitly when a metric other than the first column should be the default sort, e.g.
+   * Score is the leftmost column but shouldn't silently become the default sort everywhere. */
+  defaultSort?: string;
 }
 
 /**
  * A sortable, paginated grid of funds. Every metric is a column; clicking a header sorts by it,
  * defaulting to the metric's natural "best first" direction. Funds missing a value sort last.
  */
-export default function MfFundTable({ rows, metrics, showCategory = false, selected, onToggleSelect, selectionFull = false, paramPrefix = "" }: Props) {
+export default function MfFundTable({ rows, metrics, showCategory = false, selected, onToggleSelect, selectionFull = false, paramPrefix = "", defaultSort }: Props) {
   const navigate = useNavigate();
   const { colors } = useTokens();
   const { isStarred, toggle: toggleStar } = useShortlist();
@@ -55,7 +59,7 @@ export default function MfFundTable({ rows, metrics, showCategory = false, selec
     }, { replace: true });
   };
 
-  const orderBy: SortKey = searchParams.get(keys.sort) || metrics[0] || "name";
+  const orderBy: SortKey = searchParams.get(keys.sort) || defaultSort || metrics[0] || "name";
   const order: "asc" | "desc" = searchParams.get(keys.dir) === "asc" ? "asc" : "desc";
   const page = Number(searchParams.get(keys.page) ?? 0) || 0;
   const rowsPerPage = Number(searchParams.get(keys.size) ?? 25) || 25;

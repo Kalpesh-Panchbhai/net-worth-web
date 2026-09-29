@@ -228,7 +228,8 @@ function MutualFunds() {
   ) : (
     <MfFundTable
       rows={allRows}
-      metrics={[...table.metrics, "score"]}
+      metrics={["score", ...table.metrics]}
+      defaultSort={table.metrics[0]}
       showCategory
       selected={compareSet}
       onToggleSelect={toggleCompare}
@@ -247,6 +248,7 @@ function MutualFunds() {
     <MfFundTable
       rows={leaderboardRows}
       metrics={["score", ...table.metrics]}
+      defaultSort="score"
       showCategory
       selected={compareSet}
       onToggleSelect={toggleCompare}
