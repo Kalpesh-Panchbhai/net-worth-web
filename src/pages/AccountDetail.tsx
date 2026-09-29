@@ -534,6 +534,7 @@ function AccountDetail() {
     try {
       await deleteTransaction(id);
       invalidateMoneyCaches();
+      refreshAll();
       showToast(`Transaction on ${date} deleted`, "success", isLatest ? {
         action: { label: "Undo", onClick: () => restoreTxn(holdingId, date, investedDelta, valueDelta) },
       } : undefined);

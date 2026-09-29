@@ -156,6 +156,7 @@ function HoldingDetail() {
     try {
       await deleteTransaction(id);
       invalidateMoneyCaches();
+      refreshAll();
       showToast(`Transaction on ${date} deleted`, "success", isLatest ? {
         action: { label: "Undo", onClick: () => restoreTransaction(date, investedDelta, valueDelta) },
       } : undefined);
