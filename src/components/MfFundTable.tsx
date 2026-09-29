@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useRef } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Box, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   TableSortLabel, TablePagination, Typography, Tooltip, Chip, Checkbox, IconButton,
@@ -37,19 +37,35 @@ export default function MfFundTable({ rows, metrics, showCategory = false, selec
   const { isStarred, toggle: toggleStar } = useShortlist();
   const selectable = !!onToggleSelect;
 
-  const [orderBy, setOrderBy] = useState<SortKey>(metrics[0] ?? "name");
-  const [order, setOrder] = useState<"asc" | "desc">("desc");
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(25);
+  // Sort/page live in the URL so navigating to a fund and back restores them (browser back
+  // returns to this same history entry, query string intact).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const updateParams = (patch: Record<string, string | null>) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      for (const [k, v] of Object.entries(patch)) { if (v == null) next.delete(k); else next.set(k, v); }
+      return next;
+    }, { replace: true });
+  };
 
-  // A changed dataset (new category / horizon) should start back on the first page.
-  useEffect(() => { setPage(0); }, [rows, orderBy, order, rowsPerPage]);
+  const orderBy: SortKey = searchParams.get("sort") || metrics[0] || "name";
+  const order: "asc" | "desc" = searchParams.get("dir") === "asc" ? "asc" : "desc";
+  const page = Number(searchParams.get("page") ?? 0) || 0;
+  const rowsPerPage = Number(searchParams.get("size") ?? 25) || 25;
 
   const handleSort = (key: SortKey) => {
-    if (key === orderBy) { setOrder(o => (o === "asc" ? "desc" : "asc")); return; }
-    setOrderBy(key);
-    setOrder(key === "name" || key === "category" ? "asc" : metricMeta(key).higherIsBetter ? "desc" : "asc");
+    if (key === orderBy) { updateParams({ dir: order === "asc" ? "desc" : "asc" }); return; }
+    const dir = key === "name" || key === "category" ? "asc" : metricMeta(key).higherIsBetter ? "desc" : "asc";
+    updateParams({ sort: key, dir, page: null });
   };
+
+  // A changed dataset (new filters / horizon) should start back on the first page — but not on
+  // mount, where `rows` changing for the first time would otherwise wipe a page restored from the URL.
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!mounted.current) { mounted.current = true; return; }
+    if (page !== 0) updateParams({ page: null });
+  }, [rows]);
 
   const sorted = useMemo(() => {
     const arr = [...rows];
@@ -162,9 +178,9 @@ export default function MfFundTable({ rows, metrics, showCategory = false, selec
         component="div"
         count={sorted.length}
         page={page}
-        onPageChange={(_, p) => setPage(p)}
+        onPageChange={(_, p) => updateParams({ page: p === 0 ? null : String(p) })}
         rowsPerPage={rowsPerPage}
-        onRowsPerPageChange={e => setRowsPerPage(parseInt(e.target.value, 10))}
+        onRowsPerPageChange={e => updateParams({ size: e.target.value === "25" ? null : e.target.value, page: null })}
         rowsPerPageOptions={[25, 50, 100]}
         sx={{ ".MuiTablePagination-toolbar": { minHeight: 44 } }}
       />

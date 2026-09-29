@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Box, Paper, Typography, Stack, TextField, InputAdornment, MenuItem,
   ToggleButton, ToggleButtonGroup, Chip, Select, FormControl,
@@ -35,10 +36,29 @@ function MutualFunds() {
   const { userId } = useUser();
   const { starred } = useShortlist();
 
-  // Compare basket + starred filter.
+  // Tab + all-funds filters/sort live in the URL: navigating to a fund and coming back (browser
+  // back restores this exact history entry) lands on the same tab with the same filters intact.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const updateParams = (patch: Record<string, string | null>) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      for (const [k, v] of Object.entries(patch)) { if (v == null) next.delete(k); else next.set(k, v); }
+      return next;
+    }, { replace: true });
+  };
+  const view = (searchParams.get("view") === "portfolio" ? "portfolio" : "all") as View;
+  const setView = (v: View) => updateParams({ view: v === "all" ? null : v });
+  const horizon = (searchParams.get("horizon") as Horizon) || "5Y";
+  const setHorizon = (h: Horizon) => updateParams({ horizon: h === "5Y" ? null : h });
+  const allSearch = searchParams.get("q") ?? "";
+  const setAllSearch = (q: string) => updateParams({ q: q || null });
+  const allAsset = searchParams.get("asset") ?? "";
+  const allCategory = searchParams.get("category") ?? "";
+  const starredOnly = searchParams.get("starred") === "1";
+
+  // Compare basket — a transient overlay, not part of the URL-persisted view state.
   const [compareSet, setCompareSet] = useState<Set<number>>(new Set());
   const [compareOpen, setCompareOpen] = useState(false);
-  const [starredOnly, setStarredOnly] = useState(false);
   const toggleCompare = (code: number) => setCompareSet(prev => {
     const next = new Set(prev);
     if (next.has(code)) next.delete(code);
@@ -50,17 +70,10 @@ function MutualFunds() {
   const [catLoading, setCatLoading] = useState(true);
   const [catError, setCatError] = useState<string | null>(null);
 
-  const [view, setView] = useState<View>("all");
-  const [horizon, setHorizon] = useState<Horizon>("5Y");
-
-  // All-funds view filters.
-  const [allSearch, setAllSearch] = useState("");
-  const [allAsset, setAllAsset] = useState<string>("");
-  const [allCategory, setAllCategory] = useState<string>("");
-
   const [table, setTable] = useState<MfTable | null>(null);
   const [tableLoading, setTableLoading] = useState(false);
   const [tableError, setTableError] = useState<string | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
 
   // Load the category catalog once.
   useEffect(() => {
@@ -96,7 +109,7 @@ function MutualFunds() {
       }
     })();
     return () => { cancelled = true; };
-  }, [view, horizon]);
+  }, [view, horizon, retryTick]);
 
   // Group categories by asset class — powers the "All categories" filter dropdown.
   const grouped = useMemo(() => {
@@ -145,7 +158,7 @@ function MutualFunds() {
   const TableArea = tableLoading ? (
     <ListSkeleton rows={8} />
   ) : tableError ? (
-    <ErrorState message={tableError} onRetry={() => setHorizon(h => h)} />
+    <ErrorState message={tableError} onRetry={() => setRetryTick(t => t + 1)} />
   ) : !table || allRows.length === 0 ? (
     <EmptyState icon={<InsightsRoundedIcon />} title="No funds" description="No funds match your filters." />
   ) : (
@@ -193,14 +206,14 @@ function MutualFunds() {
             />
             <FormControl size="small" sx={{ minWidth: 150 }}>
               <Select value={allAsset} displayEmpty
-                onChange={e => { setAllAsset(e.target.value); setAllCategory(""); }}
+                onChange={e => updateParams({ asset: e.target.value || null, category: null })}
                 renderValue={v => (v ? assetClassLabel(String(v)) : "All asset classes")}>
                 <MenuItem value="">All asset classes</MenuItem>
                 {assetClasses.map(a => <MenuItem key={a} value={a}>{assetClassLabel(a)}</MenuItem>)}
               </Select>
             </FormControl>
             <FormControl size="small" sx={{ minWidth: 190 }}>
-              <Select value={allCategory} displayEmpty onChange={e => setAllCategory(e.target.value)}
+              <Select value={allCategory} displayEmpty onChange={e => updateParams({ category: e.target.value || null })}
                 renderValue={v => (v ? String(v) : "All categories")}>
                 <MenuItem value="">All categories</MenuItem>
                 {grouped.filter(g => !allAsset || g.asset === allAsset).flatMap(({ asset, subs }) => [
@@ -210,7 +223,7 @@ function MutualFunds() {
               </Select>
             </FormControl>
             <ToggleButton value="starred" selected={starredOnly} size="small"
-              onChange={() => setStarredOnly(s => !s)}
+              onChange={() => updateParams({ starred: starredOnly ? null : "1" })}
               sx={{ px: 1.5, gap: 0.5, whiteSpace: "nowrap", ...(starredOnly ? { color: "#F59E0B !important" } : {}) }}>
               <StarRoundedIcon sx={{ fontSize: 18 }} /> Starred{starred.size ? ` (${starred.size})` : ""}
             </ToggleButton>
