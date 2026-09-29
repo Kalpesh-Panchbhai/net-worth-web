@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import {
   Box, Button, Fab, IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
-  Typography, Stack, CircularProgress, useMediaQuery, useTheme,
+  Typography, Stack, useMediaQuery, useTheme,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
@@ -14,6 +14,7 @@ import {
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, rectSortingStrategy } from "@dnd-kit/sortable";
 import { useUser } from "../context/UserContext";
 import { useTokens } from "../context/ColorModeContext";
+import { ErrorState, ListSkeleton } from "../components/shared";
 import { useInsightsData } from "./useInsightsData";
 import { useInsightsLayout, newWidgetId } from "./storage";
 import { WIDGET_META, WIDGET_ORDER, WidgetView } from "./registry";
@@ -22,7 +23,7 @@ import WidgetConfigForm from "./WidgetConfigForm";
 import type { WidgetConfig, WidgetInstance, WidgetType } from "./types";
 
 export default function InsightsGrid() {
-  const { userId } = useUser();
+  const { userId, refreshAll } = useUser();
   const { colors, shadow } = useTokens();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -66,12 +67,16 @@ export default function InsightsGrid() {
   const updateInstance = (id: string, patch: Partial<WidgetInstance>) => setLayout(layout.map(w => w.id === id ? { ...w, ...patch } : w));
   const removeInstance = (id: string) => setLayout(layout.filter(w => w.id !== id));
 
-  if (!loaded) {
-    return (
-      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "50vh" }}>
-        <CircularProgress size={28} sx={{ color: colors.brand }} />
-      </Box>
-    );
+  // Layout (widget arrangement) and shared widget data load independently — wait for both so
+  // widgets never mount against the empty defaults `useInsightsData` starts with.
+  if (!loaded || data.loading) {
+    return <ListSkeleton rows={4} />;
+  }
+
+  // Shared data failed and there's nothing usable to fall back on — every widget below reads
+  // from `data`, so surface the failure instead of silently rendering as if everything is zero.
+  if (data.error && data.watchlists.length === 0) {
+    return <ErrorState message={data.error} onRetry={refreshAll} />;
   }
 
   return (
