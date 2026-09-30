@@ -507,3 +507,26 @@ export interface StockAlertConfig {
   awsCron?: string | null;
   awsState?: string | null;
 }
+
+/** Per-holding value history of a watchlist, sampled every `step` days (GET /chart-data?action=timeline). */
+export interface Timeline {
+  displayCurrency: string;
+  /** Sample dates, ascending; the last one is today. */
+  dates: string[];
+  accounts: TimelineAccount[];
+}
+
+export interface TimelineAccount {
+  id: number;
+  name: string;
+  type: string;
+  holdings: TimelineHolding[];
+}
+
+/** `value[i]` / `invested[i]` are the amounts on `Timeline.dates[i]`, in `displayCurrency`. */
+export interface TimelineHolding {
+  id: number;
+  name: string;
+  value: number[];
+  invested: number[];
+}

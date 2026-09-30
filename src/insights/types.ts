@@ -1,6 +1,6 @@
 import type { EntityType } from "../api/types";
 
-export type WidgetType = "summary" | "netWorth" | "allocation" | "watchlistComparison" | "performance" | "income" | "goals";
+export type WidgetType = "summary" | "netWorth" | "allocation" | "watchlistComparison" | "performance" | "income" | "goals" | "treemap" | "timeMachine";
 export type WidgetSize = "half" | "full";
 export type AllocationMetric = "value" | "invested";
 

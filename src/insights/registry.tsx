@@ -6,6 +6,8 @@ import PaymentsRoundedIcon from "@mui/icons-material/PaymentsRounded";
 import AccountBalanceWalletRoundedIcon from "@mui/icons-material/AccountBalanceWalletRounded";
 import SavingsRoundedIcon from "@mui/icons-material/SavingsRounded";
 import FlagRoundedIcon from "@mui/icons-material/FlagRounded";
+import GridViewRoundedIcon from "@mui/icons-material/GridViewRounded";
+import HistoryRoundedIcon from "@mui/icons-material/HistoryRounded";
 import SummaryWidget from "./widgets/SummaryWidget";
 import NetWorthWidget from "./widgets/NetWorthWidget";
 import AllocationWidget from "./widgets/AllocationWidget";
@@ -13,6 +15,8 @@ import WatchlistComparisonWidget from "./widgets/WatchlistComparisonWidget";
 import PerformanceWidget from "./widgets/PerformanceWidget";
 import IncomeWidget from "./widgets/IncomeWidget";
 import GoalsWidget from "./widgets/GoalsWidget";
+import TreemapWidget from "./widgets/TreemapWidget";
+import TimeMachineWidget from "./widgets/TimeMachineWidget";
 import type {
   WidgetType, WidgetConfig, WidgetInstance,
   SummaryConfig, AllocationConfig, WatchlistComparisonConfig, PerformanceConfig, IncomeConfig,
@@ -70,9 +74,23 @@ export const WIDGET_META: Record<WidgetType, { label: string; description: strin
     defaultConfig: {},
     configurable: false,
   },
+  treemap: {
+    label: "Money Map",
+    description: "Heat map of every account sized by value and colored by today's move — click to drill into holdings.",
+    icon: <GridViewRoundedIcon />,
+    defaultConfig: {},
+    configurable: false,
+  },
+  timeMachine: {
+    label: "Time Machine",
+    description: "Scrub or play through your net-worth history and watch each account and holding grow.",
+    icon: <HistoryRoundedIcon />,
+    defaultConfig: {},
+    configurable: false,
+  },
 };
 
-export const WIDGET_ORDER: WidgetType[] = ["summary", "netWorth", "performance", "allocation", "watchlistComparison", "income", "goals"];
+export const WIDGET_ORDER: WidgetType[] = ["summary", "netWorth", "performance", "allocation", "watchlistComparison", "income", "goals", "treemap", "timeMachine"];
 
 /** Renders a widget instance with the shared data; `onConfigChange` persists in-card edits (chips). */
 export function WidgetView({ instance, data, onConfigChange }: {
@@ -95,6 +113,10 @@ export function WidgetView({ instance, data, onConfigChange }: {
       return <IncomeWidget config={instance.config as IncomeConfig} data={data} />;
     case "goals":
       return <GoalsWidget />;
+    case "treemap":
+      return <TreemapWidget data={data} />;
+    case "timeMachine":
+      return <TimeMachineWidget data={data} />;
     default:
       return null;
   }

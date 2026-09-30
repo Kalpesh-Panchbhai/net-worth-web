@@ -34,6 +34,7 @@ import type {
   StockPortfolioResponse,
   StockClosedResponse,
   StockAlertConfig,
+  Timeline,
 } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://kfgx37r84g.execute-api.ap-south-1.amazonaws.com/prod";
@@ -391,6 +392,10 @@ export function getChartData(entityType: EntityType, entityId: number, timePerio
   return request<ChartDataPoint[]>(
     `/chart-data?entityType=${entityType}&entityId=${entityId}&timePeriod=${timePeriod}`
   );
+}
+
+export function getTimeline(watchlistId: number, stepDays = 7) {
+  return request<Timeline>(`/chart-data?action=timeline&watchlistId=${watchlistId}&step=${stepDays}`);
 }
 
 // Income Sources
