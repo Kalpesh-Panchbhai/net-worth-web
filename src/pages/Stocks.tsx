@@ -256,7 +256,9 @@ function PositionDialog({ open, mode, market, initialStock, onClose, onSaved }:
         onSaved(r); showToast(`Closed ${initialStock!.stock}`, "success");
       }
       onClose();
-    } catch { showToast("Save failed", "error"); } finally { setSaving(false); }
+      // A bare "Save failed" hid the actual reason (a blocked CORS preflight, a validation error
+      // from the API), so the message from the server is surfaced when there is one.
+    } catch (e) { showToast(e instanceof Error ? e.message : "Save failed", "error"); } finally { setSaving(false); }
   };
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
