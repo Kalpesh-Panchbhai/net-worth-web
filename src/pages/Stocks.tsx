@@ -270,6 +270,25 @@ function PositionDialog({ open, mode, market, initialStock, onClose, onSaved }:
           <TextField label={mode === "buy" ? "Entry price" : "Exit price"} type="number" size="small" value={price} onChange={e => setPrice(e.target.value)} fullWidth />
           {mode === "buy" && <TextField label="Quantity" type="number" size="small" value={qty} onChange={e => setQty(e.target.value)} fullWidth />}
           {mode === "buy" && <TextField label="Notes" size="small" value={notes} onChange={e => setNotes(e.target.value)} fullWidth />}
+          {mode === "close" && initialStock && price && initialStock.qty && (
+            <Box sx={{ p: 1.5, bgcolor: (initialStock.qty * (Number(price) - (initialStock.price ?? 0))) >= 0 ? "rgba(76, 175, 80, 0.1)" : "rgba(244, 67, 54, 0.1)", borderRadius: 1 }}>
+              <Typography variant="caption" sx={{ display: "block", mb: 0.5 }}>P&L</Typography>
+              <Stack direction="row" spacing={2}>
+                <Box>
+                  <Typography variant="caption" sx={{ color: "text.secondary", display: "block" }}>Amount</Typography>
+                  <Typography sx={{ fontWeight: 600, color: (initialStock.qty * (Number(price) - (initialStock.price ?? 0))) >= 0 ? "success.main" : "error.main" }}>
+                    {initialStock.qty * (Number(price) - (initialStock.price ?? 0)) >= 0 ? "+" : ""}₹{Math.abs(initialStock.qty * (Number(price) - (initialStock.price ?? 0))).toFixed(2)}
+                  </Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" sx={{ color: "text.secondary", display: "block" }}>Percentage</Typography>
+                  <Typography sx={{ fontWeight: 600, color: ((Number(price) / (initialStock.price ?? 1) - 1) * 100) >= 0 ? "success.main" : "error.main" }}>
+                    {((Number(price) / (initialStock.price ?? 1) - 1) * 100) >= 0 ? "+" : ""}{(((Number(price) / (initialStock.price ?? 1) - 1) * 100)).toFixed(2)}%
+                  </Typography>
+                </Box>
+              </Stack>
+            </Box>
+          )}
         </Stack>
       </DialogContent>
       <DialogActions>
@@ -835,7 +854,7 @@ function PortfolioTab({ data, market, currency, onStock, onClose, onDelete }:
                   <TableCell align="right" sx={{ color: (v.dayChangePct ?? 0) >= 0 ? colors.success : colors.error }}>{pct(v.dayChangePct)}</TableCell>
                   <TableCell align="right">
                     <Button size="small" onClick={() => onClose(v)}>Sell</Button>
-                    <IconButton size="small" onClick={() => onDelete(v)}><DeleteOutlineRoundedIcon sx={{ fontSize: 18 }} /></IconButton>
+                    <IconButton size="small" onClick={() => onDelete(v)} sx={{ color: colors.error }}><DeleteOutlineRoundedIcon sx={{ fontSize: 18 }} /></IconButton>
                   </TableCell>
                 </TableRow>
               );
