@@ -554,7 +554,7 @@ function Stocks() {
       <StockDetailDialog market={market} stock={stockDetail} onClose={() => setStockDetail(null)} />
       <PositionDialog open={buyOpen} mode="buy" market={market} onClose={() => setBuyOpen(false)} onSaved={setPortfolio} />
       <PositionDialog open={!!closePos} mode="close" market={market}
-        initialStock={closePos ? { stock: closePos.position.stock, id: closePos.position.id, price: closePos.currentPrice ?? undefined } : undefined}
+        initialStock={closePos ? { stock: closePos.position.stock, id: closePos.position.id, price: closePos.currentPrice ?? undefined, qty: closePos.position.quantity ?? undefined } : undefined}
         onClose={() => setClosePos(null)} onSaved={setPortfolio} />
 
       <Dialog open={!!deletePos} onClose={() => setDeletePos(null)}>
@@ -852,7 +852,7 @@ function PortfolioTab({ data, market, currency, onStock, onClose, onDelete }:
                   <TableCell align="right" sx={{ color: (v.unrealizedPct ?? 0) >= 0 ? colors.success : colors.error, fontWeight: 600 }}>{pct(v.unrealizedPct)}</TableCell>
                   <TableCell align="right" sx={{ color: (pnl ?? 0) >= 0 ? colors.success : colors.error }}>{pnl != null ? formatCurrency(pnl, currency) : "—"}</TableCell>
                   <TableCell align="right" sx={{ color: (v.dayChangePct ?? 0) >= 0 ? colors.success : colors.error }}>{pct(v.dayChangePct)}</TableCell>
-                  <TableCell align="right">
+                  <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
                     <Button size="small" onClick={() => onClose(v)}>Sell</Button>
                     <IconButton size="small" onClick={() => onDelete(v)} sx={{ color: colors.error }}><DeleteOutlineRoundedIcon sx={{ fontSize: 18 }} /></IconButton>
                   </TableCell>

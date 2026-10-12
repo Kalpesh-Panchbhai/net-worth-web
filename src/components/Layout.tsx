@@ -609,7 +609,7 @@ function Layout({ children }: { children: ReactNode }) {
           pb: { xs: "calc(16px + env(safe-area-inset-bottom, 0px))", sm: 3 },
           // Wide canvas across the app so content fills the screen instead of leaving big side gaps.
           // Collapsing the sidebar frees ~176px; widen the cap to spend it on content, not margins.
-          maxWidth: collapsed ? 1560 : 1320, mx: "auto",
+          maxWidth: collapsed ? "100%" : 1560, mx: "auto",
           transition: "max-width 0.2s ease",
         }}>
           {children}
