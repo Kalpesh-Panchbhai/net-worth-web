@@ -33,7 +33,7 @@ import { useToast } from "../context/ToastContext";
 import { CURRENCIES } from "../constants";
 import type { AccountSummary, AccountType } from "../api/types";
 import { formatCurrency as fmt } from "../utils/format";
-import { nextBillLabel } from "../utils/billDate";
+import { billStatus } from "../utils/billDate";
 const ACCOUNT_TYPES: AccountType[] = ["BROKER", "SAVINGS", "CREDIT_CARD", "LOAN", "OTHER"];
 const TYPE_LABELS: Record<AccountType, string> = {
   BROKER: "Broker", SAVINGS: "Savings", CREDIT_CARD: "Credit Card", LOAN: "Loan", OTHER: "Other",
@@ -105,7 +105,11 @@ const AccountCard = memo(function AccountCard({ a, i, onOpen, onEdit, onDelete }
   const cardInvested = isDark ? "#60A5FA" : colors.brand;
   const cardSuccess = isDark ? "#34D399" : colors.success;
   const cardError = isDark ? "#F87171" : colors.error;
-  const billLabel = a.type === "CREDIT_CARD" ? nextBillLabel(a.name) : null;
+  const bill = a.type === "CREDIT_CARD" ? billStatus(a.name, a.currentDayValue) : null;
+  const billColor = bill?.state === "paid" ? cardSuccess
+    : bill?.state === "overdue" ? cardError
+    : bill?.state === "due" ? (bill.daysToDue !== null && bill.daysToDue <= 3 ? cardError : tc)
+    : cardMuted;
   return (
     <FadeIn delay={i * 40}>
       <Paper
@@ -130,9 +134,9 @@ const AccountCard = memo(function AccountCard({ a, i, onOpen, onEdit, onDelete }
               {TYPE_LABELS[a.type as AccountType] || a.type} · {a.currency}
               {!a.isActive && " · Inactive"}
             </Typography>
-            {billLabel && (
-              <Typography variant="caption" sx={{ display: "block", fontWeight: 600, color: tc }}>
-                Bill due {billLabel}
+            {bill && (
+              <Typography variant="caption" sx={{ display: "block", fontWeight: 600, color: billColor }}>
+                {bill.label}
               </Typography>
             )}
           </Box>

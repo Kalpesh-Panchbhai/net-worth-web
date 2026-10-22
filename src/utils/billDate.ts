@@ -44,19 +44,71 @@ export function nextBillDate(billDay: number, from: Date = new Date()): Date {
   return clamped(today.getFullYear(), today.getMonth() + 1);
 }
 
-/** "Today", "Tomorrow", "10 Nov", or "10 Nov 2027" once the date falls in another year. */
-export function formatBillDate(date: Date, from: Date = new Date()): string {
-  const today = startOfDay(from);
-  const days = Math.round((startOfDay(date).getTime() - today.getTime()) / 86_400_000);
-  if (days === 0) return "Today";
-  if (days === 1) return "Tomorrow";
-  const label = `${date.getDate()} ${MONTHS[date.getMonth()]}`;
-  return date.getFullYear() === today.getFullYear() ? label : `${label} ${date.getFullYear()}`;
+/** The most recent bill day, today included — the bill that may still be sitting unpaid. */
+function lastBillDate(billDay: number, from: Date): Date {
+  const next = nextBillDate(billDay, from);
+  if (next.getTime() === startOfDay(from).getTime()) return next;
+  const year = next.getFullYear();
+  const month = next.getMonth() - 1;
+  return new Date(year, month, Math.min(billDay, daysInMonth(year, month)));
 }
 
-/** The label to show on a credit card account, or null when no bill day is configured. */
-export function nextBillLabel(accountName: string, from: Date = new Date()): string | null {
+/** "21 Nov", or "21 Nov 2027" once the date falls in another year. */
+export function formatBillDate(date: Date, from: Date = new Date()): string {
+  const label = `${date.getDate()} ${MONTHS[date.getMonth()]}`;
+  return date.getFullYear() === startOfDay(from).getFullYear() ? label : `${label} ${date.getFullYear()}`;
+}
+
+function daysBetween(a: Date, b: Date): number {
+  return Math.round((startOfDay(b).getTime() - startOfDay(a).getTime()) / 86_400_000);
+}
+
+/** Days a bill gets to be paid once it is generated. */
+export const BILL_PAYMENT_WINDOW_DAYS = 20;
+
+export type BillState = "upcoming" | "paid" | "due" | "overdue";
+
+export interface BillStatus {
+  label: string;
+  state: BillState;
+  /** Days until the payment due date; negative once it has passed. Null while `upcoming`. */
+  daysToDue: number | null;
+}
+
+/**
+ * What to show on a credit card: the bill it is currently paying off, or the next one to come.
+ * A bill generated on the bill day is due `BILL_PAYMENT_WINDOW_DAYS` later; a zero balance inside
+ * that window means it has been paid. `balance` is the account's value, in either sign.
+ */
+export function billStatus(
+  accountName: string,
+  balance: number,
+  from: Date = new Date(),
+): BillStatus | null {
   const day = billDayFor(accountName);
   if (day === undefined) return null;
-  return formatBillDate(nextBillDate(day, from), from);
+
+  const due = addDays(lastBillDate(day, from), BILL_PAYMENT_WINDOW_DAYS);
+  const daysToDue = daysBetween(from, due);
+
+  // Past the due date the last bill is settled either way, so look ahead to the next one.
+  if (daysToDue < 0 && Math.abs(balance) < 0.01) {
+    const next = nextBillDate(day, from);
+    return { label: `Next bill on ${formatBillDate(next, from)}`, state: "upcoming", daysToDue: null };
+  }
+
+  if (Math.abs(balance) < 0.01) {
+    const next = nextBillDate(day, addDays(from, 1));
+    return { label: `Paid · next bill on ${formatBillDate(next, from)}`, state: "paid", daysToDue };
+  }
+  if (daysToDue < 0) return { label: "Overdue", state: "overdue", daysToDue };
+  if (daysToDue === 0) return { label: "Due today", state: "due", daysToDue };
+  if (daysToDue === 1) return { label: "Due tomorrow", state: "due", daysToDue };
+  return { label: `Due in ${daysToDue} days`, state: "due", daysToDue };
+}
+
+function addDays(d: Date, n: number): Date {
+  const out = startOfDay(d);
+  out.setDate(out.getDate() + n);
+  return out;
 }
