@@ -106,7 +106,7 @@ const AccountCard = memo(function AccountCard({ a, i, onOpen, onEdit, onDelete }
   const cardSuccess = isDark ? "#34D399" : colors.success;
   const cardError = isDark ? "#F87171" : colors.error;
   const bill = a.type === "CREDIT_CARD" ? billStatus(a.name, a.currentDayValue) : null;
-  const billColor = bill?.state === "paid" ? cardSuccess
+  const billColor = bill?.state === "paid" || bill?.state === "upcoming" ? cardSuccess
     : bill?.state === "overdue" ? cardError
     : bill?.state === "due" ? (bill.daysToDue !== null && bill.daysToDue <= 3 ? cardError : tc)
     : cardMuted;
