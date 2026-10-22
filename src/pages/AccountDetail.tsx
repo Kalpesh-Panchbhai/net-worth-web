@@ -35,7 +35,7 @@ import ListItemText from "@mui/material/ListItemText";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
 import { EmptyState, ErrorState, ListSkeleton, FadeIn } from "../components/shared";
-import NumericField from "../components/NumericField";
+import NumericField, { isAmount } from "../components/NumericField";
 import EntityChart from "../components/EntityChart";
 import AllocationBreakdown, { type AllocationGrouping } from "../components/AllocationBreakdown";
 import XirrBadge from "../components/XirrBadge";
@@ -480,7 +480,7 @@ function AccountDetail() {
   }, [isZerodhaKite, transactions, todayStr]);
 
   const handleCreateTxn = async () => {
-    if (!txnDate || !txnValue || (showInvested && !txnInvested) || !defaultHoldingId) return;
+    if (!txnDate || !isAmount(txnValue) || (showInvested && !isAmount(txnInvested)) || !defaultHoldingId) return;
     // Send exactly what was typed, in the account's own currency, and let the server do the
     // running total for "add" mode. Adding to the previous row here would add the entered native
     // amount to a cumulative figure the API already converted into the display currency, and that
@@ -1215,14 +1215,14 @@ function AccountDetail() {
               <MenuItem value="add">Add</MenuItem>
               <MenuItem value="update">Update</MenuItem>
             </TextField>
-            <NumericField label={`Amount (${account?.currency ?? ""})`} value={txnValue} onChange={setTxnValue} currency={account?.currency} maxDecimals={2} helperText={txnMode === "add" ? "Amount to add" : "Total amount (overwrites)"} fullWidth />
-            {showInvested && <NumericField label={`Invested (${account?.currency ?? ""})`} value={txnInvested} onChange={setTxnInvested} currency={account?.currency} maxDecimals={2} helperText={txnMode === "add" ? "Investment to add" : "Total invested (overwrites)"} fullWidth />}
+            <NumericField label={`Amount (${account?.currency ?? ""})`} value={txnValue} onChange={setTxnValue} currency={account?.currency} maxDecimals={2} allowNegative helperText={txnMode === "add" ? "Amount to add" : "Total amount (overwrites)"} fullWidth />
+            {showInvested && <NumericField label={`Invested (${account?.currency ?? ""})`} value={txnInvested} onChange={setTxnInvested} currency={account?.currency} maxDecimals={2} allowNegative helperText={txnMode === "add" ? "Investment to add" : "Total invested (overwrites)"} fullWidth />}
             <TextField label="Date" type="date" value={txnDate} onChange={e => { const v = e.target.value; if (v && ((minTxnDate && v < minTxnDate) || v > todayStr)) return; setTxnDate(v); }} error={!!txnDate && ((!!minTxnDate && txnDate < minTxnDate) || txnDate > todayStr)} helperText={minTxnDate ? `Select between ${minTxnDate} and ${todayStr}` : `Up to ${todayStr}`} InputLabelProps={{ shrink: true }} inputProps={{ min: minTxnDate || undefined, max: todayStr }} fullWidth />
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreateTxnOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleCreateTxn} disabled={!txnDate || !txnValue || (showInvested && !txnInvested) || (!!minTxnDate && txnDate < minTxnDate) || txnDate > todayStr}>Create</Button>
+          <Button variant="contained" onClick={handleCreateTxn} disabled={!txnDate || !isAmount(txnValue) || (showInvested && !isAmount(txnInvested)) || (!!minTxnDate && txnDate < minTxnDate) || txnDate > todayStr}>Create</Button>
         </DialogActions>
       </Dialog>
 

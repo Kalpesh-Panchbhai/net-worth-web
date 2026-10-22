@@ -4,7 +4,7 @@ import { groupThousands } from "../utils/format";
 import { DEFAULT_CURRENCY } from "../constants";
 
 type NumericFieldProps = Omit<TextFieldProps, "value" | "onChange" | "type"> & {
-  /** Raw value: digits with at most one dot and no grouping separators. */
+  /** Raw value: digits with at most one dot (and a leading "-" when negatives are allowed), no grouping separators. */
   value: string;
   /** Called with the raw (separator-free) value. */
   onChange: (raw: string) => void;
@@ -12,13 +12,16 @@ type NumericFieldProps = Omit<TextFieldProps, "value" | "onChange" | "type"> & {
   currency?: string;
   /** Max fraction digits to keep; omit for unlimited. */
   maxDecimals?: number;
+  /** Allow a leading minus sign (e.g. a credit card's amount owed). */
+  allowNegative?: boolean;
   /** Adornment (e.g. a currency code or "%"). */
   adornment?: ReactNode;
   adornmentPos?: "start" | "end";
 };
 
-/** Keep only digits and a single decimal point, trimming the fraction to `maxDecimals`. */
-function toRaw(input: string, maxDecimals?: number): string {
+/** Keep only digits, a single decimal point and (if allowed) a leading minus, trimming the fraction to `maxDecimals`. */
+function toRaw(input: string, maxDecimals?: number, allowNegative?: boolean): string {
+  const negative = !!allowNegative && input.trimStart().startsWith("-");
   let s = input.replace(/[^0-9.]/g, "");
   const dot = s.indexOf(".");
   if (dot !== -1) {
@@ -26,11 +29,17 @@ function toRaw(input: string, maxDecimals?: number): string {
     if (maxDecimals != null) frac = frac.slice(0, maxDecimals);
     s = s.slice(0, dot + 1) + frac;
   }
-  return s;
+  return negative ? `-${s}` : s;
+}
+
+/** True when a raw value holds an actual number (not empty, "-" or "."). */
+export function isAmount(raw: string): boolean {
+  return /\d/.test(raw);
 }
 
 /** Group the integer part for display; the fraction (and a trailing dot) is shown verbatim. */
 function toDisplay(raw: string, currency?: string): string {
+  if (raw.startsWith("-")) return `-${toDisplay(raw.slice(1), currency)}`;
   if (raw === "") return "";
   const dot = raw.indexOf(".");
   const intPart = dot === -1 ? raw : raw.slice(0, dot);
@@ -45,7 +54,7 @@ function toDisplay(raw: string, currency?: string): string {
  * across reformatting by counting value characters, not raw offsets.
  */
 export default function NumericField({
-  value, onChange, currency = DEFAULT_CURRENCY, maxDecimals,
+  value, onChange, currency = DEFAULT_CURRENCY, maxDecimals, allowNegative,
   adornment, adornmentPos = "start", InputProps, ...rest
 }: NumericFieldProps) {
   const ref = useRef<HTMLInputElement | null>(null);
@@ -54,9 +63,9 @@ export default function NumericField({
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     const el = e.target;
     const selStart = el.selectionStart ?? el.value.length;
-    // How many value chars (digits/dot) sit left of the caret — stable across reformatting.
-    caretValueChars.current = el.value.slice(0, selStart).replace(/[^0-9.]/g, "").length;
-    onChange(toRaw(el.value, maxDecimals));
+    // How many value chars (digits/dot/minus) sit left of the caret — stable across reformatting.
+    caretValueChars.current = el.value.slice(0, selStart).replace(/[^0-9.-]/g, "").length;
+    onChange(toRaw(el.value, maxDecimals, allowNegative));
   };
 
   useLayoutEffect(() => {
@@ -67,7 +76,7 @@ export default function NumericField({
     const text = el.value;
     let count = 0, pos = 0;
     while (pos < text.length && count < target) {
-      if (/[0-9.]/.test(text[pos])) count++;
+      if (/[0-9.-]/.test(text[pos])) count++;
       pos++;
     }
     el.setSelectionRange(pos, pos);
