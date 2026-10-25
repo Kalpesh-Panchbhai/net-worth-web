@@ -1,5 +1,6 @@
 import type {
   User,
+  CardSpendSummary,
   Watchlist,
   WatchlistSummary,
   Account,
@@ -104,7 +105,7 @@ export function invalidateCache(...prefixes: string[]) {
  * has to drop all of them together — otherwise a stale total sits next to a fresh one.
  */
 export function invalidateMoneyCaches() {
-  invalidateCache("/accounts", "/holdings", "/transactions", "/watchlists", "/watchlist-accounts", "/account-watchlists", "/chart-data", "/incomes");
+  invalidateCache("/accounts", "/holdings", "/transactions", "/watchlists", "/watchlist-accounts", "/account-watchlists", "/chart-data", "/incomes", "/card-spends");
 }
 
 async function fetchJson<T>(url: string, options: RequestInit | undefined, isWrite: boolean): Promise<T> {
@@ -312,6 +313,11 @@ export function getAccountWatchlists(accountId: number) {
 }
 
 // Accounts
+// Credit card spend this calendar month (from bank alert emails) and total card debt.
+export function getCardSpends(userId: number, month?: string) {
+  return request<CardSpendSummary>(`/card-spends/${userId}${month ? `?month=${month}` : ""}`);
+}
+
 export function getAccounts(userId: number) {
   return request<AccountSummary[]>(`/accounts/${userId}`);
 }

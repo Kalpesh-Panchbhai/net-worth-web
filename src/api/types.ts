@@ -530,3 +530,24 @@ export interface TimelineHolding {
   value: number[];
   invested: number[];
 }
+
+/** One bank's credit card pool (its cards share one limit) in the card-spend summary. */
+export interface CardSpendAccount {
+  accountId: number;
+  name: string;
+  /** Purchases this month, from bank alert emails. */
+  spent: number;
+  /** Amount owed right now (latest used limit), positive. */
+  debt: number;
+}
+
+/** `GET /card-spends/{userId}?month=YYYY-MM`: calendar-month card spend vs. budget, plus total debt. */
+export interface CardSpendSummary {
+  month: string;
+  spent: number;
+  debt: number;
+  budget: number | null;
+  left: number | null;
+  perDayLeft: number | null;
+  byAccount: CardSpendAccount[];
+}

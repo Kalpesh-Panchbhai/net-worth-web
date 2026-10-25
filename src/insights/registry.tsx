@@ -8,6 +8,7 @@ import SavingsRoundedIcon from "@mui/icons-material/SavingsRounded";
 import FlagRoundedIcon from "@mui/icons-material/FlagRounded";
 import GridViewRoundedIcon from "@mui/icons-material/GridViewRounded";
 import HistoryRoundedIcon from "@mui/icons-material/HistoryRounded";
+import CreditCardRoundedIcon from "@mui/icons-material/CreditCardRounded";
 import SummaryWidget from "./widgets/SummaryWidget";
 import NetWorthWidget from "./widgets/NetWorthWidget";
 import AllocationWidget from "./widgets/AllocationWidget";
@@ -17,6 +18,7 @@ import IncomeWidget from "./widgets/IncomeWidget";
 import GoalsWidget from "./widgets/GoalsWidget";
 import TreemapWidget from "./widgets/TreemapWidget";
 import TimeMachineWidget from "./widgets/TimeMachineWidget";
+import CardSpendWidget from "./widgets/CardSpendWidget";
 import type {
   WidgetType, WidgetConfig, WidgetInstance,
   SummaryConfig, AllocationConfig, WatchlistComparisonConfig, PerformanceConfig, IncomeConfig,
@@ -88,9 +90,17 @@ export const WIDGET_META: Record<WidgetType, { label: string; description: strin
     defaultConfig: {},
     configurable: false,
   },
+  cardSpend: {
+    label: "Card spend",
+    description: "Credit card spend this month against your budget, and total card debt by bank.",
+    icon: <CreditCardRoundedIcon />,
+    defaultConfig: {},
+    // Budget is set from the card itself.
+    configurable: false,
+  },
 };
 
-export const WIDGET_ORDER: WidgetType[] = ["summary", "netWorth", "performance", "allocation", "watchlistComparison", "income", "goals", "treemap", "timeMachine"];
+export const WIDGET_ORDER: WidgetType[] = ["summary", "netWorth", "performance", "allocation", "watchlistComparison", "income", "goals", "treemap", "timeMachine", "cardSpend"];
 
 /** Renders a widget instance with the shared data; `onConfigChange` persists in-card edits (chips). */
 export function WidgetView({ instance, data, onConfigChange }: {
@@ -117,6 +127,8 @@ export function WidgetView({ instance, data, onConfigChange }: {
       return <TreemapWidget data={data} />;
     case "timeMachine":
       return <TimeMachineWidget data={data} />;
+    case "cardSpend":
+      return <CardSpendWidget />;
     default:
       return null;
   }
