@@ -542,6 +542,27 @@ export interface CardSpendAccount {
 }
 
 /** `GET /card-spends/{userId}?month=YYYY-MM`: calendar-month card spend vs. budget, plus total debt. */
+/** One card purchase: read from an alert email, or entered by hand. */
+export interface CardSpend {
+  id: number;
+  accountId: number;
+  accountName: string;
+  amount: number;
+  cardLast4: string | null;
+  /** YYYY-MM-DD */
+  spentOn: string;
+  source: "email" | "manual";
+  /** An email row that was changed by hand afterwards. */
+  edited: boolean;
+}
+
+export interface CardSpendInput {
+  accountId: number;
+  amount: number;
+  spentOn: string;
+  cardLast4: string | null;
+}
+
 export interface CardSpendSummary {
   month: string;
   spent: number;

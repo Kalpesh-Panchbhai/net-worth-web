@@ -1,6 +1,6 @@
 import type {
   User,
-  CardSpendSummary,
+  CardSpendSummary, CardSpend, CardSpendInput,
   Watchlist,
   WatchlistSummary,
   Account,
@@ -316,6 +316,22 @@ export function getAccountWatchlists(accountId: number) {
 // Credit card spend this calendar month (from bank alert emails) and total card debt.
 export function getCardSpends(userId: number, month?: string) {
   return request<CardSpendSummary>(`/card-spends/${userId}${month ? `?month=${month}` : ""}`);
+}
+
+export function getCardSpendList(userId: number, month: string) {
+  return request<CardSpend[]>(`/card-spends/${userId}?action=list&month=${month}`);
+}
+
+export function createCardSpend(data: CardSpendInput) {
+  return request<CardSpend>("/card-spends", { method: "POST", body: JSON.stringify(data) });
+}
+
+export function updateCardSpend(id: number, data: CardSpendInput) {
+  return request<CardSpend>(`/card-spends/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+}
+
+export function deleteCardSpend(id: number) {
+  return request<void>(`/card-spends/${id}`, { method: "DELETE" });
 }
 
 export function getAccounts(userId: number) {

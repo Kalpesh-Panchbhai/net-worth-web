@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Box, Paper, Typography, Stack, LinearProgress, Button, Skeleton, useTheme } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import CreditCardRoundedIcon from "@mui/icons-material/CreditCardRounded";
@@ -25,6 +26,7 @@ const WARN_PCT = 80;
  */
 export default function CardSpendWidget() {
   const theme = useTheme();
+  const navigate = useNavigate();
   const isDark = theme.palette.mode === "dark";
   const { userId, preferredCurrency } = useUser();
   const { colors } = useTokens();
@@ -72,7 +74,7 @@ export default function CardSpendWidget() {
         <Box sx={{ width: 32, height: 32, borderRadius: 1.5, display: "flex", alignItems: "center", justifyContent: "center", bgcolor: alpha(colors.brand, 0.1), color: colors.brand }}>
           <CreditCardRoundedIcon sx={{ fontSize: 18 }} />
         </Box>
-        <Typography sx={{ fontSize: "0.9rem", fontWeight: 700, color: colors.gray500 }}>Card spend · {monthLabel}</Typography>
+        <Typography onClick={() => navigate("/card-spends")} sx={{ fontSize: "0.9rem", fontWeight: 700, color: colors.gray500, cursor: "pointer", "&:hover": { color: colors.brand } }}>Card spend · {monthLabel}</Typography>
         <Box sx={{ flex: 1 }} />
         {!editing && (
           <Typography onClick={startEdit} sx={{ fontSize: "0.72rem", fontWeight: 600, color: colors.gray400, cursor: "pointer", "&:hover": { color: colors.brand } }}>

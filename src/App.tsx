@@ -11,6 +11,7 @@ import MutualFunds from "./pages/MutualFunds";
 import MutualFundDetail from "./pages/MutualFundDetail";
 import Stocks from "./pages/Stocks";
 import Incomes from "./pages/Incomes";
+import CardSpends from "./pages/CardSpends";
 import Simulator from "./pages/Simulator";
 import Goals from "./pages/Goals";
 import IncomeSources from "./pages/IncomeSources";
@@ -69,6 +70,7 @@ function AuthGate() {
         <Route path="/mutual-funds/:schemeCode" element={<MutualFundDetail />} />
         <Route path="/stocks" element={<Stocks />} />
         <Route path="/incomes" element={<Incomes />} />
+        <Route path="/card-spends" element={<CardSpends />} />
         <Route path="/goals" element={<Goals />} />
         <Route path="/simulator" element={<Simulator />} />
         <Route path="/income-sources" element={<IncomeSources />} />

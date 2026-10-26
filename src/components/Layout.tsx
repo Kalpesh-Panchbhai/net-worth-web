@@ -16,6 +16,7 @@ import AccountBalanceWalletRoundedIcon from "@mui/icons-material/AccountBalanceW
 import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
 import VisibilityOffRoundedIcon from "@mui/icons-material/VisibilityOffRounded";
 import ReceiptLongRoundedIcon from "@mui/icons-material/ReceiptLongRounded";
+import CreditCardRoundedIcon from "@mui/icons-material/CreditCardRounded";
 import AccountBalanceRoundedIcon from "@mui/icons-material/AccountBalanceRounded";
 import LocalOfferRoundedIcon from "@mui/icons-material/LocalOfferRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
@@ -165,6 +166,7 @@ const NAV_GROUPS: { label?: string; items: { label: string; path: string; icon: 
       { label: "Accounts", path: "/accounts", icon: <AccountBalanceWalletRoundedIcon /> },
       { label: "Watchlists", path: "/watchlists", icon: <VisibilityRoundedIcon /> },
       { label: "Incomes", path: "/incomes", icon: <ReceiptLongRoundedIcon /> },
+      { label: "Card Spends", path: "/card-spends", icon: <CreditCardRoundedIcon /> },
     ],
   },
   {
