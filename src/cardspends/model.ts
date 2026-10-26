@@ -54,6 +54,58 @@ export function cumulativeByDay(purchases: Purchase[], month: string): number[] 
   return daily.map(d => (run += d));
 }
 
+/** Net spend per day of the month (index 0 = day 1). */
+export function dailyByDay(purchases: Purchase[], month: string): number[] {
+  const daily = new Array(daysInMonth(month)).fill(0);
+  for (const p of purchases) daily[Number(p.spentOn.slice(8, 10)) - 1] += p.net;
+  return daily;
+}
+
+/** Days are capped at this multiple of the median day, so one big purchase is not read as a habit. */
+const FORECAST_CAP = 3;
+/** Days of this month's data after which last month no longer shapes the daily rate. */
+const FORECAST_RAMP_DAYS = 10;
+
+/** Month-end spend forecast; `low`–`high` spans about one standard deviation of the days left. */
+export interface Forecast {
+  expected: number;
+  low: number;
+  high: number;
+}
+
+/** Mean and standard deviation of daily spend, with days capped at FORECAST_CAP × the median. */
+function dailyStats(days: number[]): { mean: number; sd: number } {
+  const sorted = [...days].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  const capped = median > 0 ? days.map(d => Math.min(d, median * FORECAST_CAP)) : days;
+  const mean = capped.reduce((s, d) => s + d, 0) / capped.length;
+  const sd = Math.sqrt(capped.reduce((s, d) => s + (d - mean) ** 2, 0) / capped.length);
+  return { mean, sd };
+}
+
+/**
+ * Where this month's spend should end up: what is spent so far plus a daily rate for the days left.
+ * The rate comes from completed days only (today is still running), blended with last month's while
+ * this month has under FORECAST_RAMP_DAYS of data. Null when there is nothing to go on.
+ */
+export function forecastMonth(daily: number[], todayIdx: number, prevDaily: number[] | null): Forecast | null {
+  const past = daily.slice(0, todayIdx);
+  const prev = prevDaily && prevDaily.some(d => d !== 0) ? dailyStats(prevDaily) : null;
+  if (past.length === 0 && !prev) return null;
+  const now = past.length ? dailyStats(past) : { mean: 0, sd: 0 };
+  const w = prev ? Math.min(1, past.length / FORECAST_RAMP_DAYS) : 1;
+  const rate = w * now.mean + (1 - w) * (prev?.mean ?? 0);
+  const sd = w * now.sd + (1 - w) * (prev?.sd ?? 0);
+
+  const spentPast = past.reduce((s, d) => s + d, 0);
+  const today = daily[todayIdx] ?? 0;
+  const daysAfterToday = daily.length - todayIdx - 1;
+  // Today counts at whichever is higher: what is already spent today or a typical day.
+  const expected = spentPast + Math.max(today, rate) + rate * daysAfterToday;
+  const spread = sd * Math.sqrt(daysAfterToday + 1);
+  return { expected, low: Math.max(spentPast + today, expected - spread), high: expected + spread };
+}
+
 /**
  * Search box syntax: ">5000", "<500", "1000-2000" filter by amount; anything else matches the card
  * name, the last 4 digits or the amount's digits.

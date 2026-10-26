@@ -3,7 +3,7 @@ import { Box, Paper, Typography, Stack, Tooltip, Button } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { useTokens } from "../context/ColorModeContext";
 import NumericField from "../components/NumericField";
-import { fmt, fmtShort } from "./model";
+import { fmt, fmtShort, type Forecast } from "./model";
 import { daysInMonth, monthLabel, shiftMonth } from "./model";
 
 /** Within this share of the budget the bar turns amber, before it is actually over. */
@@ -22,17 +22,36 @@ export function VsLastMonth({ now, prev, month }: { now: number; prev: number | 
   );
 }
 
+/** "On track for ₹52k (₹48k–56k) · ≈ ₹6k over budget" */
+export function ForecastLine({ forecast, limit, currency }: { forecast: Forecast; limit: number | null; currency: string }) {
+  const { colors } = useTokens();
+  const gap = limit != null ? forecast.expected - limit : null;
+  const round = (v: number) => fmt(Math.round(v), currency);
+  return (
+    <Typography sx={{ fontSize: "0.78rem", color: colors.gray500 }}>
+      On track for <b>{round(forecast.expected)}</b> ({round(forecast.low)}–{round(forecast.high)})
+      {gap != null && (
+        <Typography component="span" sx={{ fontSize: "inherit", fontWeight: 650, color: gap > 0 ? colors.error : colors.success }}>
+          {" "}· ≈ {round(Math.abs(gap))} {gap > 0 ? "over" : "under"} budget
+        </Typography>
+      )}
+    </Typography>
+  );
+}
+
 /**
  * The month at a glance: spend against budget with a marker for where spend "should" be by today,
  * coloured by pace, plus one plain sentence on what that means for the rest of the month.
  */
-export default function PaceBar({ spent, limit, budget, onBudgetChange, month, isCurrentMonth, prevTotal, prevSameDay, currency }: {
+export default function PaceBar({ spent, limit, budget, onBudgetChange, forecast, month, isCurrentMonth, prevTotal, prevSameDay, currency }: {
   spent: number;
   /** The budget to pace against; null when there is none or the view is filtered. */
   limit: number | null;
   /** The saved monthly budget, edited here regardless of filters. */
   budget: number | null;
   onBudgetChange: (monthlyLimit: number | null) => void;
+  /** Month-end forecast; only for the current month. */
+  forecast: Forecast | null;
   month: string;
   isCurrentMonth: boolean;
   /** Last month's whole-month spend. */
@@ -132,6 +151,7 @@ export default function PaceBar({ spent, limit, budget, onBudgetChange, month, i
       <Typography sx={{ fontSize: "0.82rem", fontWeight: 550, color: limit != null && spent > limit ? colors.error : colors.gray600 }}>
         {sentence}
       </Typography>
+      {forecast && <ForecastLine forecast={forecast} limit={limit} currency={currency} />}
     </Paper>
   );
 }

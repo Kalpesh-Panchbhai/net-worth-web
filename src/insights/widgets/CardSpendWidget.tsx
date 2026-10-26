@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Box, Paper, Typography, Stack, LinearProgress, Button, Skeleton, useTheme } from "@mui/material";
 import { alpha } from "@mui/material/styles";
@@ -6,8 +6,10 @@ import CreditCardRoundedIcon from "@mui/icons-material/CreditCardRounded";
 import { useUser } from "../../context/UserContext";
 import { useTokens } from "../../context/ColorModeContext";
 import { useSyncedConfig } from "../../utils/syncedConfig";
-import { getCardSpends } from "../../api/client";
-import type { CardSpendSummary } from "../../api/types";
+import { getCardSpendList, getCardSpends } from "../../api/client";
+import type { CardSpend, CardSpendSummary } from "../../api/types";
+import { buildPurchases, dailyByDay, forecastMonth, monthKey, shiftMonth } from "../../cardspends/model";
+import { ForecastLine } from "../../cardspends/PaceBar";
 import NumericField from "../../components/NumericField";
 import { formatCurrency as fmt } from "../../utils/format";
 
@@ -35,6 +37,8 @@ export default function CardSpendWidget() {
   const [error, setError] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+  // This and last month's spends, for the month-end forecast; it is simply left out if they fail.
+  const [lists, setLists] = useState<[CardSpend[], CardSpend[]] | null>(null);
 
   useEffect(() => {
     if (!userId) return;
@@ -43,8 +47,19 @@ export default function CardSpendWidget() {
     getCardSpends(userId)
       .then(s => { if (!cancelled) setSummary(s); })
       .catch(() => { if (!cancelled) setError(true); });
+    const month = monthKey(new Date());
+    Promise.all([getCardSpendList(userId, month), getCardSpendList(userId, shiftMonth(month, -1))])
+      .then(l => { if (!cancelled) setLists(l); })
+      .catch(() => { /* forecast is optional */ });
     return () => { cancelled = true; };
   }, [userId]);
+
+  const forecast = useMemo(() => {
+    if (!lists) return null;
+    const month = monthKey(new Date());
+    return forecastMonth(dailyByDay(buildPurchases(lists[0]), month), new Date().getDate() - 1,
+      dailyByDay(buildPurchases(lists[1]), shiftMonth(month, -1)));
+  }, [lists]);
 
   const success = isDark ? "#34D399" : colors.success;
   const spent = summary?.spent ?? 0;
@@ -111,6 +126,10 @@ export default function CardSpendWidget() {
               <Typography sx={{ fontSize: "0.82rem", color: colors.gray400 }}>of {fmt(limit, preferredCurrency)}</Typography>
             )}
           </Stack>
+
+          {forecast && (
+            <Box sx={{ mt: 0.5 }}><ForecastLine forecast={forecast} limit={limit} currency={preferredCurrency} /></Box>
+          )}
 
           {limit != null && left != null && perDay != null && (
             <>

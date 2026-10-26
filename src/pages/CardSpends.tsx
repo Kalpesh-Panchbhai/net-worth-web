@@ -18,7 +18,7 @@ import { EmptyState, ErrorState, MetricCard, MetricSkeleton, FadeIn } from "../c
 import type { CardNumber, CardSpend, CardSpendSummary } from "../api/types";
 import { fmt, fmtShort } from "../cardspends/model";
 import {
-  buildPurchases, cumulativeByDay, dayLabel, daysInMonth, findIssues, matchesQuery, matchesSource, monthKey, monthLabel,
+  buildPurchases, cumulativeByDay, dailyByDay, forecastMonth, dayLabel, daysInMonth, findIssues, matchesQuery, matchesSource, monthKey, monthLabel,
   parseQuery, shiftMonth, todayIso, type Issue, type Purchase, type SourceFilter,
 } from "../cardspends/model";
 import PaceBar, { VsLastMonth } from "../cardspends/PaceBar";
@@ -152,11 +152,10 @@ function CardSpends() {
   const todayIdx = isCurrentMonth ? new Date().getDate() - 1 : daysInMonth(month) - 1;
   const prevSameDay = prevCumulative ? prevCumulative[Math.min(todayIdx, prevCumulative.length - 1)] : null;
 
-  const daily = useMemo(() => {
-    const d = new Array(daysInMonth(month)).fill(0);
-    for (const p of base) d[Number(p.spentOn.slice(8, 10)) - 1] += p.net;
-    return d;
-  }, [base, month]);
+  const daily = useMemo(() => dailyByDay(base, month), [base, month]);
+  const prevDaily = useMemo(() => (prevBase ? dailyByDay(prevBase, shiftMonth(month, -1)) : null), [prevBase, month]);
+  // Only the current month has days left to forecast; filters apply, like the rest of the page.
+  const forecast = useMemo(() => (isCurrentMonth ? forecastMonth(daily, todayIdx, prevDaily) : null), [isCurrentMonth, daily, todayIdx, prevDaily]);
   const cumulative = useMemo(() => cumulativeByDay(base, month), [base, month]);
 
   const byCard = useMemo(() => {
@@ -381,7 +380,7 @@ function CardSpends() {
         {loading && !summary ? (<><MetricSkeleton /><MetricSkeleton /></>) : (
           <>
             <PaceBar spent={spent} limit={limit} budget={budget.monthlyLimit}
-              onBudgetChange={monthlyLimit => setBudget({ monthlyLimit })} month={month} isCurrentMonth={isCurrentMonth}
+              onBudgetChange={monthlyLimit => setBudget({ monthlyLimit })} forecast={forecast} month={month} isCurrentMonth={isCurrentMonth}
               prevTotal={prevTotal} prevSameDay={prevSameDay} currency={currency} />
             <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr 1fr", md: "1fr" }, gap: { xs: 1.5, sm: 2 } }}>
               <MetricCard label="Total owed" value={fmtShort(debt, currency)}
@@ -403,7 +402,7 @@ function CardSpends() {
         <FadeIn>
           <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3 }}>
             <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "2fr 1fr" }, gap: 3 }}>
-              <DailyChart month={month} daily={daily} cumulative={cumulative} prevCumulative={prevCumulative}
+              <DailyChart month={month} daily={daily} cumulative={cumulative} prevCumulative={prevCumulative} forecast={forecast}
                 selectedDay={dayFilter} onSelectDay={setDayFilter} currency={currency} compact={isMobile} />
               <Box>
                 <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", mb: 1.5 }}>By card</Typography>
