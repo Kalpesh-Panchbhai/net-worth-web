@@ -1,6 +1,6 @@
 import type {
   User,
-  CardSpendSummary, CardSpend, CardSpendInput,
+  CardSpendSummary, CardSpend, CardSpendInput, CardRefundInput,
   Watchlist,
   WatchlistSummary,
   Account,
@@ -326,7 +326,11 @@ export function createCardSpend(data: CardSpendInput) {
   return request<CardSpend>("/card-spends", { method: "POST", body: JSON.stringify(data) });
 }
 
-export function updateCardSpend(id: number, data: CardSpendInput) {
+export function createCardRefund(purchaseId: number, data: CardRefundInput) {
+  return request<CardSpend>("/card-spends", { method: "POST", body: JSON.stringify({ ...data, refundOf: purchaseId }) });
+}
+
+export function updateCardSpend(id: number, data: CardSpendInput | CardRefundInput) {
   return request<CardSpend>(`/card-spends/${id}`, { method: "PATCH", body: JSON.stringify(data) });
 }
 

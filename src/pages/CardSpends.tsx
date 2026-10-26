@@ -10,6 +10,7 @@ import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import UndoRoundedIcon from "@mui/icons-material/UndoRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import CreditCardOffOutlinedIcon from "@mui/icons-material/CreditCardOffOutlined";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as ChartTooltip } from "recharts";
@@ -18,7 +19,7 @@ import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
 import { useSyncedConfig } from "../utils/syncedConfig";
 import {
-  getCardSpends, getCardSpendList, createCardSpend, updateCardSpend, deleteCardSpend, invalidateCache,
+  getCardSpends, getCardSpendList, createCardSpend, createCardRefund, updateCardSpend, deleteCardSpend, invalidateCache,
 } from "../api/client";
 import { EmptyState, ErrorState, ListSkeleton, MetricCard, MetricSkeleton, TintedChip, FadeIn } from "../components/shared";
 import NumericField, { isAmount } from "../components/NumericField";
@@ -41,6 +42,9 @@ const dayLabel = (iso: string) =>
 type SortBy = "date" | "amount";
 
 interface FormState {
+  /** A refund form only has amount and date; it always belongs to `purchase`. */
+  kind: "spend" | "refund";
+  purchase?: Purchase;
   id: number | null;
   accountId: number | "";
   cardLast4: string;
@@ -48,10 +52,18 @@ interface FormState {
   amount: string;
 }
 
+/** A purchase with the refunds linked to it; `net` is what it really cost. */
+interface Purchase extends CardSpend {
+  refunds: CardSpend[];
+  refunded: number;
+  net: number;
+}
+
 /**
  * Every credit card purchase in a month, for analysing and correcting what the alert emails
  * recorded. Spends can be added by hand, edited (email rows are then marked "edited") and deleted.
- * Debt is not affected: it comes from each card's balance, not from these rows.
+ * A refund (full, or partial when a fee is kept) is its own row under its purchase and counts in the
+ * purchase's month. Debt is not affected: it comes from each card's balance, not from these rows.
  */
 function CardSpends() {
   const { userId, preferredCurrency } = useUser();
@@ -92,15 +104,26 @@ function CardSpends() {
   const cards = summary?.byAccount ?? [];
   const isCurrentMonth = month === monthKey(new Date());
 
+  // Refunds hang off their purchase instead of being rows of their own.
+  const purchases = useMemo<Purchase[]>(() => {
+    const byPurchase = new Map<number, CardSpend[]>();
+    for (const s of spends) if (s.refundOf != null) byPurchase.set(s.refundOf, [...(byPurchase.get(s.refundOf) ?? []), s]);
+    return spends.filter(s => s.refundOf == null).map(s => {
+      const refunds = (byPurchase.get(s.id) ?? []).sort((a, b) => a.spentOn.localeCompare(b.spentOn));
+      const refunded = -refunds.reduce((sum, r) => sum + r.amount, 0);
+      return { ...s, refunds, refunded, net: s.amount - refunded };
+    });
+  }, [spends]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase().replace(/,/g, "");
-    const rows = spends.filter(s =>
+    const rows = purchases.filter(s =>
       (accountFilter === "all" || s.accountId === accountFilter)
       && (!q || String(s.amount).includes(q) || s.accountName.toLowerCase().includes(q) || (s.cardLast4 ?? "").includes(q)));
     return sortBy === "amount" ? [...rows].sort((a, b) => b.amount - a.amount) : rows;
-  }, [spends, accountFilter, search, sortBy]);
+  }, [purchases, accountFilter, search, sortBy]);
 
-  const spent = filtered.reduce((sum, s) => sum + s.amount, 0);
+  const spent = filtered.reduce((sum, s) => sum + s.net, 0);
   const debt = cards.filter(c => accountFilter === "all" || c.accountId === accountFilter).reduce((sum, c) => sum + c.debt, 0);
   // The budget covers all cards, so "left" only makes sense unfiltered.
   const limit = accountFilter === "all" ? budget.monthlyLimit : null;
@@ -113,7 +136,7 @@ function CardSpends() {
     const [y, m] = month.split("-").map(Number);
     const days = new Date(y, m, 0).getDate();
     const totals = Array.from({ length: days }, (_, i) => ({ day: i + 1, amount: 0 }));
-    for (const s of filtered) totals[Number(s.spentOn.slice(8, 10)) - 1].amount += s.amount;
+    for (const s of filtered) totals[Number(s.spentOn.slice(8, 10)) - 1].amount += s.net;
     return totals;
   }, [filtered, month]);
 
@@ -121,7 +144,7 @@ function CardSpends() {
     const map = new Map<number, { name: string; amount: number }>();
     for (const s of filtered) {
       const e = map.get(s.accountId) ?? { name: s.accountName, amount: 0 };
-      e.amount += s.amount;
+      e.amount += s.net;
       map.set(s.accountId, e);
     }
     return [...map.values()].sort((a, b) => b.amount - a.amount);
@@ -130,16 +153,17 @@ function CardSpends() {
   // Date order groups rows under a day header; amount order is one flat list.
   const groups = useMemo(() => {
     if (sortBy === "amount") return [{ day: null as string | null, total: spent, rows: filtered }];
-    const out: { day: string | null; total: number; rows: CardSpend[] }[] = [];
+    const out: { day: string | null; total: number; rows: Purchase[] }[] = [];
     for (const s of filtered) {
       const last = out[out.length - 1];
-      if (last && last.day === s.spentOn) { last.rows.push(s); last.total += s.amount; }
-      else out.push({ day: s.spentOn, total: s.amount, rows: [s] });
+      if (last && last.day === s.spentOn) { last.rows.push(s); last.total += s.net; }
+      else out.push({ day: s.spentOn, total: s.net, rows: [s] });
     }
     return out;
   }, [filtered, sortBy, spent]);
 
   const openAdd = () => setForm({
+    kind: "spend",
     id: null,
     accountId: accountFilter !== "all" ? accountFilter : cards.length === 1 ? cards[0].accountId : "",
     cardLast4: "",
@@ -147,14 +171,46 @@ function CardSpends() {
     amount: "",
   });
   const openEdit = (s: CardSpend) => setForm({
-    id: s.id, accountId: s.accountId, cardLast4: s.cardLast4 ?? "", spentOn: s.spentOn, amount: String(s.amount),
+    kind: "spend", id: s.id, accountId: s.accountId, cardLast4: s.cardLast4 ?? "", spentOn: s.spentOn, amount: String(s.amount),
+  });
+  // A new refund starts at what is left to refund: the full amount for a failed payment.
+  const openRefund = (p: Purchase) => setForm({
+    kind: "refund", purchase: p, id: null, accountId: p.accountId, cardLast4: p.cardLast4 ?? "",
+    spentOn: todayIso(), amount: String(p.net),
+  });
+  const openEditRefund = (p: Purchase, r: CardSpend) => setForm({
+    kind: "refund", purchase: p, id: r.id, accountId: p.accountId, cardLast4: p.cardLast4 ?? "",
+    spentOn: r.spentOn, amount: String(-r.amount),
   });
 
+  // Most a refund may be: what is left, plus this refund's own amount when editing it.
+  const refundMax = form?.kind === "refund" && form.purchase
+    ? form.purchase.net + (form.id != null ? -(form.purchase.refunds.find(r => r.id === form.id)?.amount ?? 0) : 0)
+    : null;
+  const refundTooBig = refundMax != null && Number(form?.amount) > refundMax + 1e-9;
   const last4Valid = !form || form.cardLast4 === "" || /^\d{4}$/.test(form.cardLast4);
-  const formValid = !!form && form.accountId !== "" && !!form.spentOn && isAmount(form.amount) && Number(form.amount) > 0 && last4Valid;
+  const formValid = !!form && form.accountId !== "" && !!form.spentOn && isAmount(form.amount) && Number(form.amount) > 0
+    && last4Valid && !refundTooBig;
 
   const handleSave = async () => {
     if (!form || !formValid) return;
+    if (form.kind === "refund" && form.purchase) {
+      const refund = { amount: Number(form.amount), spentOn: form.spentOn };
+      setSaving(true);
+      try {
+        if (form.id == null) await createCardRefund(form.purchase.id, refund);
+        else await updateCardSpend(form.id, refund);
+        invalidateCache("/card-spends");
+        showToast(form.id == null ? "Refund added" : "Refund updated");
+        setForm(null);
+        load();
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : "Failed to save refund", "error");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     const data = {
       accountId: form.accountId as number,
       amount: Number(form.amount),
@@ -181,11 +237,11 @@ function CardSpends() {
     const target = deleteTarget;
     const prev = spends;
     setDeleteTarget(null);
-    setSpends(s => s.filter(x => x.id !== target.id));
+    setSpends(s => s.filter(x => x.id !== target.id && x.refundOf !== target.id));
     try {
       await deleteCardSpend(target.id);
       invalidateCache("/card-spends");
-      showToast("Spend deleted");
+      showToast(target.refundOf != null ? "Refund deleted" : "Spend deleted");
       load();
     } catch (err) {
       setSpends(prev);
@@ -311,8 +367,9 @@ function CardSpends() {
                 </Stack>
               )}
               {g.rows.map(s => (
-                <Stack key={s.id} direction="row" alignItems="center" spacing={1.5}
-                  sx={{ px: { xs: 2, sm: 2.5 }, py: 1.25, borderBottom: `1px solid ${colors.gray100}`, "&:hover .row-actions": { opacity: 1 } }}>
+                <Box key={s.id} sx={{ borderBottom: `1px solid ${colors.gray100}` }}>
+                <Stack direction="row" alignItems="center" spacing={1.5}
+                  sx={{ px: { xs: 2, sm: 2.5 }, py: 1.25, "&:hover .row-actions": { opacity: 1 } }}>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography sx={{ fontSize: "0.88rem", fontWeight: 600 }} noWrap>
                       {s.accountName}{s.cardLast4 ? ` ·· ${s.cardLast4}` : ""}
@@ -323,16 +380,50 @@ function CardSpends() {
                       {s.edited && <TintedChip label="Edited" color={colors.warning} />}
                     </Stack>
                   </Box>
-                  <Typography sx={{ fontSize: "0.95rem", fontWeight: 700, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
-                    {fmt(s.amount, preferredCurrency)}
-                  </Typography>
+                  <Box sx={{ textAlign: "right", flexShrink: 0 }}>
+                    <Typography sx={{
+                      fontSize: "0.95rem", fontWeight: 700, fontVariantNumeric: "tabular-nums",
+                      ...(s.refunded > 0 && s.net <= 0 ? { textDecoration: "line-through", color: colors.gray400 } : {}),
+                    }}>
+                      {fmt(s.amount, preferredCurrency)}
+                    </Typography>
+                    {s.refunded > 0 && (
+                      <Typography sx={{ fontSize: "0.72rem", fontWeight: 600, color: colors.success, whiteSpace: "nowrap" }}>
+                        {s.net <= 0 ? "Fully refunded" : `Refunded ${fmt(s.refunded, preferredCurrency)} · net ${fmt(s.net, preferredCurrency)}`}
+                      </Typography>
+                    )}
+                  </Box>
                   <Stack direction="row" className="row-actions" sx={{ opacity: { xs: 1, sm: 0.4 }, transition: "opacity 0.15s ease" }}>
+                    {s.net > 0 && (
+                      <IconButton size="small" onClick={() => openRefund(s)} aria-label="Add refund" sx={{ "&:hover": { color: colors.success } }}>
+                        <UndoRoundedIcon sx={{ fontSize: 18 }} />
+                      </IconButton>
+                    )}
                     <IconButton size="small" onClick={() => openEdit(s)} aria-label="Edit spend"><EditOutlinedIcon sx={{ fontSize: 18 }} /></IconButton>
                     <IconButton size="small" onClick={() => setDeleteTarget(s)} aria-label="Delete spend" sx={{ "&:hover": { color: colors.error } }}>
                       <DeleteOutlineIcon sx={{ fontSize: 18 }} />
                     </IconButton>
                   </Stack>
                 </Stack>
+                {s.refunds.map(r => (
+                  <Stack key={r.id} direction="row" alignItems="center" spacing={1.5}
+                    sx={{ pl: { xs: 4, sm: 5 }, pr: { xs: 2, sm: 2.5 }, pb: 1, "&:hover .row-actions": { opacity: 1 } }}>
+                    <UndoRoundedIcon sx={{ fontSize: 15, color: colors.success }} />
+                    <Typography sx={{ fontSize: "0.78rem", color: colors.gray500, flex: 1 }} noWrap>
+                      Refund · {dayLabel(r.spentOn)}
+                    </Typography>
+                    <Typography sx={{ fontSize: "0.85rem", fontWeight: 650, color: colors.success, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+                      −{fmt(-r.amount, preferredCurrency)}
+                    </Typography>
+                    <Stack direction="row" className="row-actions" sx={{ opacity: { xs: 1, sm: 0.4 }, transition: "opacity 0.15s ease" }}>
+                      <IconButton size="small" onClick={() => openEditRefund(s, r)} aria-label="Edit refund"><EditOutlinedIcon sx={{ fontSize: 16 }} /></IconButton>
+                      <IconButton size="small" onClick={() => setDeleteTarget(r)} aria-label="Delete refund" sx={{ "&:hover": { color: colors.error } }}>
+                        <DeleteOutlineIcon sx={{ fontSize: 16 }} />
+                      </IconButton>
+                    </Stack>
+                  </Stack>
+                ))}
+                </Box>
               ))}
             </Box>
           ))}
@@ -358,8 +449,27 @@ function CardSpends() {
 
       {/* ── Add / edit ── */}
       <Dialog open={!!form} onClose={() => setForm(null)} maxWidth="xs" fullWidth fullScreen={isMobile}>
-        <DialogTitle>{form?.id == null ? "Add spend" : "Edit spend"}</DialogTitle>
-        {form && (
+        <DialogTitle>{form?.kind === "refund" ? (form.id == null ? "Add refund" : "Edit refund") : form?.id == null ? "Add spend" : "Edit spend"}</DialogTitle>
+        {form?.kind === "refund" && form.purchase && (
+          <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2.5, pt: "16px !important" }}>
+            <Typography sx={{ fontSize: "0.85rem", color: colors.gray500 }}>
+              {form.purchase.accountName}{form.purchase.cardLast4 ? ` ·· ${form.purchase.cardLast4}` : ""} · {fmt(form.purchase.amount, preferredCurrency)} on {dayLabel(form.purchase.spentOn)}
+            </Typography>
+            <NumericField label="Refund amount" value={form.amount} onChange={v => setForm({ ...form, amount: v })}
+              currency={preferredCurrency} maxDecimals={2} fullWidth autoFocus
+              error={refundTooBig}
+              helperText={refundMax != null
+                ? (refundTooBig ? `Can't be more than ${fmt(refundMax, preferredCurrency)}` : `Up to ${fmt(refundMax, preferredCurrency)}. Lower it if a fee was kept.`)
+                : undefined}
+              onKeyDown={e => { if (e.key === "Enter") handleSave(); }} />
+            <TextField label="Refund date" type="date" value={form.spentOn} fullWidth InputLabelProps={{ shrink: true }}
+              onChange={e => setForm({ ...form, spentOn: e.target.value })} />
+            <Typography sx={{ fontSize: "0.75rem", color: colors.gray400 }}>
+              Counts in the purchase's month, so its spend becomes the amount not refunded.
+            </Typography>
+          </DialogContent>
+        )}
+        {form?.kind === "spend" && (
           <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2.5, pt: "16px !important" }}>
             <TextField select label="Card" value={form.accountId} fullWidth
               onChange={e => setForm({ ...form, accountId: Number(e.target.value) })}>
@@ -391,11 +501,12 @@ function CardSpends() {
 
       {/* ── Delete confirm ── */}
       <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Delete spend?</DialogTitle>
+        <DialogTitle>{deleteTarget?.refundOf != null ? "Delete refund?" : "Delete spend?"}</DialogTitle>
         <DialogContent>
           {deleteTarget && (
             <Typography sx={{ fontSize: "0.9rem" }}>
-              {fmt(deleteTarget.amount, preferredCurrency)} on {deleteTarget.accountName} · {dayLabel(deleteTarget.spentOn)}. This can't be undone.
+              {fmt(Math.abs(deleteTarget.amount), preferredCurrency)} on {deleteTarget.accountName} · {dayLabel(deleteTarget.spentOn)}.
+              {deleteTarget.refundOf == null && spends.some(x => x.refundOf === deleteTarget.id) ? " Its refunds are deleted too." : ""} This can't be undone.
             </Typography>
           )}
         </DialogContent>

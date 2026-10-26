@@ -554,6 +554,8 @@ export interface CardSpend {
   source: "email" | "manual";
   /** An email row that was changed by hand afterwards. */
   edited: boolean;
+  /** Set on a refund (negative `amount`): the purchase it refunds. */
+  refundOf: number | null;
 }
 
 export interface CardSpendInput {
@@ -561,6 +563,12 @@ export interface CardSpendInput {
   amount: number;
   spentOn: string;
   cardLast4: string | null;
+}
+
+/** A refund of a purchase; `amount` is positive and is stored negative. */
+export interface CardRefundInput {
+  amount: number;
+  spentOn: string;
 }
 
 export interface CardSpendSummary {
