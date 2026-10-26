@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import {
-  Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Stack, TextField, Typography,
+  Autocomplete, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Stack, TextField, Typography,
 } from "@mui/material";
 import { useTokens } from "../context/ColorModeContext";
 import NumericField, { isAmount } from "../components/NumericField";
-import { formatCurrency as fmt } from "../utils/format";
+import { fmt } from "./model";
 import type { CardSpendAccount } from "../api/types";
 import { dayLabel, todayIso, yesterdayIso, type Purchase } from "./model";
 
@@ -39,10 +39,12 @@ function writeLastCard(accountId: number, cardLast4: string) {
  * Add/edit a spend, or add/edit a refund of one. Date chips cover the usual today/yesterday; "Save &
  * add another" keeps the dialog open with the same card for entering several spends in a row.
  */
-export default function SpendForm({ form, setForm, cards, currency, onSave }: {
+export default function SpendForm({ form, setForm, cards, cardNumbers, currency, onSave }: {
   form: FormState | null;
   setForm: (f: FormState | null) => void;
   cards: CardSpendAccount[];
+  /** Card last-4s seen in spends, per account, most recent first. */
+  cardNumbers: Map<number, string[]>;
   currency: string;
   /** Resolves when saved; rejects (with the page already showing why) to keep the dialog open. */
   onSave: (f: FormState) => Promise<void>;
@@ -140,13 +142,20 @@ export default function SpendForm({ form, setForm, cards, currency, onSave }: {
                 currency={currency} maxDecimals={2} fullWidth autoFocus onKeyDown={onKey} />
               <Stack direction="row" spacing={1.5}>
                 <TextField select label="Card" value={form.accountId} sx={{ flex: 1 }}
-                  onChange={e => setForm({ ...form, accountId: Number(e.target.value) })}>
+                  onChange={e => {
+                    const accountId = Number(e.target.value);
+                    setForm({ ...form, accountId, cardLast4: cardNumbers.get(accountId)?.[0] ?? "" });
+                  }}>
                   {cards.map(c => <MenuItem key={c.accountId} value={c.accountId}>{c.name}</MenuItem>)}
                 </TextField>
-                <TextField label="Last 4" value={form.cardLast4} sx={{ width: 110 }}
-                  onChange={e => setForm({ ...form, cardLast4: e.target.value.replace(/\D/g, "").slice(0, 4) })}
-                  error={!last4Valid} helperText={!last4Valid ? "4 digits" : "Optional"}
-                  inputProps={{ inputMode: "numeric", autoComplete: "off" }} onKeyDown={onKey} />
+                <Autocomplete freeSolo disableClearable sx={{ width: 120 }}
+                  options={form.accountId === "" ? [] : cardNumbers.get(form.accountId) ?? []}
+                  inputValue={form.cardLast4}
+                  onInputChange={(_, v) => setForm({ ...form, cardLast4: v.replace(/\D/g, "").slice(0, 4) })}
+                  renderInput={params => (
+                    <TextField {...params} label="Last 4" error={!last4Valid} helperText={!last4Valid ? "4 digits" : "Optional"}
+                      inputProps={{ ...params.inputProps, inputMode: "numeric", autoComplete: "off" }} onKeyDown={onKey} />
+                  )} />
               </Stack>
               {dateField}
               {form.fromEmail && (

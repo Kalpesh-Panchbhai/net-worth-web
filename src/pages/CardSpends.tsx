@@ -12,11 +12,11 @@ import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
 import { useSyncedConfig } from "../utils/syncedConfig";
 import {
-  getCardSpends, getCardSpendList, createCardSpend, createCardRefund, updateCardSpend, deleteCardSpend, invalidateCache,
+  getCardSpends, getCardSpendList, getCardNumbers, createCardSpend, createCardRefund, updateCardSpend, deleteCardSpend, invalidateCache,
 } from "../api/client";
 import { EmptyState, ErrorState, MetricCard, MetricSkeleton, FadeIn } from "../components/shared";
-import type { CardSpend, CardSpendSummary } from "../api/types";
-import { formatCurrency as fmt, formatCurrencyCompact as fmtShort } from "../utils/format";
+import type { CardNumber, CardSpend, CardSpendSummary } from "../api/types";
+import { fmt, fmtShort } from "../cardspends/model";
 import {
   buildPurchases, cumulativeByDay, dayLabel, daysInMonth, findIssues, matchesQuery, matchesSource, monthKey, monthLabel,
   parseQuery, shiftMonth, todayIso, type Issue, type Purchase, type SourceFilter,
@@ -61,6 +61,7 @@ function CardSpends() {
   const [summary, setSummary] = useState<CardSpendSummary | null>(null);
   const [spends, setSpends] = useState<CardSpend[]>([]);
   const [prevSpends, setPrevSpends] = useState<CardSpend[] | null>(null);
+  const [cardNumberList, setCardNumberList] = useState<CardNumber[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -81,6 +82,8 @@ function CardSpends() {
       setLoading(true); setError(null);
       const [s, list] = await Promise.all([getCardSpends(userId, month), getCardSpendList(userId, month)]);
       setSummary(s); setSpends(list);
+      // Only fills the add form's card dropdown, so a failure never blocks the page.
+      getCardNumbers(userId).then(setCardNumberList).catch(() => {});
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load card spends");
     } finally {
@@ -114,6 +117,12 @@ function CardSpends() {
   useEffect(() => { setDayFilter(null); }, [month]);
 
   const cards = summary?.byAccount ?? [];
+  // Card numbers per bank, most recently used first (as the API returns them), for the add form's dropdown.
+  const cardNumbers = useMemo(() => {
+    const byAccount = new Map<number, string[]>();
+    for (const c of cardNumberList) byAccount.set(c.accountId, [...(byAccount.get(c.accountId) ?? []), c.cardLast4]);
+    return byAccount;
+  }, [cardNumberList]);
   const isCurrentMonth = month === monthKey(new Date());
 
   const purchases = useMemo(() => buildPurchases(spends.filter(s => !hidden.has(s.id))), [spends, hidden]);
@@ -183,14 +192,16 @@ function CardSpends() {
   const openAdd = useCallback(() => {
     const last = readLastCard();
     const lastValid = last && cards.some(c => c.accountId === last.accountId) ? last : null;
+    const accountId = accountFilter !== "all" ? accountFilter : lastValid?.accountId ?? (cards.length === 1 ? cards[0].accountId : "");
+    const remembered = accountFilter === "all" || lastValid?.accountId === accountFilter ? lastValid?.cardLast4 ?? "" : "";
     setForm({
       kind: "spend", id: null,
-      accountId: accountFilter !== "all" ? accountFilter : lastValid?.accountId ?? (cards.length === 1 ? cards[0].accountId : ""),
-      cardLast4: accountFilter === "all" || lastValid?.accountId === accountFilter ? lastValid?.cardLast4 ?? "" : "",
+      accountId,
+      cardLast4: remembered || (accountId === "" ? "" : cardNumbers.get(accountId)?.[0] ?? ""),
       spentOn: isCurrentMonth ? todayIso() : `${month}-01`,
       amount: "",
     });
-  }, [cards, accountFilter, isCurrentMonth, month]);
+  }, [cards, cardNumbers, accountFilter, isCurrentMonth, month]);
 
   const openEdit = (p: Purchase) => setForm({
     kind: "spend", id: p.id, accountId: p.accountId, cardLast4: p.cardLast4 ?? "", spentOn: p.spentOn,
@@ -481,7 +492,7 @@ function CardSpends() {
               {g.day && (
                 <Stack direction="row" justifyContent="space-between" sx={{ px: { xs: 2, sm: 2.5 }, py: 0.75, bgcolor: alpha(colors.brand, 0.04) }}>
                   <Typography sx={{ fontSize: "0.75rem", fontWeight: 700, color: colors.gray500 }}>{dayLabel(g.day)}</Typography>
-                  <Typography sx={{ fontSize: "0.75rem", fontWeight: 700, color: colors.gray500, fontVariantNumeric: "tabular-nums" }}>{fmt(g.total, currency, { maxDecimals: 0 })}</Typography>
+                  <Typography sx={{ fontSize: "0.75rem", fontWeight: 700, color: colors.gray500, fontVariantNumeric: "tabular-nums" }}>{fmt(g.total, currency)}</Typography>
                 </Stack>
               )}
               {g.rows.map(p => (
@@ -517,7 +528,7 @@ function CardSpends() {
         </Tooltip>
       )}
 
-      <SpendForm form={form} setForm={setForm} cards={cards} currency={currency} onSave={saveForm} />
+      <SpendForm form={form} setForm={setForm} cards={cards} cardNumbers={cardNumbers} currency={currency} onSave={saveForm} />
     </Stack>
   );
 }

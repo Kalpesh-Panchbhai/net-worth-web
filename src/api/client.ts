@@ -1,6 +1,6 @@
 import type {
   User,
-  CardSpendSummary, CardSpend, CardSpendInput, CardRefundInput,
+  CardSpendSummary, CardSpend, CardNumber, CardSpendInput, CardRefundInput,
   Watchlist,
   WatchlistSummary,
   Account,
@@ -316,6 +316,11 @@ export function getAccountWatchlists(accountId: number) {
 // Credit card spend this calendar month (from bank alert emails) and total card debt.
 export function getCardSpends(userId: number, month?: string) {
   return request<CardSpendSummary>(`/card-spends/${userId}${month ? `?month=${month}` : ""}`);
+}
+
+// Every card last-4 seen on the user's spends, per account, most recently used first.
+export function getCardNumbers(userId: number) {
+  return request<CardNumber[]>(`/card-spends/${userId}?action=cards`);
 }
 
 export function getCardSpendList(userId: number, month: string) {

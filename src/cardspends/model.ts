@@ -1,4 +1,5 @@
 import type { CardSpend } from "../api/types";
+import { formatCurrency } from "../utils/format";
 
 /** "2026-10" for the month containing `d`, in local time. */
 export const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -146,3 +147,7 @@ export function findIssues(purchases: Purchase[], history: Purchase[], debtByAcc
   }
   return out;
 }
+
+// Card spend amounts always show 2 decimals, including totals, badges and chart labels.
+export const fmt = (v: number, currency?: string) => formatCurrency(v, currency, { maxDecimals: 2 });
+export const fmtShort = fmt;

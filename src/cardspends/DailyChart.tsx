@@ -3,7 +3,7 @@ import { Box, Typography, Stack } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Cell } from "recharts";
 import { useTokens } from "../context/ColorModeContext";
-import { formatCurrency as fmt, formatCurrencyCompact as fmtShort } from "../utils/format";
+import { fmt, fmtShort } from "./model";
 import { dayLabel, daysInMonth, monthLabel, shiftMonth } from "./model";
 
 /** Height of the soft stub drawn for a no-spend day, as a share of the tallest bar. */
@@ -68,7 +68,7 @@ export default function DailyChart({ month, daily, cumulative, prevCumulative, s
                 return (
                   <Box sx={{ bgcolor: colors.white, border: `1px solid ${colors.gray200}`, borderRadius: 2, px: 1.5, py: 1, boxShadow: 3 }}>
                     <Typography sx={{ fontSize: "0.75rem", fontWeight: 700 }}>{dayLabel(`${month}-${String(p.day).padStart(2, "0")}`)}</Typography>
-                    <Typography sx={{ fontSize: "0.75rem" }}>{p.amount > 0 ? fmt(p.amount, currency, { maxDecimals: 0 }) : "No spend"}</Typography>
+                    <Typography sx={{ fontSize: "0.75rem" }}>{p.amount > 0 ? fmt(p.amount, currency) : "No spend"}</Typography>
                     {p.total != null && <Typography sx={{ fontSize: "0.72rem", color: colors.gray500 }}>Month so far {fmtShort(p.total, currency)}</Typography>}
                     {p.prev != null && <Typography sx={{ fontSize: "0.72rem", color: colors.gray400 }}>Last month by now {fmtShort(p.prev, currency)}</Typography>}
                   </Box>

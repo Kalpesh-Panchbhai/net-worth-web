@@ -7,7 +7,7 @@ import UndoRoundedIcon from "@mui/icons-material/UndoRounded";
 import { useTokens } from "../context/ColorModeContext";
 import { TintedChip } from "../components/shared";
 import NumericField from "../components/NumericField";
-import { formatCurrency as fmt } from "../utils/format";
+import { fmt } from "./model";
 import type { CardSpend } from "../api/types";
 import { dayLabel, type Purchase } from "./model";
 

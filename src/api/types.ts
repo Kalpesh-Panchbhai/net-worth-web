@@ -558,6 +558,13 @@ export interface CardSpend {
   refundOf: number | null;
 }
 
+export interface CardNumber {
+  accountId: number;
+  cardLast4: string;
+  /** YYYY-MM-DD */
+  lastUsed: string;
+}
+
 export interface CardSpendInput {
   accountId: number;
   amount: number;

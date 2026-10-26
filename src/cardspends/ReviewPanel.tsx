@@ -4,7 +4,7 @@ import { alpha } from "@mui/material/styles";
 import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import { useTokens } from "../context/ColorModeContext";
-import { formatCurrency as fmt } from "../utils/format";
+import { fmt } from "./model";
 import { dayLabel, type Issue } from "./model";
 
 /** Show this many warnings before "Show all". */

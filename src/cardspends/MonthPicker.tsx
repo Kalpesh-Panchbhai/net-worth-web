@@ -6,7 +6,7 @@ import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import { useTokens } from "../context/ColorModeContext";
 import { getCardSpends } from "../api/client";
-import { formatCurrencyCompact as fmtShort } from "../utils/format";
+import { fmtShort } from "./model";
 import { monthKey, monthLabel, shiftMonth } from "./model";
 
 /** Months shown in the grid, ending with the current one. */

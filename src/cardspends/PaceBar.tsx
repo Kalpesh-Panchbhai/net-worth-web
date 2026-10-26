@@ -1,7 +1,7 @@
 import { Box, Paper, Typography, Stack, Tooltip } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { useTokens } from "../context/ColorModeContext";
-import { formatCurrency as fmt, formatCurrencyCompact as fmtShort } from "../utils/format";
+import { fmt, fmtShort } from "./model";
 import { daysInMonth, monthLabel, shiftMonth } from "./model";
 
 /** Within this share of the budget the bar turns amber, before it is actually over. */
@@ -50,16 +50,16 @@ export default function PaceBar({ spent, limit, month, isCurrentMonth, prevTotal
   let sentence: string;
   if (limit == null) {
     sentence = prevSameDay != null && isCurrentMonth
-      ? `By this day last month you had spent ${fmt(prevSameDay, currency, { maxDecimals: 0 })}.`
+      ? `By this day last month you had spent ${fmt(prevSameDay, currency)}.`
       : "Set a monthly budget on the Insights card to track your pace.";
   } else if (spent > limit) {
-    sentence = `${fmt(spent - limit, currency, { maxDecimals: 0 })} over budget.`
+    sentence = `${fmt(spent - limit, currency)} over budget.`
       + (prevTotal != null && prevTotal > 0 ? ` Last month you finished at ${fmtShort(prevTotal, currency)}.` : "");
   } else if (!isCurrentMonth) {
-    sentence = `Finished ${fmt(limit - spent, currency, { maxDecimals: 0 })} under budget.`;
+    sentence = `Finished ${fmt(limit - spent, currency)} under budget.`;
   } else {
     const perDay = (limit - spent) / daysLeft;
-    sentence = `You can spend ${fmt(perDay, currency, { maxDecimals: 0 })}/day for the next ${daysLeft} day${daysLeft === 1 ? "" : "s"}.`
+    sentence = `You can spend ${fmt(perDay, currency)}/day for the next ${daysLeft} day${daysLeft === 1 ? "" : "s"}.`
       + (usedPct > expectedPct ? " You're ahead of pace." : "");
   }
 
@@ -71,10 +71,10 @@ export default function PaceBar({ spent, limit, month, isCurrentMonth, prevTotal
       </Stack>
       <Stack direction="row" alignItems="baseline" spacing={1} flexWrap="wrap">
         <Typography sx={{ fontSize: { xs: "1.6rem", sm: "2.1rem" }, fontWeight: 800, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums", lineHeight: 1.1 }}>
-          {fmt(spent, currency, { maxDecimals: 0 })}
+          {fmt(spent, currency)}
         </Typography>
         {limit != null && (
-          <Typography sx={{ fontSize: "0.85rem", color: colors.gray400 }}>of {fmt(limit, currency, { maxDecimals: 0 })}</Typography>
+          <Typography sx={{ fontSize: "0.85rem", color: colors.gray400 }}>of {fmt(limit, currency)}</Typography>
         )}
         {isCurrentMonth && (
           <Typography sx={{ fontSize: "0.78rem", color: colors.gray400, ml: "auto !important" }}>day {today} of {days}</Typography>
@@ -89,7 +89,7 @@ export default function PaceBar({ spent, limit, month, isCurrentMonth, prevTotal
             borderRadius: 5, bgcolor: color, transition: "width 0.4s ease, background-color 0.2s ease",
           }} />
           {isCurrentMonth && (
-            <Tooltip title={`Where you'd be at an even pace: ${fmt(limit * expectedPct, currency, { maxDecimals: 0 })}`}>
+            <Tooltip title={`Where you'd be at an even pace: ${fmt(limit * expectedPct, currency)}`}>
               <Box sx={{
                 position: "absolute", top: -4, bottom: -4, left: `calc(${expectedPct * 100}% - 1px)`, width: 2,
                 borderRadius: 1, bgcolor: colors.gray700, boxShadow: `0 0 0 2px ${alpha(colors.white, 0.8)}`,
