@@ -1,19 +1,12 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef, type TouchEvent } from "react";
 import {
-  Box, Paper, Typography, TextField, Button, MenuItem, Fab, IconButton, Stack, InputAdornment,
-  Dialog, DialogTitle, DialogContent, DialogActions, ToggleButton, ToggleButtonGroup,
-  useMediaQuery, useTheme,
+  Box, Paper, Typography, TextField, MenuItem, Fab, Stack, InputAdornment, Chip, Skeleton, Tooltip,
+  ToggleButton, ToggleButtonGroup, useMediaQuery, useTheme,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
-import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
-import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
-import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
-import UndoRoundedIcon from "@mui/icons-material/UndoRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
-import CreditCardOffOutlinedIcon from "@mui/icons-material/CreditCardOffOutlined";
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as ChartTooltip } from "recharts";
+import CreditCardRoundedIcon from "@mui/icons-material/CreditCardRounded";
 import { useUser } from "../context/UserContext";
 import { useTokens } from "../context/ColorModeContext";
 import { useToast } from "../context/ToastContext";
@@ -21,70 +14,66 @@ import { useSyncedConfig } from "../utils/syncedConfig";
 import {
   getCardSpends, getCardSpendList, createCardSpend, createCardRefund, updateCardSpend, deleteCardSpend, invalidateCache,
 } from "../api/client";
-import { EmptyState, ErrorState, ListSkeleton, MetricCard, MetricSkeleton, TintedChip, FadeIn } from "../components/shared";
-import NumericField, { isAmount } from "../components/NumericField";
+import { EmptyState, ErrorState, MetricCard, MetricSkeleton, FadeIn } from "../components/shared";
 import type { CardSpend, CardSpendSummary } from "../api/types";
-import { formatCurrency as fmt } from "../utils/format";
-
-/** "2026-10" for the month containing `d`, in local time. */
-const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-const shiftMonth = (key: string, by: number) => {
-  const [y, m] = key.split("-").map(Number);
-  return monthKey(new Date(y, m - 1 + by, 1));
-};
-const todayIso = () => {
-  const d = new Date();
-  return `${monthKey(d)}-${String(d.getDate()).padStart(2, "0")}`;
-};
-const dayLabel = (iso: string) =>
-  new Date(`${iso}T00:00:00`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+import { formatCurrency as fmt, formatCurrencyCompact as fmtShort } from "../utils/format";
+import {
+  buildPurchases, cumulativeByDay, dayLabel, daysInMonth, findIssues, matchesQuery, matchesSource, monthKey, monthLabel,
+  parseQuery, shiftMonth, todayIso, type Issue, type Purchase, type SourceFilter,
+} from "../cardspends/model";
+import PaceBar, { VsLastMonth } from "../cardspends/PaceBar";
+import DailyChart from "../cardspends/DailyChart";
+import SpendRow from "../cardspends/SpendRow";
+import SpendForm, { readLastCard, type FormState } from "../cardspends/SpendForm";
+import MonthPicker from "../cardspends/MonthPicker";
+import ReviewPanel from "../cardspends/ReviewPanel";
 
 type SortBy = "date" | "amount";
 
-interface FormState {
-  /** A refund form only has amount and date; it always belongs to `purchase`. */
-  kind: "spend" | "refund";
-  purchase?: Purchase;
-  id: number | null;
-  accountId: number | "";
-  cardLast4: string;
-  spentOn: string;
-  amount: string;
-}
+/** How long a delete can be undone before it is sent. */
+const UNDO_MS = 6000;
+/** Horizontal drag on the top area that switches month on phones. */
+const MONTH_SWIPE = 70;
 
-/** A purchase with the refunds linked to it; `net` is what it really cost. */
-interface Purchase extends CardSpend {
-  refunds: CardSpend[];
-  refunded: number;
-  net: number;
-}
+const SOURCE_FILTERS: { value: SourceFilter; label: string }[] = [
+  { value: "manual", label: "Manual" },
+  { value: "email", label: "Email" },
+  { value: "refunded", label: "Refunded" },
+  { value: "edited", label: "Edited" },
+];
 
 /**
  * Every credit card purchase in a month, for analysing and correcting what the alert emails
- * recorded. Spends can be added by hand, edited (email rows are then marked "edited") and deleted.
- * A refund (full, or partial when a fee is kept) is its own row under its purchase and counts in the
- * purchase's month. Debt is not affected: it comes from each card's balance, not from these rows.
+ * recorded: budget pace, comparison with last month, rows that need a look, and quick add, edit,
+ * refund and undoable delete. Refunds sit under their purchase and count in its month. Debt is not
+ * affected by any of this: it comes from each card's balance, not from these rows.
  */
 function CardSpends() {
-  const { userId, preferredCurrency } = useUser();
+  const { userId, preferredCurrency: currency } = useUser();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const { colors } = useTokens();
   const { showToast } = useToast();
   const [budget] = useSyncedConfig<{ monthlyLimit: number | null }>(userId, "card_budget", { monthlyLimit: null });
+  const [reviewed, setReviewed] = useSyncedConfig<string[]>(userId, "card_spend_reviewed", []);
 
   const [month, setMonth] = useState(() => monthKey(new Date()));
   const [summary, setSummary] = useState<CardSpendSummary | null>(null);
   const [spends, setSpends] = useState<CardSpend[]>([]);
+  const [prevSpends, setPrevSpends] = useState<CardSpend[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
   const [accountFilter, setAccountFilter] = useState<number | "all">("all");
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter | null>(null);
+  const [dayFilter, setDayFilter] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<SortBy>("date");
-
   const [form, setForm] = useState<FormState | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<CardSpend | null>(null);
+
+  // Deletes wait UNDO_MS before going to the server; until then the rows are only hidden.
+  const [hidden, setHidden] = useState<Set<number>>(new Set());
+  const pendingDeletes = useRef(new Map<number, ReturnType<typeof setTimeout>>());
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -101,259 +90,388 @@ function CardSpends() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Last month feeds the comparison and what counts as a "normal" spend; it is never required.
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    setPrevSpends(null);
+    getCardSpendList(userId, shiftMonth(month, -1))
+      .then(l => { if (!cancelled) setPrevSpends(l); })
+      .catch(() => { /* comparison is optional */ });
+    return () => { cancelled = true; };
+  }, [userId, month]);
+
+  // Leaving the page sends any delete still waiting for its undo window.
+  useEffect(() => {
+    const pending = pendingDeletes.current;
+    return () => {
+      for (const [id, timer] of pending) { clearTimeout(timer); deleteCardSpend(id).catch(() => {}); }
+      if (pending.size) invalidateCache("/card-spends");
+      pending.clear();
+    };
+  }, []);
+
+  useEffect(() => { setDayFilter(null); }, [month]);
+
   const cards = summary?.byAccount ?? [];
   const isCurrentMonth = month === monthKey(new Date());
 
-  // Refunds hang off their purchase instead of being rows of their own.
-  const purchases = useMemo<Purchase[]>(() => {
-    const byPurchase = new Map<number, CardSpend[]>();
-    for (const s of spends) if (s.refundOf != null) byPurchase.set(s.refundOf, [...(byPurchase.get(s.refundOf) ?? []), s]);
-    return spends.filter(s => s.refundOf == null).map(s => {
-      const refunds = (byPurchase.get(s.id) ?? []).sort((a, b) => a.spentOn.localeCompare(b.spentOn));
-      const refunded = -refunds.reduce((sum, r) => sum + r.amount, 0);
-      return { ...s, refunds, refunded, net: s.amount - refunded };
-    });
-  }, [spends]);
+  const purchases = useMemo(() => buildPurchases(spends.filter(s => !hidden.has(s.id))), [spends, hidden]);
+  const prevPurchases = useMemo(() => (prevSpends ? buildPurchases(prevSpends) : null), [prevSpends]);
+  const query = useMemo(() => parseQuery(search), [search]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase().replace(/,/g, "");
-    const rows = purchases.filter(s =>
-      (accountFilter === "all" || s.accountId === accountFilter)
-      && (!q || String(s.amount).includes(q) || s.accountName.toLowerCase().includes(q) || (s.cardLast4 ?? "").includes(q)));
+  // Everything but the day filter: the chart and totals keep showing the whole month.
+  const base = useMemo(() => purchases.filter(p =>
+    (accountFilter === "all" || p.accountId === accountFilter)
+    && (sourceFilter == null || matchesSource(p, sourceFilter))
+    && matchesQuery(p, query)), [purchases, accountFilter, sourceFilter, query]);
+
+  const listed = useMemo(() => {
+    const rows = dayFilter == null ? base : base.filter(p => Number(p.spentOn.slice(8, 10)) === dayFilter);
     return sortBy === "amount" ? [...rows].sort((a, b) => b.amount - a.amount) : rows;
-  }, [purchases, accountFilter, search, sortBy]);
+  }, [base, dayFilter, sortBy]);
 
-  const spent = filtered.reduce((sum, s) => sum + s.net, 0);
+  const spent = base.reduce((sum, p) => sum + p.net, 0);
   const debt = cards.filter(c => accountFilter === "all" || c.accountId === accountFilter).reduce((sum, c) => sum + c.debt, 0);
-  // The budget covers all cards, so "left" only makes sense unfiltered.
-  const limit = accountFilter === "all" ? budget.monthlyLimit : null;
-  const left = limit != null ? limit - spent : null;
-  const now = new Date();
-  const daysLeft = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() + 1;
+  // The budget covers all cards, so pace only makes sense unfiltered.
+  const unfiltered = accountFilter === "all" && sourceFilter == null && !search.trim();
+  const limit = unfiltered ? budget.monthlyLimit : null;
 
-  // One bar per day of the month, from the filtered rows.
+  const prevBase = useMemo(() => prevPurchases?.filter(p => accountFilter === "all" || p.accountId === accountFilter) ?? null, [prevPurchases, accountFilter]);
+  const prevCumulative = useMemo(() => (prevBase ? cumulativeByDay(prevBase, shiftMonth(month, -1)) : null), [prevBase, month]);
+  const prevTotal = prevCumulative ? prevCumulative[prevCumulative.length - 1] ?? 0 : null;
+  const todayIdx = isCurrentMonth ? new Date().getDate() - 1 : daysInMonth(month) - 1;
+  const prevSameDay = prevCumulative ? prevCumulative[Math.min(todayIdx, prevCumulative.length - 1)] : null;
+
   const daily = useMemo(() => {
-    const [y, m] = month.split("-").map(Number);
-    const days = new Date(y, m, 0).getDate();
-    const totals = Array.from({ length: days }, (_, i) => ({ day: i + 1, amount: 0 }));
-    for (const s of filtered) totals[Number(s.spentOn.slice(8, 10)) - 1].amount += s.net;
-    return totals;
-  }, [filtered, month]);
+    const d = new Array(daysInMonth(month)).fill(0);
+    for (const p of base) d[Number(p.spentOn.slice(8, 10)) - 1] += p.net;
+    return d;
+  }, [base, month]);
+  const cumulative = useMemo(() => cumulativeByDay(base, month), [base, month]);
 
   const byCard = useMemo(() => {
-    const map = new Map<number, { name: string; amount: number }>();
-    for (const s of filtered) {
-      const e = map.get(s.accountId) ?? { name: s.accountName, amount: 0 };
-      e.amount += s.net;
-      map.set(s.accountId, e);
+    const map = new Map<number, { accountId: number; name: string; amount: number }>();
+    for (const p of base) {
+      const e = map.get(p.accountId) ?? { accountId: p.accountId, name: p.accountName, amount: 0 };
+      e.amount += p.net;
+      map.set(p.accountId, e);
     }
     return [...map.values()].sort((a, b) => b.amount - a.amount);
-  }, [filtered]);
+  }, [base]);
+
+  const reviewedSet = useMemo(() => new Set(reviewed), [reviewed]);
+  const issues = useMemo(() => findIssues(
+    purchases, [...purchases, ...(prevPurchases ?? [])], new Map(cards.map(c => [c.accountId, c.debt])), reviewedSet,
+  ), [purchases, prevPurchases, cards, reviewedSet]);
+  const flaggedIds = useMemo(() => new Set(issues.map(i => i.purchase.id)), [issues]);
 
   // Date order groups rows under a day header; amount order is one flat list.
   const groups = useMemo(() => {
-    if (sortBy === "amount") return [{ day: null as string | null, total: spent, rows: filtered }];
+    if (sortBy === "amount") return [{ day: null as string | null, total: listed.reduce((s, p) => s + p.net, 0), rows: listed }];
     const out: { day: string | null; total: number; rows: Purchase[] }[] = [];
-    for (const s of filtered) {
+    for (const p of listed) {
       const last = out[out.length - 1];
-      if (last && last.day === s.spentOn) { last.rows.push(s); last.total += s.net; }
-      else out.push({ day: s.spentOn, total: s.net, rows: [s] });
+      if (last && last.day === p.spentOn) { last.rows.push(p); last.total += p.net; }
+      else out.push({ day: p.spentOn, total: p.net, rows: [p] });
     }
     return out;
-  }, [filtered, sortBy, spent]);
+  }, [listed, sortBy]);
 
-  const openAdd = () => setForm({
-    kind: "spend",
-    id: null,
-    accountId: accountFilter !== "all" ? accountFilter : cards.length === 1 ? cards[0].accountId : "",
-    cardLast4: "",
-    spentOn: isCurrentMonth ? todayIso() : `${month}-01`,
-    amount: "",
-  });
-  const openEdit = (s: CardSpend) => setForm({
-    kind: "spend", id: s.id, accountId: s.accountId, cardLast4: s.cardLast4 ?? "", spentOn: s.spentOn, amount: String(s.amount),
+  // ── Actions ──
+
+  const openAdd = useCallback(() => {
+    const last = readLastCard();
+    const lastValid = last && cards.some(c => c.accountId === last.accountId) ? last : null;
+    setForm({
+      kind: "spend", id: null,
+      accountId: accountFilter !== "all" ? accountFilter : lastValid?.accountId ?? (cards.length === 1 ? cards[0].accountId : ""),
+      cardLast4: accountFilter === "all" || lastValid?.accountId === accountFilter ? lastValid?.cardLast4 ?? "" : "",
+      spentOn: isCurrentMonth ? todayIso() : `${month}-01`,
+      amount: "",
+    });
+  }, [cards, accountFilter, isCurrentMonth, month]);
+
+  const openEdit = (p: Purchase) => setForm({
+    kind: "spend", id: p.id, accountId: p.accountId, cardLast4: p.cardLast4 ?? "", spentOn: p.spentOn,
+    amount: String(p.amount), fromEmail: p.source === "email",
   });
   // A new refund starts at what is left to refund: the full amount for a failed payment.
   const openRefund = (p: Purchase) => setForm({
-    kind: "refund", purchase: p, id: null, accountId: p.accountId, cardLast4: p.cardLast4 ?? "",
-    spentOn: todayIso(), amount: String(p.net),
+    kind: "refund", purchase: p, id: null, accountId: p.accountId, cardLast4: p.cardLast4 ?? "", spentOn: todayIso(), amount: String(p.net),
   });
   const openEditRefund = (p: Purchase, r: CardSpend) => setForm({
-    kind: "refund", purchase: p, id: r.id, accountId: p.accountId, cardLast4: p.cardLast4 ?? "",
-    spentOn: r.spentOn, amount: String(-r.amount),
+    kind: "refund", purchase: p, id: r.id, accountId: p.accountId, cardLast4: p.cardLast4 ?? "", spentOn: r.spentOn, amount: String(-r.amount),
   });
 
-  // Most a refund may be: what is left, plus this refund's own amount when editing it.
-  const refundMax = form?.kind === "refund" && form.purchase
-    ? form.purchase.net + (form.id != null ? -(form.purchase.refunds.find(r => r.id === form.id)?.amount ?? 0) : 0)
-    : null;
-  const refundTooBig = refundMax != null && Number(form?.amount) > refundMax + 1e-9;
-  const last4Valid = !form || form.cardLast4 === "" || /^\d{4}$/.test(form.cardLast4);
-  const formValid = !!form && form.accountId !== "" && !!form.spentOn && isAmount(form.amount) && Number(form.amount) > 0
-    && last4Valid && !refundTooBig;
-
-  const handleSave = async () => {
-    if (!form || !formValid) return;
-    if (form.kind === "refund" && form.purchase) {
-      const refund = { amount: Number(form.amount), spentOn: form.spentOn };
-      setSaving(true);
-      try {
-        if (form.id == null) await createCardRefund(form.purchase.id, refund);
-        else await updateCardSpend(form.id, refund);
-        invalidateCache("/card-spends");
-        showToast(form.id == null ? "Refund added" : "Refund updated");
-        setForm(null);
-        load();
-      } catch (err) {
-        showToast(err instanceof Error ? err.message : "Failed to save refund", "error");
-      } finally {
-        setSaving(false);
+  const saveForm = async (f: FormState) => {
+    try {
+      if (f.kind === "refund" && f.purchase) {
+        const refund = { amount: Number(f.amount), spentOn: f.spentOn };
+        if (f.id == null) await createCardRefund(f.purchase.id, refund);
+        else await updateCardSpend(f.id, refund);
+        showToast(f.id == null ? "Refund added" : "Refund updated");
+      } else {
+        const data = { accountId: f.accountId as number, amount: Number(f.amount), spentOn: f.spentOn, cardLast4: f.cardLast4 || null };
+        if (f.id == null) await createCardSpend(data);
+        else await updateCardSpend(f.id, data);
+        showToast(f.id == null ? `Added ${fmt(data.amount, currency)}${f.spentOn.slice(0, 7) !== month ? ` to ${monthLabel(f.spentOn.slice(0, 7))}` : ""}` : "Spend updated");
       }
-      return;
-    }
-    const data = {
-      accountId: form.accountId as number,
-      amount: Number(form.amount),
-      spentOn: form.spentOn,
-      cardLast4: form.cardLast4 || null,
-    };
-    setSaving(true);
-    try {
-      if (form.id == null) await createCardSpend(data);
-      else await updateCardSpend(form.id, data);
       invalidateCache("/card-spends");
-      showToast(form.id == null ? "Spend added" : "Spend updated");
-      setForm(null);
       load();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Failed to save spend", "error");
-    } finally {
-      setSaving(false);
+      showToast(err instanceof Error ? err.message : "Failed to save", "error");
+      throw err;
     }
   };
 
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    const target = deleteTarget;
-    const prev = spends;
-    setDeleteTarget(null);
-    setSpends(s => s.filter(x => x.id !== target.id && x.refundOf !== target.id));
+  const changeAmount = async (p: Purchase, amount: number) => {
     try {
-      await deleteCardSpend(target.id);
+      await updateCardSpend(p.id, { accountId: p.accountId, amount, spentOn: p.spentOn, cardLast4: p.cardLast4 });
       invalidateCache("/card-spends");
-      showToast(target.refundOf != null ? "Refund deleted" : "Spend deleted");
+      showToast("Amount updated");
       load();
     } catch (err) {
-      setSpends(prev);
-      showToast(err instanceof Error ? err.message : "Failed to delete spend", "error");
+      showToast(err instanceof Error ? err.message : "Failed to update amount", "error");
+      throw err;
     }
   };
+
+  const remove = (s: CardSpend) => {
+    // A purchase's refunds go with it on the server (cascade), so hide them together.
+    const ids = [s.id, ...spends.filter(x => x.refundOf === s.id).map(x => x.id)];
+    setHidden(h => new Set([...h, ...ids]));
+    const timer = setTimeout(async () => {
+      pendingDeletes.current.delete(s.id);
+      try {
+        await deleteCardSpend(s.id);
+        invalidateCache("/card-spends");
+        setSpends(list => list.filter(x => !ids.includes(x.id)));
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : "Failed to delete", "error");
+      } finally {
+        setHidden(h => { const n = new Set(h); ids.forEach(i => n.delete(i)); return n; });
+      }
+    }, UNDO_MS);
+    pendingDeletes.current.set(s.id, timer);
+    const what = s.refundOf != null ? "Refund" : "Spend";
+    showToast(`${what} of ${fmt(Math.abs(s.amount), currency)} deleted`, "success", {
+      duration: UNDO_MS,
+      action: {
+        label: "Undo",
+        onClick: () => {
+          clearTimeout(timer);
+          pendingDeletes.current.delete(s.id);
+          setHidden(h => { const n = new Set(h); ids.forEach(i => n.delete(i)); return n; });
+        },
+      },
+    });
+  };
+
+  const dismissIssue = (i: Issue) => setReviewed([...reviewed, i.key]);
+  const showIssue = (i: Issue) => {
+    setAccountFilter("all"); setSourceFilter(null); setSearch("");
+    setDayFilter(Number(i.purchase.spentOn.slice(8, 10)));
+  };
+
+  // "N" opens the add form when not typing somewhere.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (e.key.toLowerCase() !== "n" || e.metaKey || e.ctrlKey || e.altKey || form) return;
+      if (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName)) return;
+      if (cards.length === 0) return;
+      e.preventDefault();
+      openAdd();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [form, cards.length, openAdd]);
+
+  // Swiping the top area left/right changes month on phones.
+  const swipe = useRef<{ x: number; y: number } | null>(null);
+  const onTopTouchStart = (e: TouchEvent) => { swipe.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; };
+  const onTopTouchEnd = (e: TouchEvent) => {
+    const s = swipe.current;
+    swipe.current = null;
+    if (!s) return;
+    const dx = e.changedTouches[0].clientX - s.x, dy = e.changedTouches[0].clientY - s.y;
+    if (Math.abs(dx) < MONTH_SWIPE || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if (dx > 0) setMonth(m => shiftMonth(m, -1));
+    else if (!isCurrentMonth) setMonth(m => shiftMonth(m, 1));
+  };
+
+  // The slim sticky summary appears once the main one scrolls away.
+  const summaryRef = useRef<HTMLDivElement | null>(null);
+  const [summaryVisible, setSummaryVisible] = useState(true);
+  useEffect(() => {
+    const el = summaryRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(([e]) => setSummaryVisible(e.isIntersecting), { rootMargin: "-60px 0px 0px 0px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [loading]);
 
   if (error && !summary && !loading) {
     return <ErrorState message={error} onRetry={load} />;
   }
 
-  const monthLabel = new Date(`${month}-01T00:00:00`).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+  const cardName = (id: number) => cards.find(c => c.accountId === id)?.name ?? "Card";
+  const firstRun = !loading && spends.length === 0 && (prevSpends?.length ?? 0) === 0;
 
   return (
-    <Stack spacing={{ xs: 2.5, sm: 3 }} sx={{ pb: 10 }}>
+    <Stack spacing={{ xs: 2.5, sm: 3 }} sx={{ pb: 12 }}>
+      {/* ── Sticky mini summary ── */}
+      <Box sx={{ position: "sticky", top: { xs: "calc(52px + env(safe-area-inset-top, 0px))", md: 0 }, height: 0, zIndex: 20, mt: "0 !important" }}>
+        <Box sx={{
+          transform: summaryVisible ? "translateY(-12px)" : "translateY(8px)", opacity: summaryVisible ? 0 : 1,
+          pointerEvents: summaryVisible ? "none" : "auto", transition: "all 0.2s ease",
+        }}>
+          <Paper sx={{
+            px: 2, py: 1, borderRadius: 999, display: "flex", alignItems: "center", gap: 1.5, mx: "auto", width: "fit-content", maxWidth: "100%",
+            bgcolor: alpha(colors.white, 0.92), backdropFilter: "blur(10px)", boxShadow: 4,
+          }} aria-hidden={summaryVisible}>
+            <Typography sx={{ fontSize: "0.8rem", fontWeight: 700 }}>{monthLabel(month, "short")}</Typography>
+            <Typography sx={{ fontSize: "0.8rem", fontVariantNumeric: "tabular-nums" }}>{fmtShort(spent, currency)} spent</Typography>
+            {limit != null && (
+              <Typography sx={{ fontSize: "0.8rem", fontWeight: 650, color: spent > limit ? colors.error : colors.success, fontVariantNumeric: "tabular-nums" }}>
+                {spent > limit ? `${fmtShort(spent - limit, currency)} over` : `${fmtShort(limit - spent, currency)} left`}
+              </Typography>
+            )}
+          </Paper>
+        </Box>
+      </Box>
+
       {/* ── Month, card filter, search ── */}
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ xs: "stretch", sm: "center" }}>
-        <Stack direction="row" alignItems="center" spacing={0.5}>
-          <IconButton size="small" onClick={() => setMonth(m => shiftMonth(m, -1))} aria-label="Previous month"><ChevronLeftRoundedIcon /></IconButton>
-          <Typography sx={{ fontWeight: 700, fontSize: "1.05rem", minWidth: 140, textAlign: "center" }}>{monthLabel}</Typography>
-          <IconButton size="small" onClick={() => setMonth(m => shiftMonth(m, 1))} disabled={isCurrentMonth} aria-label="Next month"><ChevronRightRoundedIcon /></IconButton>
+      <Box onTouchStart={isMobile ? onTopTouchStart : undefined} onTouchEnd={isMobile ? onTopTouchEnd : undefined}>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ xs: "stretch", sm: "center" }}>
+          <Stack direction="row" justifyContent={{ xs: "center", sm: "flex-start" }}>
+            <MonthPicker userId={userId} month={month} onChange={setMonth} budget={budget.monthlyLimit} currency={currency} />
+          </Stack>
+          <Box sx={{ flex: 1 }} />
+          <Stack direction="row" spacing={1.5}>
+            <TextField select size="small" label="Card" value={accountFilter} sx={{ minWidth: { xs: 0, sm: 170 }, flex: { xs: 1, sm: "none" } }}
+              onChange={e => setAccountFilter(e.target.value === "all" ? "all" : Number(e.target.value))}>
+              <MenuItem value="all">All cards</MenuItem>
+              {cards.map(c => <MenuItem key={c.accountId} value={c.accountId}>{c.name}</MenuItem>)}
+            </TextField>
+            <Tooltip title="Try >5000, <500, 1000-2000 or a card's last 4 digits" placement="bottom-end">
+              <TextField size="small" placeholder="Search ₹ or card" value={search} onChange={e => setSearch(e.target.value)}
+                sx={{ flex: { xs: 1.4, sm: "none" }, width: { sm: 220 } }}
+                inputProps={{ "aria-label": "Search spends" }}
+                InputProps={{ startAdornment: <InputAdornment position="start"><SearchRoundedIcon sx={{ fontSize: 18 }} /></InputAdornment> }} />
+            </Tooltip>
+          </Stack>
         </Stack>
-        <Box sx={{ flex: 1 }} />
-        <TextField select size="small" label="Card" value={accountFilter} sx={{ minWidth: 180 }}
-          onChange={e => setAccountFilter(e.target.value === "all" ? "all" : Number(e.target.value))}>
-          <MenuItem value="all">All cards</MenuItem>
-          {cards.map(c => <MenuItem key={c.accountId} value={c.accountId}>{c.name}</MenuItem>)}
-        </TextField>
-        <TextField size="small" placeholder="Search amount or card" value={search} onChange={e => setSearch(e.target.value)}
-          InputProps={{ startAdornment: <InputAdornment position="start"><SearchRoundedIcon sx={{ fontSize: 18 }} /></InputAdornment> }} />
-      </Stack>
+      </Box>
 
       {/* ── Summary ── */}
-      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr 1fr", md: "repeat(3, 1fr)" }, gap: { xs: 1.5, sm: 2 } }}>
-        {loading && !summary ? [0, 1, 2].map(i => <MetricSkeleton key={i} />) : (
+      <Box ref={summaryRef} sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "2fr 1fr" }, gap: { xs: 1.5, sm: 2 } }}>
+        {loading && !summary ? (<><MetricSkeleton /><MetricSkeleton /></>) : (
           <>
-            <MetricCard label="Spent" value={fmt(spent, preferredCurrency, { maxDecimals: 0 })}
-              footer={<Typography sx={{ fontSize: "0.75rem", color: colors.gray400 }}>{filtered.length} spend{filtered.length === 1 ? "" : "s"}</Typography>} />
-            <MetricCard label="Budget left"
-              value={left != null ? fmt(left, preferredCurrency, { maxDecimals: 0 }) : "—"}
-              accent={left != null && left < 0 ? colors.error : undefined}
-              footer={<Typography sx={{ fontSize: "0.75rem", color: colors.gray400 }}>
-                {limit == null
-                  ? (accountFilter === "all" ? "No budget set" : "Budget covers all cards")
-                  : isCurrentMonth && left != null
-                    ? `${fmt(Math.max(0, left) / daysLeft, preferredCurrency, { maxDecimals: 0 })}/day · ${daysLeft} day${daysLeft === 1 ? "" : "s"} left`
-                    : `of ${fmt(limit, preferredCurrency, { maxDecimals: 0 })}`}
-              </Typography>} />
-            <Box sx={{ gridColumn: { xs: "1 / -1", md: "auto" } }}>
-              <MetricCard label="Total owed" value={fmt(debt, preferredCurrency, { maxDecimals: 0 })}
-                footer={<Typography sx={{ fontSize: "0.75rem", color: colors.gray400 }}>Right now, from card balances</Typography>} />
+            <PaceBar spent={spent} limit={limit} month={month} isCurrentMonth={isCurrentMonth}
+              prevTotal={prevTotal} prevSameDay={prevSameDay} currency={currency} />
+            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr 1fr", md: "1fr" }, gap: { xs: 1.5, sm: 2 } }}>
+              <MetricCard label="Total owed" value={fmtShort(debt, currency)}
+                footer={<Typography sx={{ fontSize: "0.72rem", color: colors.gray400 }}>Right now, from card balances</Typography>} />
+              <MetricCard label="Spends" value={String(base.length)}
+                footer={<VsLastMonth now={base.length} prev={prevBase ? prevBase.length : null} month={month} />} />
             </Box>
           </>
         )}
       </Box>
 
+      {/* ── Needs a look ── */}
+      {!loading && (
+        <ReviewPanel issues={issues} currency={currency} onDelete={i => remove(i.purchase)} onDismiss={dismissIssue} onShow={showIssue} />
+      )}
+
       {/* ── Daily chart + split by card ── */}
-      {!loading && filtered.length > 0 && (
+      {!loading && base.length > 0 && (
         <FadeIn>
           <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3 }}>
             <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "2fr 1fr" }, gap: 3 }}>
-              <Box>
-                <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", mb: 1 }}>Spend by day</Typography>
-                <Box sx={{ height: 180 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={daily} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                      <XAxis dataKey="day" tickLine={false} axisLine={false} interval={isMobile ? 6 : 2} tick={{ fontSize: 11, fill: colors.gray400 }} />
-                      <YAxis hide />
-                      <ChartTooltip cursor={{ fill: alpha(colors.brand, 0.08) }}
-                        formatter={(v: number) => [fmt(v, preferredCurrency, { maxDecimals: 0 }), "Spent"]}
-                        labelFormatter={d => dayLabel(`${month}-${String(d).padStart(2, "0")}`)} />
-                      <Bar dataKey="amount" fill={colors.brand} radius={[3, 3, 0, 0]} isAnimationActive={false} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </Box>
-              </Box>
+              <DailyChart month={month} daily={daily} cumulative={cumulative} prevCumulative={prevCumulative}
+                selectedDay={dayFilter} onSelectDay={setDayFilter} currency={currency} compact={isMobile} />
               <Box>
                 <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", mb: 1.5 }}>By card</Typography>
-                <Stack spacing={1.25}>
-                  {byCard.map(c => (
-                    <Box key={c.name}>
-                      <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
-                        <Typography sx={{ fontSize: "0.8rem" }} noWrap>{c.name}</Typography>
-                        <Typography sx={{ fontSize: "0.8rem", fontWeight: 650, ml: 1, flexShrink: 0 }}>{fmt(c.amount, preferredCurrency, { maxDecimals: 0 })}</Typography>
-                      </Stack>
-                      <Box sx={{ height: 6, borderRadius: 3, bgcolor: colors.gray100 }}>
-                        <Box sx={{ height: "100%", borderRadius: 3, bgcolor: colors.brand, width: `${spent > 0 ? (c.amount / spent) * 100 : 0}%` }} />
+                <Stack spacing={1}>
+                  {byCard.map(c => {
+                    const active = accountFilter === c.accountId;
+                    return (
+                      <Box key={c.accountId} role="button" tabIndex={0} aria-pressed={active}
+                        onClick={() => setAccountFilter(active ? "all" : c.accountId)}
+                        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setAccountFilter(active ? "all" : c.accountId); } }}
+                        sx={{
+                          p: 1, mx: -1, borderRadius: 2, cursor: "pointer", outline: "none",
+                          bgcolor: active ? alpha(colors.brand, 0.08) : "transparent",
+                          "&:hover, &:focus-visible": { bgcolor: alpha(colors.brand, 0.06) },
+                        }}>
+                        <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                          <Typography sx={{ fontSize: "0.8rem", fontWeight: active ? 700 : 500 }} noWrap>{c.name}</Typography>
+                          <Typography sx={{ fontSize: "0.8rem", fontWeight: 650, ml: 1, flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{fmtShort(c.amount, currency)}</Typography>
+                        </Stack>
+                        <Box sx={{ height: 6, borderRadius: 3, bgcolor: colors.gray100 }}>
+                          <Box sx={{ height: "100%", borderRadius: 3, bgcolor: colors.brand, width: `${spent > 0 ? Math.max(0, (c.amount / spent) * 100) : 0}%` }} />
+                        </Box>
                       </Box>
-                    </Box>
-                  ))}
+                    );
+                  })}
                 </Stack>
+                <Typography sx={{ fontSize: "0.7rem", color: colors.gray400, mt: 1.5 }}>Tap a card or a day to filter the list.</Typography>
               </Box>
             </Box>
           </Paper>
         </FadeIn>
       )}
 
+      {/* ── Filter chips ── */}
+      {!loading && spends.length > 0 && (
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
+          {SOURCE_FILTERS.map(f => (
+            <Chip key={f.value} size="small" label={f.label}
+              color={sourceFilter === f.value ? "primary" : "default"} variant={sourceFilter === f.value ? "filled" : "outlined"}
+              onClick={() => setSourceFilter(sourceFilter === f.value ? null : f.value)} />
+          ))}
+          {dayFilter != null && (
+            <Chip size="small" color="primary" label={`Showing ${dayLabel(`${month}-${String(dayFilter).padStart(2, "0")}`)}`} onDelete={() => setDayFilter(null)} />
+          )}
+          {accountFilter !== "all" && (
+            <Chip size="small" color="primary" label={cardName(accountFilter)} onDelete={() => setAccountFilter("all")} />
+          )}
+          {search.trim() && <Chip size="small" color="primary" label={`“${search.trim()}”`} onDelete={() => setSearch("")} />}
+        </Stack>
+      )}
+
       {/* ── The list ── */}
-      {loading ? <ListSkeleton rows={5} /> : filtered.length === 0 ? (
+      {loading ? <RowsSkeleton /> : listed.length === 0 ? (
         <Paper>
-          <EmptyState
-            icon={<CreditCardOffOutlinedIcon />}
-            title={spends.length === 0 ? "No card spends this month" : "Nothing matches"}
-            description={spends.length === 0 ? "Spends from your card alert emails show up here. You can also add one by hand." : "Try another card or search."}
-            action={spends.length === 0 && cards.length > 0 ? { label: "Add Spend", onClick: openAdd } : undefined}
-          />
+          {firstRun ? (
+            <EmptyState
+              icon={<CreditCardRoundedIcon />}
+              title="Your card spends will show up here"
+              description="Purchases from your card alert emails appear automatically. Missed spends can be added by hand."
+              action={cards.length > 0 ? { label: "Add a spend", onClick: openAdd } : undefined}
+            />
+          ) : spends.length === 0 ? (
+            <EmptyState
+              icon={<CreditCardRoundedIcon />}
+              title={`No spends in ${monthLabel(month)}`}
+              description={isCurrentMonth ? "A quiet month so far." : "Nothing was recorded this month."}
+              action={cards.length > 0 ? { label: "Add a spend", onClick: openAdd } : undefined}
+            />
+          ) : (
+            <EmptyState icon={<SearchRoundedIcon />} title="Nothing matches" description="Try another card, day or search."
+              action={{ label: "Clear filters", onClick: () => { setAccountFilter("all"); setSourceFilter(null); setDayFilter(null); setSearch(""); } }} />
+          )}
         </Paper>
       ) : (
         <Paper sx={{ borderRadius: 3, overflow: "hidden" }}>
           <Stack direction="row" alignItems="center" sx={{ px: { xs: 2, sm: 2.5 }, py: 1.5, borderBottom: `1px solid ${colors.gray100}` }}>
-            <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", flex: 1 }}>Spends</Typography>
-            <ToggleButtonGroup size="small" exclusive value={sortBy} onChange={(_e, v) => { if (v) setSortBy(v); }}>
+            <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", flex: 1 }}>
+              {listed.length} spend{listed.length === 1 ? "" : "s"}
+            </Typography>
+            <ToggleButtonGroup size="small" exclusive value={sortBy} onChange={(_e, v) => { if (v) setSortBy(v); }} aria-label="Sort by">
               <ToggleButton value="date" sx={{ px: 1.25, py: 0.25, fontSize: "0.72rem" }}>Date</ToggleButton>
               <ToggleButton value="amount" sx={{ px: 1.25, py: 0.25, fontSize: "0.72rem" }}>Amount</ToggleButton>
             </ToggleButtonGroup>
@@ -363,159 +481,61 @@ function CardSpends() {
               {g.day && (
                 <Stack direction="row" justifyContent="space-between" sx={{ px: { xs: 2, sm: 2.5 }, py: 0.75, bgcolor: alpha(colors.brand, 0.04) }}>
                   <Typography sx={{ fontSize: "0.75rem", fontWeight: 700, color: colors.gray500 }}>{dayLabel(g.day)}</Typography>
-                  <Typography sx={{ fontSize: "0.75rem", fontWeight: 700, color: colors.gray500 }}>{fmt(g.total, preferredCurrency, { maxDecimals: 0 })}</Typography>
+                  <Typography sx={{ fontSize: "0.75rem", fontWeight: 700, color: colors.gray500, fontVariantNumeric: "tabular-nums" }}>{fmt(g.total, currency, { maxDecimals: 0 })}</Typography>
                 </Stack>
               )}
-              {g.rows.map(s => (
-                <Box key={s.id} sx={{ borderBottom: `1px solid ${colors.gray100}` }}>
-                <Stack direction="row" alignItems="center" spacing={1.5}
-                  sx={{ px: { xs: 2, sm: 2.5 }, py: 1.25, "&:hover .row-actions": { opacity: 1 } }}>
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography sx={{ fontSize: "0.88rem", fontWeight: 600 }} noWrap>
-                      {s.accountName}{s.cardLast4 ? ` ·· ${s.cardLast4}` : ""}
-                    </Typography>
-                    <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.25 }}>
-                      {!g.day && <Typography sx={{ fontSize: "0.72rem", color: colors.gray400 }}>{dayLabel(s.spentOn)}</Typography>}
-                      <TintedChip label={s.source === "email" ? "Email" : "Manual"} color={s.source === "email" ? colors.brand : colors.accent} />
-                      {s.edited && <TintedChip label="Edited" color={colors.warning} />}
-                    </Stack>
-                  </Box>
-                  <Box sx={{ textAlign: "right", flexShrink: 0 }}>
-                    <Typography sx={{
-                      fontSize: "0.95rem", fontWeight: 700, fontVariantNumeric: "tabular-nums",
-                      ...(s.refunded > 0 && s.net <= 0 ? { textDecoration: "line-through", color: colors.gray400 } : {}),
-                    }}>
-                      {fmt(s.amount, preferredCurrency)}
-                    </Typography>
-                    {s.refunded > 0 && (
-                      <Typography sx={{ fontSize: "0.72rem", fontWeight: 600, color: colors.success, whiteSpace: "nowrap" }}>
-                        {s.net <= 0 ? "Fully refunded" : `Refunded ${fmt(s.refunded, preferredCurrency)} · net ${fmt(s.net, preferredCurrency)}`}
-                      </Typography>
-                    )}
-                  </Box>
-                  <Stack direction="row" className="row-actions" sx={{ opacity: { xs: 1, sm: 0.4 }, transition: "opacity 0.15s ease" }}>
-                    {s.net > 0 && (
-                      <IconButton size="small" onClick={() => openRefund(s)} aria-label="Add refund" sx={{ "&:hover": { color: colors.success } }}>
-                        <UndoRoundedIcon sx={{ fontSize: 18 }} />
-                      </IconButton>
-                    )}
-                    <IconButton size="small" onClick={() => openEdit(s)} aria-label="Edit spend"><EditOutlinedIcon sx={{ fontSize: 18 }} /></IconButton>
-                    <IconButton size="small" onClick={() => setDeleteTarget(s)} aria-label="Delete spend" sx={{ "&:hover": { color: colors.error } }}>
-                      <DeleteOutlineIcon sx={{ fontSize: 18 }} />
-                    </IconButton>
-                  </Stack>
-                </Stack>
-                {s.refunds.map(r => (
-                  <Stack key={r.id} direction="row" alignItems="center" spacing={1.5}
-                    sx={{ pl: { xs: 4, sm: 5 }, pr: { xs: 2, sm: 2.5 }, pb: 1, "&:hover .row-actions": { opacity: 1 } }}>
-                    <UndoRoundedIcon sx={{ fontSize: 15, color: colors.success }} />
-                    <Typography sx={{ fontSize: "0.78rem", color: colors.gray500, flex: 1 }} noWrap>
-                      Refund · {dayLabel(r.spentOn)}
-                    </Typography>
-                    <Typography sx={{ fontSize: "0.85rem", fontWeight: 650, color: colors.success, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
-                      −{fmt(-r.amount, preferredCurrency)}
-                    </Typography>
-                    <Stack direction="row" className="row-actions" sx={{ opacity: { xs: 1, sm: 0.4 }, transition: "opacity 0.15s ease" }}>
-                      <IconButton size="small" onClick={() => openEditRefund(s, r)} aria-label="Edit refund"><EditOutlinedIcon sx={{ fontSize: 16 }} /></IconButton>
-                      <IconButton size="small" onClick={() => setDeleteTarget(r)} aria-label="Delete refund" sx={{ "&:hover": { color: colors.error } }}>
-                        <DeleteOutlineIcon sx={{ fontSize: 16 }} />
-                      </IconButton>
-                    </Stack>
-                  </Stack>
-                ))}
-                </Box>
+              {g.rows.map(p => (
+                <SpendRow key={p.id} purchase={p} showDate={!g.day} flagged={flaggedIds.has(p.id)} isMobile={isMobile} currency={currency}
+                  onEdit={openEdit} onRefund={openRefund} onDelete={remove} onEditRefund={openEditRefund} onAmountChange={changeAmount} />
               ))}
             </Box>
           ))}
+          {isMobile && (
+            <Typography sx={{ fontSize: "0.7rem", color: colors.gray400, textAlign: "center", py: 1.25 }}>
+              Swipe a spend left to delete, right to refund. Tap to edit.
+            </Typography>
+          )}
         </Paper>
       )}
 
       {cards.length > 0 && (
-        <Fab onClick={openAdd}
-          variant={isMobile ? "circular" : "extended"}
-          sx={{
-            position: "fixed",
-            bottom: { xs: "calc(24px + env(safe-area-inset-bottom, 0px))", sm: 24 },
-            right: { xs: 16, sm: 24 },
-            bgcolor: colors.accent,
-            color: colors.pureWhite,
-            boxShadow: `0 4px 20px ${alpha(colors.accent, 0.4)}`,
-            "&:hover": { bgcolor: colors.accentDark, boxShadow: `0 6px 28px ${alpha(colors.accent, 0.5)}` },
-          }}>
-          <AddIcon sx={isMobile ? {} : { mr: 0.5 }} />
-          {!isMobile && "Add Spend"}
-        </Fab>
+        <Tooltip title={isMobile ? "" : "Add spend (N)"} placement="left">
+          <Fab onClick={openAdd} aria-label="Add spend"
+            variant={isMobile ? "circular" : "extended"}
+            sx={{
+              position: "fixed",
+              bottom: { xs: "calc(24px + env(safe-area-inset-bottom, 0px))", sm: 24 },
+              right: { xs: 16, sm: 24 },
+              bgcolor: colors.accent,
+              color: colors.pureWhite,
+              boxShadow: `0 4px 20px ${alpha(colors.accent, 0.4)}`,
+              "&:hover": { bgcolor: colors.accentDark, boxShadow: `0 6px 28px ${alpha(colors.accent, 0.5)}` },
+            }}>
+            <AddIcon sx={isMobile ? {} : { mr: 0.5 }} />
+            {!isMobile && "Add Spend"}
+          </Fab>
+        </Tooltip>
       )}
 
-      {/* ── Add / edit ── */}
-      <Dialog open={!!form} onClose={() => setForm(null)} maxWidth="xs" fullWidth fullScreen={isMobile}>
-        <DialogTitle>{form?.kind === "refund" ? (form.id == null ? "Add refund" : "Edit refund") : form?.id == null ? "Add spend" : "Edit spend"}</DialogTitle>
-        {form?.kind === "refund" && form.purchase && (
-          <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2.5, pt: "16px !important" }}>
-            <Typography sx={{ fontSize: "0.85rem", color: colors.gray500 }}>
-              {form.purchase.accountName}{form.purchase.cardLast4 ? ` ·· ${form.purchase.cardLast4}` : ""} · {fmt(form.purchase.amount, preferredCurrency)} on {dayLabel(form.purchase.spentOn)}
-            </Typography>
-            <NumericField label="Refund amount" value={form.amount} onChange={v => setForm({ ...form, amount: v })}
-              currency={preferredCurrency} maxDecimals={2} fullWidth autoFocus
-              error={refundTooBig}
-              helperText={refundMax != null
-                ? (refundTooBig ? `Can't be more than ${fmt(refundMax, preferredCurrency)}` : `Up to ${fmt(refundMax, preferredCurrency)}. Lower it if a fee was kept.`)
-                : undefined}
-              onKeyDown={e => { if (e.key === "Enter") handleSave(); }} />
-            <TextField label="Refund date" type="date" value={form.spentOn} fullWidth InputLabelProps={{ shrink: true }}
-              onChange={e => setForm({ ...form, spentOn: e.target.value })} />
-            <Typography sx={{ fontSize: "0.75rem", color: colors.gray400 }}>
-              Counts in the purchase's month, so its spend becomes the amount not refunded.
-            </Typography>
-          </DialogContent>
-        )}
-        {form?.kind === "spend" && (
-          <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2.5, pt: "16px !important" }}>
-            <TextField select label="Card" value={form.accountId} fullWidth
-              onChange={e => setForm({ ...form, accountId: Number(e.target.value) })}>
-              {cards.map(c => <MenuItem key={c.accountId} value={c.accountId}>{c.name}</MenuItem>)}
-            </TextField>
-            <TextField label="Card last 4 digits (optional)" value={form.cardLast4} fullWidth
-              onChange={e => setForm({ ...form, cardLast4: e.target.value.replace(/\D/g, "").slice(0, 4) })}
-              error={!last4Valid} helperText={!last4Valid ? "Enter all 4 digits" : undefined}
-              inputProps={{ inputMode: "numeric", autoComplete: "off" }} />
-            <TextField label="Date" type="date" value={form.spentOn} fullWidth InputLabelProps={{ shrink: true }}
-              onChange={e => setForm({ ...form, spentOn: e.target.value })} />
-            <NumericField label="Amount" value={form.amount} onChange={v => setForm({ ...form, amount: v })}
-              currency={preferredCurrency} maxDecimals={2} fullWidth autoFocus={form.id == null}
-              onKeyDown={e => { if (e.key === "Enter") handleSave(); }} />
-            {form.id != null && spends.find(s => s.id === form.id)?.source === "email" && (
-              <Typography sx={{ fontSize: "0.75rem", color: colors.gray400 }}>
-                This spend came from an alert email. Saving marks it as edited.
-              </Typography>
-            )}
-          </DialogContent>
-        )}
-        <DialogActions>
-          <Button onClick={() => setForm(null)}>Cancel</Button>
-          <Button onClick={handleSave} variant="contained" disabled={!formValid || saving}>
-            {form?.id == null ? "Add" : "Save"}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ── Delete confirm ── */}
-      <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>{deleteTarget?.refundOf != null ? "Delete refund?" : "Delete spend?"}</DialogTitle>
-        <DialogContent>
-          {deleteTarget && (
-            <Typography sx={{ fontSize: "0.9rem" }}>
-              {fmt(Math.abs(deleteTarget.amount), preferredCurrency)} on {deleteTarget.accountName} · {dayLabel(deleteTarget.spentOn)}.
-              {deleteTarget.refundOf == null && spends.some(x => x.refundOf === deleteTarget.id) ? " Its refunds are deleted too." : ""} This can't be undone.
-            </Typography>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteTarget(null)}>Cancel</Button>
-          <Button onClick={handleDelete} variant="contained" color="error">Delete</Button>
-        </DialogActions>
-      </Dialog>
+      <SpendForm form={form} setForm={setForm} cards={cards} currency={currency} onSave={saveForm} />
     </Stack>
+  );
+}
+
+/** Placeholder rows shaped like the real ones, so loading doesn't jump. */
+function RowsSkeleton() {
+  return (
+    <Paper sx={{ borderRadius: 3, overflow: "hidden" }}>
+      {[0, 1, 2, 3, 4].map(i => (
+        <Stack key={i} direction="row" alignItems="center" spacing={1.5} sx={{ px: 2.5, py: 1.5 }}>
+          <Box sx={{ flex: 1 }}>
+            <Skeleton width={i % 2 ? "45%" : "35%"} height={20} />
+            <Skeleton width={60} height={18} />
+          </Box>
+          <Skeleton width={80} height={24} />
+        </Stack>
+      ))}
+    </Paper>
   );
 }
 
