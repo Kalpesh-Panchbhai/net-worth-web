@@ -1,6 +1,8 @@
-import { Box, Paper, Typography, Stack, Tooltip } from "@mui/material";
+import { useState } from "react";
+import { Box, Paper, Typography, Stack, Tooltip, Button } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { useTokens } from "../context/ColorModeContext";
+import NumericField from "../components/NumericField";
 import { fmt, fmtShort } from "./model";
 import { daysInMonth, monthLabel, shiftMonth } from "./model";
 
@@ -24,9 +26,13 @@ export function VsLastMonth({ now, prev, month }: { now: number; prev: number | 
  * The month at a glance: spend against budget with a marker for where spend "should" be by today,
  * coloured by pace, plus one plain sentence on what that means for the rest of the month.
  */
-export default function PaceBar({ spent, limit, month, isCurrentMonth, prevTotal, prevSameDay, currency }: {
+export default function PaceBar({ spent, limit, budget, onBudgetChange, month, isCurrentMonth, prevTotal, prevSameDay, currency }: {
   spent: number;
+  /** The budget to pace against; null when there is none or the view is filtered. */
   limit: number | null;
+  /** The saved monthly budget, edited here regardless of filters. */
+  budget: number | null;
+  onBudgetChange: (monthlyLimit: number | null) => void;
   month: string;
   isCurrentMonth: boolean;
   /** Last month's whole-month spend. */
@@ -36,6 +42,12 @@ export default function PaceBar({ spent, limit, month, isCurrentMonth, prevTotal
   currency: string;
 }) {
   const { colors } = useTokens();
+  const [draft, setDraft] = useState<string | null>(null);
+  const saveBudget = () => {
+    const n = Number(draft);
+    onBudgetChange(draft == null || draft.trim() === "" || !Number.isFinite(n) || n <= 0 ? null : n);
+    setDraft(null);
+  };
   const days = daysInMonth(month);
   const today = isCurrentMonth ? new Date().getDate() : days;
   const daysLeft = days - today + 1;
@@ -51,7 +63,7 @@ export default function PaceBar({ spent, limit, month, isCurrentMonth, prevTotal
   if (limit == null) {
     sentence = prevSameDay != null && isCurrentMonth
       ? `By this day last month you had spent ${fmt(prevSameDay, currency)}.`
-      : "Set a monthly budget on the Insights card to track your pace.";
+      : "Set a monthly budget to track your pace.";
   } else if (spent > limit) {
     sentence = `${fmt(spent - limit, currency)} over budget.`
       + (prevTotal != null && prevTotal > 0 ? ` Last month you finished at ${fmtShort(prevTotal, currency)}.` : "");
@@ -67,8 +79,26 @@ export default function PaceBar({ spent, limit, month, isCurrentMonth, prevTotal
     <Paper sx={{ p: { xs: 2, sm: 3 }, height: "100%", display: "flex", flexDirection: "column", gap: 1.25 }}>
       <Stack direction="row" alignItems="baseline" justifyContent="space-between" flexWrap="wrap" sx={{ columnGap: 1 }}>
         <Typography variant="overline" sx={{ fontSize: { xs: "0.6rem", sm: "0.75rem" } }}>Spent</Typography>
-        <VsLastMonth now={spent} prev={isCurrentMonth ? prevSameDay : prevTotal} month={month} />
+        <Stack direction="row" alignItems="baseline" spacing={1.5}>
+          <VsLastMonth now={spent} prev={isCurrentMonth ? prevSameDay : prevTotal} month={month} />
+          {draft == null && (
+            <Typography onClick={() => setDraft(budget != null ? String(budget) : "")} sx={{ fontSize: "0.72rem", fontWeight: 600, color: colors.gray400, cursor: "pointer", "&:hover": { color: colors.brand } }}>
+              {budget != null ? "Edit budget" : "Set budget"}
+            </Typography>
+          )}
+        </Stack>
       </Stack>
+      {draft != null && (
+        <Stack direction="row" spacing={1} alignItems="center">
+          <NumericField
+            label="Monthly budget" value={draft} onChange={setDraft}
+            currency={currency} maxDecimals={0} size="small" fullWidth autoFocus
+            onKeyDown={e => { if (e.key === "Enter") saveBudget(); }}
+          />
+          <Button size="small" variant="contained" onClick={saveBudget}>Save</Button>
+          <Button size="small" onClick={() => setDraft(null)}>Cancel</Button>
+        </Stack>
+      )}
       <Stack direction="row" alignItems="baseline" spacing={1} flexWrap="wrap">
         <Typography sx={{ fontSize: { xs: "1.6rem", sm: "2.1rem" }, fontWeight: 800, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums", lineHeight: 1.1 }}>
           {fmt(spent, currency)}

@@ -54,7 +54,7 @@ function CardSpends() {
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const { colors } = useTokens();
   const { showToast } = useToast();
-  const [budget] = useSyncedConfig<{ monthlyLimit: number | null }>(userId, "card_budget", { monthlyLimit: null });
+  const [budget, setBudget] = useSyncedConfig<{ monthlyLimit: number | null }>(userId, "card_budget", { monthlyLimit: null });
   const [reviewed, setReviewed] = useSyncedConfig<string[]>(userId, "card_spend_reviewed", []);
 
   const [month, setMonth] = useState(() => monthKey(new Date()));
@@ -380,7 +380,8 @@ function CardSpends() {
       <Box ref={summaryRef} sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "2fr 1fr" }, gap: { xs: 1.5, sm: 2 } }}>
         {loading && !summary ? (<><MetricSkeleton /><MetricSkeleton /></>) : (
           <>
-            <PaceBar spent={spent} limit={limit} month={month} isCurrentMonth={isCurrentMonth}
+            <PaceBar spent={spent} limit={limit} budget={budget.monthlyLimit}
+              onBudgetChange={monthlyLimit => setBudget({ monthlyLimit })} month={month} isCurrentMonth={isCurrentMonth}
               prevTotal={prevTotal} prevSameDay={prevSameDay} currency={currency} />
             <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr 1fr", md: "1fr" }, gap: { xs: 1.5, sm: 2 } }}>
               <MetricCard label="Total owed" value={fmtShort(debt, currency)}
